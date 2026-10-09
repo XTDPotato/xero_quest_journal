@@ -1,0 +1,269 @@
+package xtdpotato.xero_quest_journal.client;
+
+import net.minecraft.client.Minecraft;
+import com.mojang.blaze3d.systems.RenderSystem;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.Tooltip;
+import net.minecraft.client.gui.screens.inventory.InventoryScreen;
+import net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.network.chat.Component;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.client.event.InputEvent;
+import net.neoforged.neoforge.client.event.RenderGuiEvent;
+import net.neoforged.neoforge.client.event.ScreenEvent;
+import xtdpotato.xero_quest_journal.XeroQuestJournal;
+import org.lwjgl.glfw.GLFW;
+
+@EventBusSubscriber(modid = XeroQuestJournal.MOD_ID, value = Dist.CLIENT)
+public final class XeroQuestClient {
+    private XeroQuestClient() {
+    }
+
+    @SubscribeEvent
+    public static void clientTick(ClientTickEvent.Post event) {
+        Minecraft minecraft = Minecraft.getInstance();
+        QuestHudToastQueue.setHudActive(minecraft.player != null && minecraft.screen == null);
+        if (minecraft.screen instanceof AnimatedQuestScreen animated) animated.advanceTransition();
+        ClientQuestProgress.tick();
+        XaeroWaypointBridge.tick();
+        ClientControlState.tick();
+        QuestPresentationClient.tickAll();
+        ClientStructures.tick();
+        ClientMailbox.tick();
+        MailArrivalToast.tick();
+        XeroToast.tick();
+        var requestedScreen = xtdpotato.xero_quest_journal.core.network.QuestClientInbox.takeOpenScreen();
+        if (requestedScreen != null && minecraft.player != null) {
+            switch (requestedScreen.screen()) {
+                case "structure_entered" -> minecraft.setScreen(null);
+                case "journal" -> minecraft.setScreen(new QuestScreen());
+                case "overview" -> minecraft.setScreen(QuestScreen.overview(null));
+                case "task" -> minecraft.setScreen(QuestScreen.task(null, requestedScreen.targetId()));
+                case "mailbox" -> {
+                    ClientMailbox.request();
+                    minecraft.setScreen(new MailboxScreen());
+                }
+                case "settings" -> minecraft.setScreen(new QuestConfigScreen(null));
+                case "templates" -> minecraft.setScreen(new QuestTemplateScreen(new QuestScreen(), ""));
+                default -> {
+                }
+            }
+        }
+        while (QuestKeyMappings.OPEN.consumeClick()) {
+            if (minecraft.screen == null && minecraft.player != null) {
+                minecraft.setScreen(ClientPreferences.openDefault(null));
+            } else if (minecraft.screen instanceof QuestScreen screen) {
+                if (screen.isClosing()) screen.reopen();
+                else screen.onClose();
+            }
+        }
+        while (QuestKeyMappings.OPEN_MAILBOX.consumeClick()) {
+            if (minecraft.screen == null && minecraft.player != null) {
+                ClientMailbox.request();
+                minecraft.setScreen(new MailboxScreen());
+            } else if (minecraft.screen instanceof MailboxScreen screen) {
+                if (screen.isClosing()) screen.reopen();
+                else screen.onClose();
+            }
+        }
+        while (QuestKeyMappings.OPEN_NEW_MAIL.consumeClick()) {
+            if (minecraft.player != null && !(minecraft.screen instanceof MailboxScreen))
+                MailArrivalToast.open();
+        }
+        while (QuestKeyMappings.TRACK_TASK.consumeClick()) {
+            if (minecraft.screen == null) QuestUnlockToast.trackCurrent();
+        }
+        var automaticClaim = xtdpotato.xero_quest_journal.core.network.QuestClientInbox.takeAutomaticClaim();
+        if (automaticClaim != null && minecraft.player != null && !automaticClaim.questId().isBlank()
+                && ClientQuestProgress.focusRewardAllows(automaticClaim.questId())) {
+            boolean hasChoice = automaticClaim.rewards().stream()
+                    .anyMatch(reward -> reward.type().equals("loot_choice"));
+            if (hasChoice) {
+                boolean alreadyOpen = minecraft.screen instanceof QuestLootChoiceScreen choice
+                        && choice.questId().equals(automaticClaim.questId());
+                if (!alreadyOpen) {
+                    minecraft.setScreen(new QuestLootChoiceScreen(minecraft.screen, automaticClaim.questId(),
+                            automaticClaim.title(), automaticClaim.rewards(), false));
+                }
+            } else {
+                var received = QuestRewardPopupScreen.receiptRewards(automaticClaim.rewards());
+                if (!received.isEmpty()) {
+                    minecraft.setScreen(new QuestRewardPopupScreen(minecraft.screen,
+                            automaticClaim.title(), received));
+                }
+            }
+        }
+    }
+
+    @SubscribeEvent
+    public static void renderHud(RenderGuiEvent.Post event) {
+        QuestHudRenderer.render(event.getGuiGraphics());
+        if (Minecraft.getInstance().screen == null) {
+            renderNotifications(event.getGuiGraphics());
+        }
+    }
+
+    @SubscribeEvent
+    public static void renderMailOverScreen(ScreenEvent.Render.Post event) {
+        renderNotifications(event.getGuiGraphics());
+    }
+
+    /** Draw once, after the HUD/screen, and above their item and text depth. */
+    private static void renderNotifications(GuiGraphics graphics) {
+        Minecraft minecraft = Minecraft.getInstance();
+        boolean hud = minecraft.screen == null;
+        QuestHudToastQueue.setHudActive(hud);
+        graphics.flush();
+        graphics.pose().pushPose();
+        graphics.pose().translate(0, 0, 1000);
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+        try {
+            XeroTips.render(graphics);
+            MailArrivalToast.render(graphics);
+            XeroToast.render(graphics);
+            if (hud) {
+                QuestCompletionToast.render(graphics);
+                QuestUnlockToast.render(graphics);
+            }
+            graphics.flush();
+        } finally {
+            graphics.pose().popPose();
+            RenderSystem.disableBlend();
+        }
+    }
+
+    @SubscribeEvent
+    public static void clickMailOnScreen(ScreenEvent.MouseButtonPressed.Pre event) {
+        if (event.getButton() == 0 && MailArrivalToast.click(event.getMouseX(), event.getMouseY()))
+            event.setCanceled(true);
+    }
+
+    @SubscribeEvent
+    public static void releaseMailOnScreen(ScreenEvent.MouseButtonReleased.Pre event) {
+        if (event.getButton() == 0 && MailArrivalToast.release(event.getMouseX(), event.getMouseY()))
+            event.setCanceled(true);
+    }
+
+    @SubscribeEvent
+    public static void clickMailInGame(InputEvent.MouseButton.Pre event) {
+        if (event.getButton() != 0 || Minecraft.getInstance().screen != null
+                || event.getAction() != 0 && event.getAction() != 1) return;
+        Minecraft game = Minecraft.getInstance();
+        double x = game.mouseHandler.xpos() * game.getWindow().getGuiScaledWidth()
+                / game.getWindow().getScreenWidth();
+        double y = game.mouseHandler.ypos() * game.getWindow().getGuiScaledHeight()
+                / game.getWindow().getScreenHeight();
+        if (event.getAction() == 1 ? MailArrivalToast.click(x, y) : MailArrivalToast.release(x, y))
+            event.setCanceled(true);
+    }
+
+    @SubscribeEvent
+    public static void clickUnlockToastInGame(InputEvent.MouseButton.Pre event) {
+        Minecraft game = Minecraft.getInstance();
+        if (event.getButton() != GLFW.GLFW_MOUSE_BUTTON_LEFT || event.getAction() != GLFW.GLFW_PRESS
+                || game.screen != null) return;
+        double x = game.mouseHandler.xpos() * game.getWindow().getGuiScaledWidth()
+                / Math.max(1.0, game.getWindow().getScreenWidth());
+        double y = game.mouseHandler.ypos() * game.getWindow().getGuiScaledHeight()
+                / Math.max(1.0, game.getWindow().getScreenHeight());
+        if (QuestUnlockToast.dismissAt(x, y)) event.setCanceled(true);
+    }
+
+    @SubscribeEvent
+    public static void openScenePause(ScreenEvent.Opening event) {
+        if (event.getCurrentScreen() == null && ClientStructures.inScene()
+                && event.getNewScreen() instanceof net.minecraft.client.gui.screens.PauseScreen menu)
+            event.setNewScreen(new QuestScenePauseScreen(menu));
+    }
+
+    @SubscribeEvent
+    public static void addInventoryEntry(ScreenEvent.Init.Post event) {
+        var screen = event.getScreen();
+        var preferences = ClientPreferences.get();
+        if ((! (screen instanceof InventoryScreen) && !(screen instanceof CreativeModeInventoryScreen))
+                || !preferences.inventoryButton) {
+            return;
+        }
+        ButtonStyleSheet styles = ButtonStyleSheet.load();
+        int x = Math.max(0, Math.min(preferences.inventoryX, screen.width - 20));
+        int y = Math.max(0, Math.min(preferences.inventoryY, screen.height - 20));
+        StyledButton button = new StyledButton(x, y, 20, 20,
+                Component.translatable("screen.xero_quest_journal.inventory_tooltip"),
+                ignored -> Minecraft.getInstance().setScreen(ClientPreferences.openDefault(screen)),
+                styles, "inventory-entry", "toolbar-button").icon(new ItemStack(Items.BOOK));
+        button.setTooltip(Tooltip.create(Component.translatable("screen.xero_quest_journal.inventory_tooltip")));
+        event.addListener(button);
+        int mailX = Math.max(0, Math.min(x + 24, screen.width - 20));
+        StyledButton mailbox = new StyledButton(mailX, y, 20, 20,
+                Component.translatable("screen.xero_quest_journal.mailbox.inventory_tooltip"),
+                ignored -> {
+                    ClientMailbox.request();
+                    Minecraft.getInstance().setScreen(new MailboxScreen(screen));
+                }, styles, "mailbox-inventory-entry", "toolbar-button").icon(new ItemStack(Items.PAPER));
+        mailbox.setTooltip(Tooltip.create(
+                Component.translatable("screen.xero_quest_journal.mailbox.inventory_tooltip")));
+        event.addListener(mailbox);
+    }
+
+    private static boolean blocked(ScreenEvent event) {
+        return event.getScreen() instanceof AnimatedQuestScreen screen && screen.inputBlocked();
+    }
+
+    @SubscribeEvent
+    public static void mouseDown(ScreenEvent.MouseButtonPressed.Pre event) {
+        if (blocked(event)) event.setCanceled(true);
+        else if (event.getScreen() instanceof AnimatedQuestScreen screen
+                && screen.clickChoicePopup(event.getMouseX(), event.getMouseY(), event.getButton())) event.setCanceled(true);
+    }
+
+    @SubscribeEvent
+    public static void mouseUp(ScreenEvent.MouseButtonReleased.Pre event) {
+        if (blocked(event)) event.setCanceled(true);
+        else if (event.getScreen() instanceof AnimatedQuestScreen screen
+                && screen.releaseChoicePopup(event.getMouseX(), event.getMouseY(), event.getButton())) event.setCanceled(true);
+    }
+
+    @SubscribeEvent
+    public static void mouseDrag(ScreenEvent.MouseDragged.Pre event) {
+        if (blocked(event)) event.setCanceled(true);
+        else if (event.getScreen() instanceof AnimatedQuestScreen screen
+                && screen.dragChoicePopup(event.getMouseX(), event.getMouseY(), event.getMouseButton(),
+                        event.getDragX(), event.getDragY())) event.setCanceled(true);
+    }
+
+    @SubscribeEvent
+    public static void scroll(ScreenEvent.MouseScrolled.Pre event) {
+        if (blocked(event)) event.setCanceled(true);
+        else if (event.getScreen() instanceof AnimatedQuestScreen screen
+                && screen.scrollChoicePopup(event.getMouseX(), event.getMouseY(),
+                        event.getScrollDeltaX(), event.getScrollDeltaY())) event.setCanceled(true);
+    }
+
+    @SubscribeEvent
+    public static void character(ScreenEvent.CharacterTyped.Pre event) {
+        if (blocked(event)) event.setCanceled(true);
+    }
+
+    @SubscribeEvent
+    public static void keyUp(ScreenEvent.KeyReleased.Pre event) {
+        if (blocked(event)) event.setCanceled(true);
+    }
+
+    @SubscribeEvent
+    public static void keyDown(ScreenEvent.KeyPressed.Pre event) {
+        if (!(event.getScreen() instanceof AnimatedQuestScreen screen) || !screen.inputBlocked()) return;
+        boolean toggle = screen instanceof QuestScreen && QuestKeyMappings.OPEN.matches(event.getKeyCode(), event.getScanCode())
+                || screen instanceof MailboxScreen && QuestKeyMappings.OPEN_MAILBOX.matches(event.getKeyCode(), event.getScanCode());
+        if (screen.isClosing() && toggle) screen.reopen();
+        else if (!screen.isClosing() && (toggle || event.getKeyCode() == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE)) {
+            screen.keyPressed(event.getKeyCode(), event.getScanCode(), event.getModifiers());
+        }
+        event.setCanceled(true);
+    }
+}

@@ -1,0 +1,1 @@
+{"type":"minecraft:block","pools":[{"rolls":1,"entries":[{"type":"minecraft:item","name":"xero_quest_journal:scene_completion"}],"conditions":[{"condition":"minecraft:survives_explosion"}]}]}

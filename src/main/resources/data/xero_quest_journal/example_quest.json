@@ -1,0 +1,9 @@
+{
+  "id": "example_intro",
+  "title": "欢迎来到 Xero 任务日志",
+  "description": "这是第一条示例任务。后续版本会将 HTML 内容、条件、奖励和布局接入到同一套定义中。",
+  "type": "guide",
+  "icon": "minecraft:book",
+  "trackable": true,
+  "recommended": true
+}

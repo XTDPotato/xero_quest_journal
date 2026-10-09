@@ -1,0 +1,22 @@
+Xero Quest Media - third-party runtime notice
+
+This companion redistributes the same upstream libraries previously embedded in
+Xero Quest Journal; moving files does not change their respective licenses.
+The project's MIT license does not replace the licenses of these dependencies.
+
+JavaCPP / JavaCV and the FFmpeg JavaCPP bindings:
+  https://github.com/bytedeco/javacpp
+  https://github.com/bytedeco/javacv
+  https://github.com/bytedeco/javacpp-presets/tree/master/ffmpeg
+  Upstream offers Apache License 2.0 or GPLv2 with the Classpath exception.
+
+FFmpeg and bundled native dependencies:
+  https://ffmpeg.org/legal.html
+  https://ffmpeg.org/download.html
+  Each native build has its own configuration and corresponding license terms.
+  The existing Windows FFmpeg libraries identify LGPL version 3 or later.
+  Other bundled native dependencies retain their own upstream terms.
+
+Redistributors must review and supply the applicable upstream copyright/license
+texts and fulfill source/relinking obligations for their particular native build.
+This notice and the mod descriptor are not a substitute for those obligations.

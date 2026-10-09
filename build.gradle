@@ -1,0 +1,489 @@
+plugins {
+    id 'net.neoforged.moddev' version '2.0.42-beta'
+    id 'maven-publish'
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+    archivesName = project.archives_base_name
+}
+
+repositories {
+    maven { name = "AliyunPublicMirror"; url = uri("https://maven.aliyun.com/repository/public") }
+    maven { name = "TencentPublicMirror"; url = uri("https://mirrors.cloud.tencent.com/repository/maven-public") }
+    maven { name = "NeoForged"; url = uri("https://maven.neoforged.net/releases") }
+    mavenCentral()
+}
+
+def mediaPlatform = providers.gradleProperty("media_platform").orElse(provider {
+    def os = System.getProperty("os.name").toLowerCase(Locale.ROOT)
+    def arch = System.getProperty("os.arch").toLowerCase(Locale.ROOT)
+    def cpu = arch.contains("aarch64") || arch.contains("arm64") ? "arm64" : "x86_64"
+    if (os.contains("win")) return "windows-${cpu}"
+    if (os.contains("mac")) return "macosx-${cpu}"
+    return "linux-${cpu}"
+}).get()
+
+// The core never embeds media codecs. Basic audio uses Minecraft/Java Sound;
+// optional codecs and their native binaries belong exclusively to xero_quest_media.
+def maxModJarBytes = 5_000_000L
+def withMediaMod = project.hasProperty('withMediaMod')
+def javaCppVersion = '1.5.14'
+def ffmpegVersion = '8.1.2-1.5.14'
+
+configurations {
+    mediaNative {
+        transitive = false
+    }
+    javaCvSource {
+        transitive = false
+    }
+    mediaApi {
+        transitive = false
+    }
+}
+
+def sanitizedJavaCv = tasks.register("sanitizedJavaCv", Jar) {
+    archiveFileName = "javacv-1.5.14-nomod.jar"
+    destinationDirectory = layout.buildDirectory.dir("sanitized")
+    from({
+        configurations.javaCvSource.collect { zipTree(it) }
+    }) {
+        exclude "META-INF/MANIFEST.MF"
+        exclude "META-INF/versions/**/module-info.class"
+        exclude "module-info.class"
+    }
+}
+
+sourceSets {
+    media {
+        compileClasspath += sourceSets.main.output
+        runtimeClasspath += sourceSets.main.output
+    }
+    smoke {
+        compileClasspath += sourceSets.main.output
+        runtimeClasspath += sourceSets.main.output
+    }
+}
+
+def clientRegression = [
+        'smokeTest', 'mailboxTest', 'templateTest', 'rewardsTest', 'creationTest',
+        'animationTest', 'popupAnimationTest', 'rewardPopupTest', 'recipeViewerTest',
+        'canvasEditorTest', 'controlGraphTest', 'locationItemTest', 'mediaTest',
+        'hotEventsTest', 'runtimeTest', 'structureSceneTest', 'buttonImageTest',
+        'unlockGraphTest', 'journeyTest', 'overviewTest', 'journalFocusTest', 'mailReferenceTest',
+        'lootTableTest', 'trackingHudTest', 'mailBodyEditorTest', 'mailAdminTest', 'journeyEditingTest', 'journalOrderTest',
+        'overviewAuthoringTest', 'generateTasksTest', 'tacticalCompatibilityTest', 'generatedDeletionTest',
+        'claimReceiptTest', 'spotlightUiTest', 'rewardQualityTest'
+].any { project.hasProperty(it) }
+
+neoForge {
+    version = project.neoforge_version
+    addModdingDependenciesTo sourceSets.smoke
+    runs {
+        client {
+            client()
+            if (project.hasProperty('smokeTest')) {
+                systemProperty 'xero.smokeTest', 'true'
+                gameDirectory = file('run-smoke')
+            }
+            if (project.hasProperty('mailboxTest')) {
+                systemProperty 'xero.mailboxTest', 'true'
+                gameDirectory = file('run-mailbox')
+            }
+            if (project.hasProperty('mailBodyEditorTest')) {
+                systemProperty 'xero.mailBodyEditorTest', 'true'
+                gameDirectory = file('run-mail-body-editor')
+            }
+            if (project.hasProperty('mailAdminTest')) {
+                systemProperty 'xero.mailAdminTest', 'true'
+                gameDirectory = file('run-mail-admin')
+            }
+            if (project.hasProperty('mailReferenceTest')) {
+                systemProperty 'xero.mailReferenceTest', 'true'
+                gameDirectory = file('run-mail-reference')
+            }
+            if (project.hasProperty('trackingHudTest')) {
+                systemProperty 'xero.trackingHudTest', 'true'
+                gameDirectory = file('run-tracking-hud')
+            }
+            if (project.hasProperty('lootTableTest')) {
+                systemProperty 'xero.lootTableTest', 'true'
+                gameDirectory = file('run-loot-table')
+            }
+            if (project.hasProperty('templateTest')) {
+                systemProperty 'xero.templateTest', 'true'
+                gameDirectory = file('run-template')
+            }
+            if (project.hasProperty('rewardsTest')) {
+                systemProperty 'xero.rewardsTest', 'true'
+                gameDirectory = file('run-rewards')
+            }
+            if (project.hasProperty('creationTest')) {
+                systemProperty 'xero.creationTest', 'true'
+                gameDirectory = file('run-creation')
+            }
+            if (project.hasProperty('animationTest')) {
+                systemProperty 'xero.animationTest', 'true'
+                gameDirectory = file('run-animation')
+            }
+            if (project.hasProperty('popupAnimationTest')) {
+                systemProperty 'xero.popupAnimationTest', 'true'
+                gameDirectory = file('run-popup-animation')
+            }
+            if (project.hasProperty('rewardPopupTest')) {
+                systemProperty 'xero.rewardPopupTest', 'true'
+                gameDirectory = file('run-reward-popup')
+                if (project.hasProperty('recipeViewerTest')) {
+                    def viewer = project.property('recipeViewerTest').toString()
+                    if (!(viewer in ['jei', 'emi', 'rei'])) throw new GradleException("Unknown recipe viewer test")
+                    systemProperty 'xero.recipeViewerTest', viewer
+                    gameDirectory = file("run-reward-popup-${viewer}")
+                }
+            }
+            if (project.hasProperty('claimReceiptTest')) {
+                systemProperty 'xero.claimReceiptTest', 'true'
+                gameDirectory = file('run-claim-receipts')
+            }
+            if (project.hasProperty('rewardQualityTest')) {
+                systemProperty 'xero.rewardQualityTest', 'true'
+                gameDirectory = file('run-reward-quality')
+            }
+            if (project.hasProperty('canvasEditorTest')) {
+                systemProperty 'xero.canvasEditorTest', 'true'
+                gameDirectory = file('run-canvas-editor')
+            }
+            if (project.hasProperty('controlGraphTest')) {
+                systemProperty 'xero.controlGraphTest', 'true'
+                gameDirectory = file(project.hasProperty('kubeJsTest') ? 'run-control-graphs-kubejs' : 'run-control-graphs')
+            }
+            if (project.hasProperty('unlockGraphTest')) {
+                systemProperty 'xero.unlockGraphTest', 'true'
+                gameDirectory = file('run-unlock-graph')
+            }
+            if (project.hasProperty('locationItemTest')) {
+                systemProperty 'xero.locationItemTest', 'true'
+                gameDirectory = file('run-location-items')
+            }
+            if (project.hasProperty('mediaTest')) {
+                systemProperty 'xero.mediaTest', 'true'
+                systemProperty 'xero.mediaAddonExpected', Boolean.toString(withMediaMod || project.hasProperty('packagedMediaTest'))
+                gameDirectory = file(withMediaMod || project.hasProperty('packagedMediaTest') ? 'run-media-addon' : 'run-media')
+                if (project.hasProperty('mediaPlayerTest') || project.hasProperty('localFfmpegTest')) {
+                    systemProperty 'xero.mediaAddonExpected', 'true'
+                    gameDirectory = file(project.hasProperty('mediaPlayerTest') ? 'run-media-player' : 'run-media-ffmpeg')
+                }
+            }
+            if (project.hasProperty('hotEventsTest')) {
+                systemProperty 'xero.hotEventsTest', 'true'
+                gameDirectory = file('run-hot-events')
+            }
+            if (project.hasProperty('spotlightUiTest')) {
+                systemProperty 'xero.spotlightUiTest', 'true'
+                gameDirectory = file('run-spotlight-ui')
+            }
+            if (project.hasProperty('journeyTest')) {
+                systemProperty 'xero.journeyTest', 'true'
+                gameDirectory = file('run-journey-continuous')
+            }
+            if (project.hasProperty('journeyEditingTest')) {
+                systemProperty 'xero.journeyEditingTest', 'true'
+                gameDirectory = file('run-journey-editing')
+            }
+            if (project.hasProperty('overviewTest')) {
+                systemProperty 'xero.overviewTest', 'true'
+                gameDirectory = file('run-overview')
+            }
+            if (project.hasProperty('overviewAuthoringTest')) {
+                systemProperty 'xero.overviewAuthoringTest', 'true'
+                gameDirectory = file('run-overview-authoring')
+            }
+            if (project.hasProperty('journalFocusTest')) {
+                systemProperty 'xero.journalFocusTest', 'true'
+                gameDirectory = file('run-journal-focus')
+            }
+            if (project.hasProperty('journalOrderTest')) {
+                systemProperty 'xero.journalOrderTest', 'true'
+                gameDirectory = file('run-journal-order')
+            }
+            if (project.hasProperty('generateTasksTest')) {
+                systemProperty 'xero.generateTasksTest', 'true'
+                gameDirectory = file('run-generate-tasks')
+            }
+            if (project.hasProperty('tacticalCompatibilityTest')) {
+                systemProperty 'xero.tacticalCompatibilityTest', 'true'
+                gameDirectory = file('run-tactical-compat')
+            }
+            if (project.hasProperty('generatedDeletionTest')) {
+                systemProperty 'xero.generatedDeletionTest', 'true'
+                gameDirectory = file('run-generated-deletion')
+            }
+            if (project.hasProperty('runtimeTest')) {
+                systemProperty 'xero.runtimeTest', 'true'
+                gameDirectory = file('run-runtime')
+            }
+            if (project.hasProperty('structureSceneTest')) {
+                systemProperty 'xero.structureSceneTest', 'true'
+                gameDirectory = file('run-structure-scenes')
+            }
+            if (project.hasProperty('buttonImageTest')) {
+                systemProperty 'xero.buttonImageTest', 'true'
+                gameDirectory = file('run-button-images')
+            }
+        }
+    }
+    mods {
+        xero_quest_journal {
+            sourceSet sourceSets.main
+            if (clientRegression) {
+                sourceSet sourceSets.smoke
+            }
+        }
+        if (withMediaMod) {
+            xero_quest_media {
+                sourceSet sourceSets.media
+            }
+        }
+    }
+}
+
+dependencies {
+    implementation "net.neoforged:neoforge:${project.neoforge_version}"
+    implementation 'org.jsoup:jsoup:1.18.3'
+    smokeImplementation 'org.jsoup:jsoup:1.18.3'
+    jarJar 'org.jsoup:jsoup:1.18.3'
+    additionalRuntimeClasspath 'org.jsoup:jsoup:1.18.3'
+    implementation 'org.mozilla:rhino:1.7.15'
+    jarJar 'org.mozilla:rhino:1.7.15'
+    additionalRuntimeClasspath 'org.mozilla:rhino:1.7.15'
+
+    mediaImplementation "org.bytedeco:javacpp:${javaCppVersion}"
+    mediaImplementation "org.bytedeco:ffmpeg:${ffmpegVersion}"
+    javaCvSource "org.bytedeco:javacv:${javaCppVersion}"
+    mediaImplementation files(sanitizedJavaCv)
+    mediaApi "org.bytedeco:javacpp:${javaCppVersion}"
+    mediaApi "org.bytedeco:ffmpeg:${ffmpegVersion}"
+    mediaNative "org.bytedeco:javacpp:${javaCppVersion}:${mediaPlatform}"
+    mediaNative "org.bytedeco:ffmpeg:${ffmpegVersion}:${mediaPlatform}"
+    if (withMediaMod) {
+        additionalRuntimeClasspath files(configurations.mediaApi)
+        additionalRuntimeClasspath files(sanitizedJavaCv)
+        additionalRuntimeClasspath files(configurations.mediaNative)
+    }
+}
+
+processResources {
+    inputs.property("version", project.version)
+    filesMatching("META-INF/neoforge.mods.toml") {
+        expand(version: project.version)
+    }
+}
+
+tasks.named('processMediaResources', ProcessResources) {
+    inputs.property('version', project.version)
+    inputs.property('mediaPlatform', mediaPlatform)
+    filesMatching('META-INF/neoforge.mods.toml') {
+        expand(version: project.version, mediaPlatform: mediaPlatform)
+    }
+}
+
+def javaVersion = JavaLanguageVersion.of(21)
+java {
+    toolchain.languageVersion = javaVersion
+    withSourcesJar()
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = "UTF-8"
+    options.release = 21
+}
+
+jar {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from("LICENSE") {
+        rename { "${it}_${project.archives_base_name}" }
+    }
+}
+
+def mediaMetadataFile = layout.buildDirectory.file('media-jarjar/metadata.json')
+// Keep native resources beside their Java API: the loader's library layer cannot
+// resolve resources stored only in the child mod layer.
+def mediaLibraryJars = [javacpp: javaCppVersion, ffmpeg: ffmpegVersion].collectEntries { artifact, libraryVersion ->
+    [(artifact): tasks.register("${artifact}MediaRuntime", Jar) {
+        archiveFileName = "${artifact}-${libraryVersion}.jar"
+        destinationDirectory = layout.buildDirectory.dir('media-runtime')
+        duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+        from({ configurations.mediaApi.findAll { it.name == "${artifact}-${libraryVersion}.jar" }.collect { zipTree(it) } })
+        from({ configurations.mediaNative.findAll { it.name.startsWith("${artifact}-") }.collect { zipTree(it) } })
+        exclude 'META-INF/MANIFEST.MF', '**/module-info.class', 'module-info.class'
+        manifest.attributes('Automatic-Module-Name': "org.bytedeco.${artifact}")
+    }]
+}
+def mediaMetadata = tasks.register('generateMediaJarJarMetadata') {
+    outputs.file(mediaMetadataFile)
+    inputs.property('javacppVersion', javaCppVersion)
+    inputs.property('ffmpegVersion', ffmpegVersion)
+    doLast {
+        def output = mediaMetadataFile.get().asFile
+        output.parentFile.mkdirs()
+        def jars = [javacpp: javaCppVersion, ffmpeg: ffmpegVersion].collect { artifact, version ->
+            [identifier: [group: 'org.bytedeco', artifact: artifact],
+             version: [range: "[${version}]", artifactVersion: version],
+             path: "META-INF/jarjar/${artifact}-${version}.jar", isObfuscated: false]
+        }
+        output.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson([jars: jars]))
+    }
+}
+
+// Optional client-side mod. The core has no static references to any codec classes.
+def mediaNativeMod = tasks.register("mediaNativeMod", Jar) {
+    dependsOn sanitizedJavaCv, mediaMetadata, mediaLibraryJars.values()
+    archiveBaseName = "xero_quest_media"
+    archiveVersion = project.version.toString()
+    archiveClassifier = mediaPlatform
+    destinationDirectory = layout.buildDirectory.dir("libs")
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from(sourceSets.media.output)
+    from({ zipTree(sanitizedJavaCv.get().archiveFile.get().asFile) }) {
+        exclude 'META-INF/MANIFEST.MF', 'META-INF/maven/**', '**/module-info.class', 'module-info.class'
+    }
+    from(mediaLibraryJars.values().collect { it.flatMap { task -> task.archiveFile } }) { into 'META-INF/jarjar' }
+    from(mediaMetadataFile) { into 'META-INF/jarjar' }
+    from("docs/媒体模组安装.md")
+    from("docs/MEDIA-NOTICES.txt")
+}
+
+tasks.register("verifyMediaAddonPackaging") {
+    dependsOn mediaNativeMod
+    inputs.file(mediaNativeMod.flatMap { it.archiveFile })
+    doLast {
+        new java.util.zip.ZipFile(mediaNativeMod.get().archiveFile.get().asFile).withCloseable { zip ->
+            if (zip.entries().any { it.name.startsWith('org/bytedeco/javacpp/') && it.name.endsWith('.class')
+                    || it.name.startsWith('org/bytedeco/ffmpeg/') && it.name.endsWith('.class') }) {
+                throw new GradleException("Media native classifiers must not duplicate nested Java API classes")
+            }
+            for (path in ['xtdpotato/xero_quest_media/FfmpegMediaDecoder.class',
+                          'org/bytedeco/javacv/FFmpegFrameGrabber.class', 'META-INF/jarjar/metadata.json']) {
+                if (zip.getEntry(path) == null) throw new GradleException("Missing media companion entry: ${path}")
+            }
+            for (library in ["javacpp", "ffmpeg"]) {
+                def libraryVersion = library == 'javacpp' ? javaCppVersion : ffmpegVersion
+                def entry = zip.getEntry("META-INF/jarjar/${library}-${libraryVersion}.jar")
+                if (entry == null) throw new GradleException("Missing media API: ${library}")
+                boolean found = false
+                new java.util.jar.JarInputStream(zip.getInputStream(entry)).withCloseable { nested ->
+                    def child
+                    while ((child = nested.nextJarEntry) != null) {
+                        if (!child.directory && child.name.startsWith("org/bytedeco/${library}/${mediaPlatform}/")
+                                && (child.name ==~ /(?i).*\.(dll|so(\..*)?|dylib|jnilib)$/)) found = true
+                    }
+                }
+                if (!found) throw new GradleException("Missing ${library} natives beside its Java API")
+            }
+            if (zip.getEntry("META-INF/neoforge.mods.toml") == null) {
+                throw new GradleException("Missing media companion mod descriptor")
+            }
+            logger.lifecycle("Media companion verified for ${mediaPlatform}; audio/video runtime retained")
+        }
+    }
+}
+
+tasks.register("verifyModSize") {
+    dependsOn tasks.named("jar")
+    inputs.file(tasks.named("jar").flatMap { it.archiveFile })
+    doLast {
+        def packaged = tasks.named("jar").get().archiveFile.get().asFile
+        if (packaged.length() > maxModJarBytes) {
+            throw new GradleException("Mod JAR is ${packaged.length()} bytes; limit is ${maxModJarBytes} bytes")
+        }
+        logger.lifecycle("Mod JAR: ${packaged.name}, ${packaged.length()} bytes (5 MB limit verified)")
+    }
+}
+
+tasks.register("verifyMediaPackaging") {
+    dependsOn tasks.named("jar")
+    inputs.file(tasks.named("jar").flatMap { it.archiveFile })
+    doLast {
+        def packaged = tasks.named("jar").get().archiveFile.get().asFile
+        new java.util.zip.ZipFile(packaged).withCloseable { zip ->
+            def owners = [:]
+            def recordPackage = { String path, String owner ->
+                if (!path.endsWith(".class") || path.startsWith("META-INF/") || !path.contains("/")) return
+                def pkg = path.substring(0, path.lastIndexOf("/"))
+                def previous = owners.putIfAbsent(pkg, owner)
+                if (previous != null && previous != owner) {
+                    throw new GradleException("Split module package ${pkg}: ${previous} and ${owner}")
+                }
+            }
+            zip.entries().each { entry ->
+                recordPackage(entry.name, "xero_quest_journal")
+                if (entry.name.startsWith("META-INF/jarjar/") && entry.name.endsWith(".jar")) {
+                    new java.util.jar.JarInputStream(zip.getInputStream(entry)).withCloseable { nested ->
+                        def child
+                        while ((child = nested.nextJarEntry) != null) recordPackage(child.name, entry.name)
+                    }
+                }
+            }
+            if (owners.keySet().any { it.startsWith('org/bytedeco/') || it.startsWith('net/hacker/mediaplayer') }
+                    || zip.entries().any { it.name.startsWith('org/bytedeco/')
+                        || it.name.startsWith('META-INF/jarjar/ffmpeg-')
+                        || it.name.startsWith('META-INF/jarjar/javacpp-') }) {
+                throw new GradleException("Optional media libraries must not be embedded in the core JAR")
+            }
+            if (zip.entries().any {
+                !it.directory && (it.name ==~ /(?i).*\.(dll|so(\..*)?|dylib|jnilib|exe)$/)
+            }) throw new GradleException("Native binaries must not be embedded in the core JAR")
+            logger.lifecycle("Core packaging verified: no split packages or optional media libraries")
+        }
+    }
+}
+
+tasks.named("check") {
+    dependsOn tasks.named("verifyMediaPackaging"), tasks.named("verifyModSize")
+}
+
+if (clientRegression) {
+    tasks.named('runClient').configure {
+        if (project.hasProperty('packagedMediaTest')) dependsOn mediaNativeMod
+        doFirst {
+            delete(layout.buildDirectory.file('verification/result.txt'))
+            if (project.hasProperty('generateTasksTest') || project.hasProperty('tacticalCompatibilityTest')) {
+                delete(layout.buildDirectory.file('verification/generated-task-documents.txt'))
+                delete(layout.buildDirectory.file('verification/generated-spotlight-result.txt'))
+            }
+            if (project.hasProperty('packagedMediaTest')) {
+                copy {
+                    from(mediaNativeMod.get().archiveFile)
+                    into('run-media-addon/mods')
+                }
+            }
+            if (project.hasProperty('mediaPlayerTest')) {
+                copy {
+                    from('build/optional-mods/MediaPlayer-1.0.1.jar')
+                    into('run-media-player/mods')
+                }
+            }
+            if (project.hasProperty('localFfmpegTest')) {
+                if (!project.hasProperty('local_ffmpeg')) throw new GradleException('Pass -Plocal_ffmpeg=<executable>')
+                copy {
+                    from(project.property('local_ffmpeg'))
+                    into('run-media-ffmpeg/ffmpeg')
+                }
+            }
+            if (project.hasProperty('controlGraphTest') && project.hasProperty('kubeJsTest')) {
+                copy {
+                    from('src/smoke/fixtures/kubejs/startup_scripts')
+                    into('run-control-graphs-kubejs/kubejs/startup_scripts')
+                }
+            }
+        }
+        doLast {
+            def result = layout.buildDirectory.file('verification/result.txt').get().asFile
+            if (!result.exists() || !result.text.startsWith('PASS:')) {
+                throw new GradleException(result.exists() ? result.text : 'Client smoke test did not produce a result')
+            }
+        }
+    }
+}

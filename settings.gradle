@@ -1,0 +1,20 @@
+pluginManagement {
+    repositories {
+        maven { name = "AliyunPluginMirror"; url = uri("https://maven.aliyun.com/repository/gradle-plugin") }
+        maven { name = "TencentPluginMirror"; url = uri("https://mirrors.cloud.tencent.com/repository/gradle-plugins") }
+        maven { name = "NeoForged"; url = uri("https://maven.neoforged.net/releases") }
+        gradlePluginPortal()
+        mavenCentral()
+    }
+}
+
+dependencyResolutionManagement {
+    repositories {
+        maven { name = "AliyunPublicMirror"; url = uri("https://maven.aliyun.com/repository/public") }
+        maven { name = "TencentPublicMirror"; url = uri("https://mirrors.cloud.tencent.com/repository/maven-public") }
+        maven { name = "NeoForged"; url = uri("https://maven.neoforged.net/releases") }
+        mavenCentral()
+    }
+}
+
+rootProject.name = "xero_quest_journal"

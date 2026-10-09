@@ -1,0 +1,41 @@
+# Local builds, dependency caches, and test worlds
+/.gradle/
+/build/
+/dist/
+/run/
+/run-*/
+*.class
+*.log
+hs_err_pid*
+replay_pid*
+
+# Packaged mods are build artifacts, not source files
+/xero_quest_journal-*.jar
+/xero_quest_media-*.jar
+
+# IDE, desktop, and agent-local state
+/.idea/
+/.vscode/
+/.learnings/
+/.codex/
+/.agents/
+/_icon_preview.html
+*.iml
+Thumbs.db
+.DS_Store
+
+# Credentials and machine-specific configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+local.properties
+
+# Local planning, reference screenshots from other games, and historical audits
+/docs/plans/
+/docs/references/
+/docs/需求说明.md
+/docs/实现清单.md
+/docs/功能审查报告.md
+/docs/legacy-readme.md

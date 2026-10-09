@@ -1,0 +1,31 @@
+modLoader="lowcodefml"
+loaderVersion="[1,)"
+license="Multiple upstream licenses; see MEDIA-NOTICES.txt"
+
+[[mods]]
+modId="xero_quest_media"
+version="${version}"
+displayName="Xero Quest Media (${mediaPlatform})"
+authors="xtdpotato; native libraries by Bytedeco and FFmpeg contributors"
+description="Optional client-side FFmpeg/JavaCPP/JavaCV backend for Xero Quest Journal audio and video. Install the build matching your OS and CPU. Basic audio works without this mod. No FFmpeg codecs are removed."
+
+[[dependencies.xero_quest_media]]
+modId="xero_quest_journal"
+type="required"
+versionRange="[${version}]"
+ordering="NONE"
+side="CLIENT"
+
+[[dependencies.xero_quest_media]]
+modId="neoforge"
+type="required"
+versionRange="[21.1,)"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.xero_quest_media]]
+modId="minecraft"
+type="required"
+versionRange="[1.21.1]"
+ordering="NONE"
+side="BOTH"
