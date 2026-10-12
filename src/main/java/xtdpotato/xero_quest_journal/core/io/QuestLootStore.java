@@ -3,7 +3,7 @@ package xtdpotato.xero_quest_journal.core.io;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonParser;
-import net.neoforged.fml.loading.FMLPaths;
+import xtdpotato.xero_quest_journal.platform.PlatformServices;
 import net.minecraft.server.level.ServerPlayer;
 import xtdpotato.xero_quest_journal.XeroQuestJournal;
 import xtdpotato.xero_quest_journal.core.model.LootDefinition;
@@ -17,7 +17,7 @@ import java.util.*;
 /** Filesystem-backed reusable loot tables. All writes are permission-checked by callers. */
 public final class QuestLootStore {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final Path ROOT = FMLPaths.CONFIGDIR.get().resolve("xero_quest/loot").toAbsolutePath().normalize();
+    private static final Path ROOT = PlatformServices.configDir().resolve("xero_quest/loot").toAbsolutePath().normalize();
     private static final Map<String, LootDefinition> TABLES = new LinkedHashMap<>();
     private static long revision;
 

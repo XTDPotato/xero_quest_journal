@@ -2,7 +2,7 @@ package xtdpotato.xero_quest_journal.client;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import net.neoforged.fml.loading.FMLPaths;
+import xtdpotato.xero_quest_journal.platform.PlatformServices;
 import xtdpotato.xero_quest_journal.XeroQuestJournal;
 import xtdpotato.xero_quest_journal.core.io.AtomicFiles;
 
@@ -323,7 +323,7 @@ public final class MailboxAnimationStore {
     }
 
     private static Path file() {
-        return FMLPaths.CONFIGDIR.get().resolve("xero_quest/ui/mailbox-animations.json");
+        return PlatformServices.configDir().resolve("xero_quest/ui/mailbox-animations.json");
     }
 
     public static final class Config {

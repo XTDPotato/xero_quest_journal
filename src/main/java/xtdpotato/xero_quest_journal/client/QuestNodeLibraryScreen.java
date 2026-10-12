@@ -4,7 +4,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
-import net.neoforged.fml.ModList;
+import xtdpotato.xero_quest_journal.platform.PlatformServices;
 import xtdpotato.xero_quest_journal.core.model.TriggerNodeLibrary;
 import java.util.*;
 import java.util.function.Consumer;
@@ -32,7 +32,7 @@ public final class QuestNodeLibraryScreen extends AnimatedQuestScreen {
     }
     public static boolean available(String category) {
         String mod = TriggerNodeLibrary.requiredMod(category);
-        return mod.isBlank() || ModList.get().isLoaded(mod);
+        return mod.isBlank() || PlatformServices.isModLoaded(mod);
     }
     private int split() { return Math.min(180, width * 2 / 5); }
     private int left(int side) { return side == 0 ? 12 : split() + 8; }

@@ -2,7 +2,7 @@ package xtdpotato.xero_quest_journal.core;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import net.neoforged.fml.loading.FMLPaths;
+import xtdpotato.xero_quest_journal.platform.PlatformServices;
 import xtdpotato.xero_quest_journal.core.io.AtomicFiles;
 
 import java.io.IOException;
@@ -13,7 +13,7 @@ import java.util.UUID;
 
 public final class QuestConfig {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final Path ROOT = FMLPaths.CONFIGDIR.get().resolve("xero_quest");
+    private static final Path ROOT = PlatformServices.configDir().resolve("xero_quest");
     private static final Path CONFIG = ROOT.resolve("config.json");
     private static volatile Defaults current = new Defaults();
 

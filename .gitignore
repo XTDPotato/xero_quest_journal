@@ -4,6 +4,10 @@
 /dist/
 /run/
 /run-*/
+**/.gradle/
+**/build/
+**/run/
+**/run-*/
 *.class
 *.log
 hs_err_pid*

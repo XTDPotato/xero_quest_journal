@@ -3,7 +3,7 @@ package xtdpotato.xero_quest_journal.core;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import net.minecraft.server.level.ServerPlayer;
-import net.neoforged.fml.loading.FMLPaths;
+import xtdpotato.xero_quest_journal.platform.PlatformServices;
 import xtdpotato.xero_quest_journal.XeroQuestJournal;
 import xtdpotato.xero_quest_journal.core.io.AtomicFiles;
 import xtdpotato.xero_quest_journal.core.io.QuestRepository;
@@ -19,7 +19,7 @@ import java.util.List;
 
 public final class QuestTypeStore {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final Path ROOT = FMLPaths.CONFIGDIR.get().resolve("xero_quest").resolve("task_types");
+    private static final Path ROOT = PlatformServices.configDir().resolve("xero_quest").resolve("task_types");
     private static volatile List<QuestType> snapshot = List.of();
 
     private QuestTypeStore() {

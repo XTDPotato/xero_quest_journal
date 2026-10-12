@@ -2,7 +2,7 @@ package xtdpotato.xero_quest_journal.client;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import net.neoforged.fml.loading.FMLPaths;
+import xtdpotato.xero_quest_journal.platform.PlatformServices;
 import xtdpotato.xero_quest_journal.XeroQuestJournal;
 
 import java.io.IOException;
@@ -58,7 +58,7 @@ public final class LayoutStore {
     }
 
     private static Path file(String screenId) {
-        return FMLPaths.CONFIGDIR.get().resolve("xero_quest")
+        return PlatformServices.configDir().resolve("xero_quest")
                 .resolve("ui").resolve("layouts").resolve(screenId + ".json");
     }
 }

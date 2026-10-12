@@ -2,7 +2,7 @@ package xtdpotato.xero_quest_journal.core.io;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonParser;
-import net.neoforged.fml.loading.FMLPaths;
+import xtdpotato.xero_quest_journal.platform.PlatformServices;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Element;
 import org.jsoup.parser.Parser;
@@ -98,7 +98,7 @@ public final class QuestRepository {
     }
 
     public static Path root() {
-        return FMLPaths.CONFIGDIR.get().resolve("xero_quest/groups").toAbsolutePath().normalize();
+        return PlatformServices.configDir().resolve("xero_quest/groups").toAbsolutePath().normalize();
     }
 
     /**

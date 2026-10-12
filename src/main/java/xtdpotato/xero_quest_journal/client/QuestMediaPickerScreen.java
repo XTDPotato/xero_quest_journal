@@ -5,7 +5,7 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
-import net.neoforged.fml.loading.FMLPaths;
+import xtdpotato.xero_quest_journal.platform.PlatformServices;
 import xtdpotato.xero_quest_journal.XeroQuestJournal;
 
 import java.io.IOException;
@@ -24,8 +24,8 @@ public final class QuestMediaPickerScreen extends AnimatedQuestScreen {
     private final boolean video;
     private final Consumer<String> chosen;
     private final ButtonStyleSheet styles = ButtonStyleSheet.load();
-    private final List<Path> roots = List.of(FMLPaths.GAMEDIR.get().toAbsolutePath().normalize(),
-            FMLPaths.CONFIGDIR.get().toAbsolutePath().normalize(), QuestIcons.localRoot());
+    private final List<Path> roots = List.of(PlatformServices.gameDir().toAbsolutePath().normalize(),
+            PlatformServices.configDir().toAbsolutePath().normalize(), QuestIcons.localRoot());
     private int rootIndex = 2;
     private Path directory = roots.get(rootIndex);
     private Path selected;

@@ -2,7 +2,7 @@ package xtdpotato.xero_quest_journal.client;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.item.ItemStack;
-import net.neoforged.fml.ModList;
+import xtdpotato.xero_quest_journal.platform.PlatformServices;
 import xtdpotato.xero_quest_journal.XeroQuestJournal;
 
 import java.util.List;
@@ -12,9 +12,9 @@ final class RecipeViewerBridge {
     private RecipeViewerBridge() {}
 
     static String availableViewer() {
-        if (ModList.get().isLoaded("emi")) return "EMI";
-        if (ModList.get().isLoaded("roughlyenoughitems")) return "REI";
-        if (ModList.get().isLoaded("jei")) return "JEI";
+        if (PlatformServices.isModLoaded("emi")) return "EMI";
+        if (PlatformServices.isModLoaded("roughlyenoughitems")) return "REI";
+        if (PlatformServices.isModLoaded("jei")) return "JEI";
         return "";
     }
 
@@ -23,7 +23,7 @@ final class RecipeViewerBridge {
         var game = Minecraft.getInstance();
         var previous = game.screen;
         for (String viewer : List.of("emi", "roughlyenoughitems", "jei")) {
-            if (!ModList.get().isLoaded(viewer)) continue;
+            if (!PlatformServices.isModLoaded(viewer)) continue;
             try {
                 ItemStack stack = ingredient.copyWithCount(1);
                 switch (viewer) {

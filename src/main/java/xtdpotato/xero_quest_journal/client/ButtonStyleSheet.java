@@ -1,6 +1,6 @@
 package xtdpotato.xero_quest_journal.client;
 
-import net.neoforged.fml.loading.FMLPaths;
+import xtdpotato.xero_quest_journal.platform.PlatformServices;
 import xtdpotato.xero_quest_journal.XeroQuestJournal;
 
 import java.io.IOException;
@@ -75,7 +75,7 @@ public final class ButtonStyleSheet {
 
     public static synchronized ButtonStyleSheet load() {
         if (shared != null) return shared;
-        Path file = FMLPaths.CONFIGDIR.get().resolve("xero_quest").resolve("ui").resolve("journal.css");
+        Path file = PlatformServices.configDir().resolve("xero_quest").resolve("ui").resolve("journal.css");
         try {
             Files.createDirectories(file.getParent());
             if (!Files.exists(file)) {

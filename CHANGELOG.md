@@ -2,6 +2,14 @@
 
 这里记录开发快照的功能与兼容性变化，不代表已建立稳定发布周期。
 
+## Unreleased
+
+- Added an explicit Minecraft/loader matrix for 1.20.1, 1.21.1, and 26.1-26.3.
+- Added shared `PlatformServices` boundaries for config paths and optional-mod detection.
+- Added a standalone Fabric 1.21.1 Loom build and entrypoint skeleton without claiming feature parity.
+- Added a standalone Forge 1.20.1 ForgeGradle build with a minimal status command.
+- Kept NeoForge 1.21.1 as the verified build baseline.
+
 ## 0.1.0 开发快照 · 2026-10-09
 
 ### 任务发现与物品目标

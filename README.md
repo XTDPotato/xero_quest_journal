@@ -2,6 +2,10 @@
 
 **Minecraft 1.21.1 · NeoForge · Java 21 · 原生任务日志与可视化编辑器**
 
+项目采用单仓库、单模组 ID 的多加载器布局。当前完整构建基线仍是
+Minecraft 1.21.1 NeoForge；1.21.1 Fabric 已有独立 Loom 构建骨架，1.20.1、26.1–26.3 的平台适配正在按矩阵推进，
+不会把不同加载器的运行时代码混装在同一个 JAR 中。详见 [版本与加载器矩阵](docs/porting-matrix.md)。
+
 Xero Quest Journal 面向整合包作者、地图作者与喜欢任务引导的玩家，把任务列表、章节历程、世界目标、奖励和邮箱放在一套原生游戏界面中。作者可以在本地世界内编辑任务，也可以用 JSON、HTML 或 XML 配置任务文件。
 
 核心模组保持轻量，媒体解码使用可选后端；任务完成、奖励领取和玩家进度由服务端处理。
@@ -328,6 +332,11 @@ src/
   main/resources/          模组描述、图标、语言、默认数据与着色器
   media/                   可选媒体后端源码
   smoke/                   真实客户端回归及测试夹具
+platforms/
+  neoforge/1.21.1/         当前完整 NeoForge 平台入口和元数据
+  fabric/1.21.1/           Fabric 平台入口骨架
+  forge/1.20.1/             1.20.1 Forge 适配器预留目录
+  */26.1..26.3/             26.x 分版本适配目录
 docs/
   images/                  README 使用的项目截图
   guide.md                 玩家与作者指南

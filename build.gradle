@@ -3,6 +3,34 @@ plugins {
     id 'maven-publish'
 }
 
+def mcTarget = providers.gradleProperty("mc_target")
+        .orElse(providers.gradleProperty("minecraft_version"))
+        .orElse("1.21.1")
+        .get()
+def loaderTarget = providers.gradleProperty("loader").orElse("neoforge").get().toLowerCase(Locale.ROOT)
+def supportedLoaderPairs = [
+        "1.20.1": ["fabric", "forge"],
+        "1.21.1": ["neoforge", "fabric"],
+        "26.1": ["neoforge", "fabric"],
+        "26.2": ["neoforge", "fabric"],
+        "26.3": ["neoforge", "fabric"]
+]
+if (!supportedLoaderPairs.containsKey(mcTarget)) {
+    throw new GradleException("Unsupported mc_target '${mcTarget}'. Supported targets: ${supportedLoaderPairs.keySet().join(', ')}")
+}
+if (!supportedLoaderPairs[mcTarget].contains(loaderTarget)) {
+    throw new GradleException("Unsupported loader '${loaderTarget}' for Minecraft ${mcTarget}. " +
+            "Supported loaders: ${supportedLoaderPairs[mcTarget].join(', ')}")
+}
+def defaultBuild = mcTarget == "1.21.1" && loaderTarget == "neoforge"
+def fabric1211Build = mcTarget == "1.21.1" && loaderTarget == "fabric"
+def forge1201Build = mcTarget == "1.20.1" && loaderTarget == "forge"
+if (!defaultBuild && !fabric1211Build && !forge1201Build) {
+    throw new GradleException(
+            "The ${loaderTarget} ${mcTarget} profile is registered but not yet wired into this source tree. " +
+            "Use the default NeoForge 1.21.1 profile while the platform adapter is being ported.")
+}
+
 version = project.mod_version
 group = project.maven_group
 
@@ -58,6 +86,19 @@ def sanitizedJavaCv = tasks.register("sanitizedJavaCv", Jar) {
 }
 
 sourceSets {
+    // Loader-specific sources are kept outside the shared domain tree.
+    main {
+        java.srcDir("platforms/neoforge/1.21.1/java")
+        resources.srcDir("platforms/neoforge/1.21.1/resources")
+    }
+    fabric {
+        java.srcDir("platforms/fabric/1.21.1/java")
+        resources.srcDir("platforms/fabric/1.21.1/resources")
+    }
+    forge {
+        java.srcDir("platforms/forge/1.20.1/java")
+        resources.srcDir("platforms/forge/1.20.1/resources")
+    }
     media {
         compileClasspath += sourceSets.main.output
         runtimeClasspath += sourceSets.main.output
@@ -247,6 +288,42 @@ neoForge {
             }
         }
     }
+}
+
+tasks.register("printPortMatrix") {
+    group = "help"
+    description = "Print the supported Minecraft/loader profiles and the selected build profile."
+    doLast {
+        logger.lifecycle("Selected profile: Minecraft ${mcTarget}, loader ${loaderTarget}")
+        supportedLoaderPairs.each { target, loaders ->
+            logger.lifecycle("  ${target}: ${loaders.join(', ')}")
+        }
+        logger.lifecycle("Default build: ${defaultBuild}")
+    }
+}
+
+if (fabric1211Build) {
+    tasks.register("buildFabric1211", GradleBuild) {
+        group = "build"
+        description = "Build the standalone Fabric 1.21.1 subproject."
+        dir = file("platforms/fabric/1.21.1")
+        tasks = ["build"]
+    }
+}
+
+if (forge1201Build) {
+    tasks.register("buildForge1201", GradleBuild) {
+        group = "build"
+        description = "Build the standalone Forge 1.20.1 subproject."
+        dir = file("platforms/forge/1.20.1")
+        tasks = ["build"]
+    }
+}
+
+tasks.register("buildSelected") {
+    group = "build"
+    description = "Build the selected Minecraft/loader profile."
+    dependsOn(fabric1211Build ? "buildFabric1211" : forge1201Build ? "buildForge1201" : "build")
 }
 
 dependencies {

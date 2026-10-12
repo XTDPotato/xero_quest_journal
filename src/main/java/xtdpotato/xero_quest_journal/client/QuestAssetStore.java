@@ -1,6 +1,6 @@
 package xtdpotato.xero_quest_journal.client;
 
-import net.neoforged.fml.loading.FMLPaths;
+import xtdpotato.xero_quest_journal.platform.PlatformServices;
 import xtdpotato.xero_quest_journal.XeroQuestJournal;
 
 import javax.imageio.ImageIO;
@@ -39,7 +39,7 @@ public final class QuestAssetStore {
     private static final List<String> IMAGE_EXTENSIONS = List.of(".png", ".jpg", ".jpeg", ".bmp");
     private static final List<String> TEXT_EXTENSIONS = List.of(".txt", ".json", ".css", ".mcmeta");
     private static final Path ROOT = QuestIcons.localRoot();
-    private static final Path HISTORY_ROOT = FMLPaths.CONFIGDIR.get()
+    private static final Path HISTORY_ROOT = PlatformServices.configDir()
             .resolve("xero_quest").resolve("cache").resolve("asset-history");
 
     private final Path sessionTrash = HISTORY_ROOT.resolve(UUID.randomUUID().toString()).normalize();

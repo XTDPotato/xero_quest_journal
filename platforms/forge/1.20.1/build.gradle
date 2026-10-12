@@ -1,0 +1,422 @@
+plugins {
+    id "net.minecraftforge.gradle" version "[6.0,6.2)"
+    id "maven-publish"
+}
+
+version = project.mod_version
+group = project.maven_group
+def includeSharedSources = project.hasProperty("includeShared")
+def includeSharedServer = !project.hasProperty("bootstrapOnly")
+def includeSharedClient = !project.hasProperty("bootstrapOnly")
+
+base {
+    archivesName = project.archives_base_name
+}
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(17)
+
+minecraft {
+    mappings channel: "official", version: project.minecraft_version
+
+    runs {
+        client {
+            workingDirectory project.file("run")
+            property "forge.logging.markers", "REGISTRIES"
+            property "forge.logging.console.level", "debug"
+            mods {
+                xero_quest_journal {
+                    source sourceSets.main
+                }
+            }
+        }
+        server {
+            workingDirectory project.file("run-server")
+            property "forge.logging.markers", "REGISTRIES"
+            property "forge.logging.console.level", "debug"
+            mods {
+                xero_quest_journal {
+                    source sourceSets.main
+                }
+            }
+        }
+    }
+}
+
+repositories {
+    maven { url = "https://maven.minecraftforge.net/" }
+    mavenCentral()
+}
+
+dependencies {
+    minecraft "net.minecraftforge:forge:${project.minecraft_version}-${project.forge_version}"
+    implementation "org.jsoup:jsoup:1.18.3"
+    implementation "org.mozilla:rhino:1.7.15"
+    minecraftLibrary "org.jsoup:jsoup:1.18.3"
+    minecraftLibrary "org.mozilla:rhino:1.7.15"
+}
+
+sourceSets {
+    main {
+        java.srcDirs = includeSharedSources || includeSharedServer
+                ? ["java", layout.buildDirectory.dir("generated/forge/java")]
+                : ["java"]
+        resources.srcDirs = ["resources", "../../../src/main/resources"]
+    }
+}
+
+def forgeGeneratedSources = layout.buildDirectory.dir("generated/forge/java")
+tasks.register("prepareForgeSources") {
+    inputs.files(fileTree("../../../src/main/java"))
+    outputs.dir(forgeGeneratedSources)
+    doLast {
+        def outputRoot = forgeGeneratedSources.get().asFile
+        project.delete(outputRoot)
+        def sourceRoot = file("../../../src/main/java")
+        fileTree(sourceRoot).matching { include "**/*.java" }.files.each { source ->
+            def relative = sourceRoot.toPath().relativize(source.toPath()).toString().replace("\\", "/")
+            if ((includeSharedServer && ((relative.startsWith("xtdpotato/xero_quest_journal/client/")
+                    && !includeSharedClient)
+                    || relative == "xtdpotato/xero_quest_journal/core/runtime/QuestCommands.java"
+                    ))
+                    || relative == "xtdpotato/xero_quest_journal/XeroQuestJournal.java"
+                    || relative.startsWith("xtdpotato/xero_quest_journal/platform/")) {
+                return
+            }
+            if (includeSharedClient
+                    && relative == "xtdpotato/xero_quest_journal/client/ClientEditMode.java") return
+            def text = source.getText("UTF-8")
+            [
+                    "net.neoforged.neoforge.network.PacketDistributor": "xtdpotato.xero_quest_journal.forgecompat.PacketDistributor",
+                    "net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent": "xtdpotato.xero_quest_journal.forgecompat.RegisterPayloadHandlersEvent",
+                    "net.neoforged.neoforge.network.registration.PayloadRegistrar": "xtdpotato.xero_quest_journal.forgecompat.PayloadRegistrar",
+                    "net.neoforged.neoforge.network.handling.IPayloadContext": "xtdpotato.xero_quest_journal.forgecompat.IPayloadContext",
+                    "net.minecraft.network.RegistryFriendlyByteBuf": "xtdpotato.xero_quest_journal.forgecompat.RegistryFriendlyByteBuf",
+                    "net.minecraft.network.codec.StreamCodec": "xtdpotato.xero_quest_journal.forgecompat.StreamCodec",
+                    "net.minecraft.network.protocol.common.custom.CustomPacketPayload": "xtdpotato.xero_quest_journal.forgecompat.CustomPacketPayload",
+                    "net.neoforged.neoforge.network": "net.minecraftforge.network",
+                    "net.neoforged.neoforge.common.NeoForge": "net.minecraftforge.common.MinecraftForge",
+                    "net.neoforged.neoforge.common.util.TriState": "net.minecraftforge.common.util.TriState",
+                    "net.neoforged.neoforge.registries": "net.minecraftforge.registries",
+                    "net.neoforged.neoforge.server": "net.minecraftforge.server",
+                    "net.neoforged.neoforge.event": "net.minecraftforge.event",
+                    "net.minecraftforge.event.tick.ServerTickEvent": "net.minecraftforge.event.TickEvent.ServerTickEvent",
+                    "net.minecraftforge.event.tick.PlayerTickEvent": "net.minecraftforge.event.TickEvent.PlayerTickEvent",
+                    "net.minecraftforge.event.tick.LevelTickEvent": "net.minecraftforge.event.TickEvent.LevelTickEvent",
+                    "net.neoforged.api.distmarker": "net.minecraftforge.api.distmarker",
+                    "net.neoforged.bus.api": "net.minecraftforge.eventbus.api",
+                    "net.neoforged.fml.loading": "net.minecraftforge.fml.loading",
+                    "net.neoforged.fml.common.EventBusSubscriber": "net.minecraftforge.fml.common.Mod.EventBusSubscriber",
+                    "net.neoforged.fml": "net.minecraftforge.fml"
+            ].each { from, to -> text = text.replace(from, to) }
+            text = text.replace("ServerTickEvent.Post", "ServerTickEvent")
+                    .replace("PlayerTickEvent.Post", "PlayerTickEvent")
+                    .replace("LevelTickEvent.Post", "LevelTickEvent")
+                    .replace("ResourceLocation.fromNamespaceAndPath(", "new ResourceLocation(")
+                    .replace("ResourceLocation.parse(", "ResourceLocation.tryParse(")
+                    .replace("ItemStack.isSameItemSameComponents", "ItemStack.isSameItemSameTags")
+                    .replace("Math.clamp(", "xtdpotato.xero_quest_journal.forgecompat.ForgeCompat.clamp(")
+                    .replaceAll("\\.getFirst\\(\\)", ".get(0)")
+            text = text.replaceAll(/([A-Za-z_][A-Za-z0-9_]*)\.getLast\(\)/) { all, variable ->
+                "xtdpotato.xero_quest_journal.forgecompat.ForgeCompat.last(${variable})"
+            }
+            text = text.replaceAll(/((?:[A-Za-z_$][A-Za-z0-9_$]*(?:\([^()]*\))?)(?:\.[A-Za-z_$][A-Za-z0-9_$]*(?:\([^()]*\))?)*)\.getLast\(\)/) { all, receiver ->
+                "xtdpotato.xero_quest_journal.forgecompat.ForgeCompat.last(${receiver})"
+            }
+            if (relative.endsWith("QuestProgressData.java")) {
+                text = text.replace("quests.removeFirst()", "quests.remove(0)")
+            }
+            if (!relative.startsWith("xtdpotato/xero_quest_journal/client/")) {
+                text = text.replace("player.registryAccess()", "player.getServer().registryAccess()")
+                        .replace("author.registryAccess()", "author.getServer().registryAccess()")
+            }
+            if (relative.endsWith("QuestTravelActions.java")) {
+                text = text.replace("result.get(0)", "result.getFirst()")
+            }
+            if (relative.endsWith("MailboxData.java")) {
+                text = text.replace("new Factory<>(MailboxData::new, MailboxData::load)",
+                        "MailboxData::load, MailboxData::new")
+                        .replace("load(CompoundTag root, HolderLookup.Provider registries)",
+                                "load(CompoundTag root)")
+                        .replace("save(CompoundTag root, HolderLookup.Provider registries)",
+                                "save(CompoundTag root)")
+            }
+            if (relative.endsWith("QuestProgressData.java")) {
+                text = text.replace("new Factory<>(QuestProgressData::new, QuestProgressData::load)",
+                        "QuestProgressData::load, QuestProgressData::new")
+                        .replace("load(CompoundTag root, HolderLookup.Provider registries)",
+                                "load(CompoundTag root)")
+                        .replace("save(CompoundTag root, HolderLookup.Provider registries)",
+                                "save(CompoundTag root)")
+            }
+            if (relative.endsWith("QuestControlData.java")) {
+                text = text.replace("new Factory<>(QuestControlData::new,\n                (tag, registries) -> { var data = new QuestControlData(); data.players = tag.getCompound(\"players\"); return data; }),",
+                        "tag -> { var data = new QuestControlData(); data.players = tag.getCompound(\"players\"); return data; }, QuestControlData::new,")
+                        .replace("save(CompoundTag tag, HolderLookup.Provider registries)", "save(CompoundTag tag)")
+            }
+            if (relative.endsWith("QuestStructures.java")) {
+                text = text.replace("new SavedData.Factory<>(Sessions::new,\n                (tag, registries) -> { var data = new Sessions(); data.state = tag; return data; }), KEY",
+                        "tag -> { var data = new Sessions(); data.state = tag; return data; }, Sessions::new, KEY")
+                        .replace("new SavedData.Factory<>(Sessions::new,\n                (tag, registries) -> { var data = new Sessions(); data.state = tag; return data; }),\n                KEY",
+                                "tag -> { var data = new Sessions(); data.state = tag; return data; }, Sessions::new, KEY")
+                        .replace("new SavedData.Factory<>(Sessions::new,\n                (tag, registries) -> { var data = new Sessions(); data.state = tag; return data; }),",
+                                "tag -> { var data = new Sessions(); data.state = tag; return data; }, Sessions::new,")
+                        .replace("save(CompoundTag tag, HolderLookup.Provider registries)", "save(CompoundTag tag)")
+            }
+            if (relative.endsWith("QuestSceneBlocks.java")) {
+                return
+            }
+            if (relative.endsWith("QuestJournalOrderStore.java")) {
+                text = text.replace("ForgeCompat.last(1)", "ForgeCompat.last(peers)")
+            }
+            if (relative.endsWith("QuestTemplateSceneDefaults.java")
+                    || relative.endsWith("QuestStructureLibrary.java")) {
+                text = text.replace("NbtIo.writeCompressed(data, file)", "NbtIo.writeCompressed(data, file.toFile())")
+                        .replace("NbtIo.writeCompressed(data, temp)", "NbtIo.writeCompressed(data, temp.toFile())")
+            }
+            if (relative.endsWith("QuestStructures.java")) {
+                text = text.replace("NbtIo.readCompressed(file, NbtAccounter.create(8_388_608))",
+                        "NbtIo.readCompressed(file.toFile())")
+                        .replace("player.getEnderChestInventory().createTag(player.getServer().registryAccess())",
+                                "player.getEnderChestInventory().createTag()")
+                        .replace("player.getEnderChestInventory().fromTag(snapshot.getList(\"ender\", Tag.TAG_COMPOUND), player.getServer().registryAccess())",
+                                "player.getEnderChestInventory().fromTag(snapshot.getList(\"ender\", Tag.TAG_COMPOUND))")
+                        .replace("effect.save()", "effect.save(new CompoundTag())")
+            }
+            if (relative.endsWith("QuestItemStackValue.java")) {
+                text = text.replace("input.copyWithCount(1).save(registries)", "input.copyWithCount(1).save(new CompoundTag())")
+                        .replace("ItemStack.parse(registries, TagParser.parseTag(serialized))\n                    .filter(stack -> !stack.isEmpty())",
+                                "java.util.Optional.of(ItemStack.of(TagParser.parseTag(serialized)))\n                    .filter(stack -> !stack.isEmpty())")
+                        .replace("return tag instanceof CompoundTag compound ? compound.getString(\"id\") : \"\";",
+                                "return tag.getString(\"id\");")
+            }
+            if (relative.endsWith("QuestConditions.java")) {
+                text = text.replace("player.getServer().getAdvancements().get(", "player.getServer().getAdvancements().getAdvancement(")
+            }
+            if (relative.endsWith("QuestConditionEvents.java")) {
+                text = text.replace("ItemEntityPickupEvent", "EntityItemPickupEvent")
+                        .replace("EntityItemPickupEvent.Post", "EntityItemPickupEvent")
+                        .replace(".getOriginalStack()", ".getItem().getItem()")
+                        .replace(".getCurrentStack()", ".getItem().getItem()")
+                        .replace("if (event.getPlayer() instanceof ServerPlayer player)\n            acquired(",
+                                "if (event.getEntity() instanceof ServerPlayer player)\n            acquired(")
+                        .replace("event.getItem().getItem().getCount() - event.getItem().getItem().getCount()",
+                                "event.getItem().getItem().getCount()")
+            }
+            if (relative.endsWith("QuestGraphEvents.java")) {
+                text = text.replace("ItemEntityPickupEvent", "EntityItemPickupEvent")
+                        .replace("EntityItemPickupEvent.Post", "EntityItemPickupEvent")
+                        .replace("ServerTickEvent.Post", "ServerTickEvent")
+                        .replace("PlayerTickEvent.Post", "PlayerTickEvent")
+                        .replace("LevelTickEvent.Post", "LevelTickEvent")
+                        .replace("e.getEntity() instanceof ServerPlayer p && e.getOriginalStack().getCount() > e.getCurrentStack().getCount()",
+                                "e.getEntity() instanceof ServerPlayer p")
+                        .replace("e.getOriginalStack()", "e.getItem().getItem()")
+                        .replace("e.getCurrentStack()", "e.getItem().getItem()")
+                        .replace("e.getAdvancement().id()", "e.getAdvancement().getId()")
+                        .replace("if (e.getPlayer() instanceof ServerPlayer p && e.getItem().getItem().getCount() > e.getItem().getItem().getCount())",
+                                "if (e.getEntity() instanceof ServerPlayer p)")
+                        .replace("if (!(e.getLevel() instanceof ServerLevel level))",
+                                "if (!(e.level instanceof ServerLevel level))")
+                        .replace("e.getEntity() instanceof ServerPlayer p) {\n            if (p.tickCount",
+                                "e.player instanceof ServerPlayer p) {\n            if (p.tickCount")
+            }
+            if (relative.endsWith("QuestSuggestions.java")) {
+                text = text.replace("holder.id()", "holder.getId()")
+                        .replace("holder.value()", "holder")
+                        .replace("result.addFirst(", "result.add(0, ")
+            }
+            if (relative.endsWith("QuestGenerator.java")) {
+                text = text.replace("net.minecraft.advancements.AdvancementHolder", "net.minecraft.advancements.Advancement")
+                        .replace("net.minecraft.world.item.crafting.RecipeHolder", "net.minecraft.world.item.crafting.Recipe")
+                        .replace("RecipeHolder<?>", "Recipe<?>")
+                        .replace("Map<ResourceLocation, AdvancementHolder>", "Map<ResourceLocation, Advancement>")
+                        .replace("holder.value().display().isPresent()", "holder.getDisplay() != null")
+                        .replace("holder.value().display().orElseThrow()", "holder.getDisplay()")
+                        .replace("holder.value().parent().filter(byId::containsKey).orElse(null)",
+                                "holder.getParent() != null && byId.containsKey(holder.getParent().getId()) ? holder.getParent().getId() : null")
+                        .replace("holder.value().parent().isEmpty()", "holder.getParent() == null")
+                        .replace("holder.value().parent().get()", "holder.getParent().getId()")
+                        .replace("holder.value()", "holder")
+                        .replace("holder.id()", "holder.getId()")
+                        .replace("display.getType()", "display.getFrame()")
+                        .replace("case CHALLENGE -> 3;", "case CHALLENGE -> 3;")
+                        .replace("case GOAL -> 2;", "case GOAL -> 2;")
+                        .replace("import net.minecraft.advancements.DisplayInfo;",
+                                "import net.minecraft.advancements.DisplayInfo;\nimport net.minecraft.advancements.FrameType;")
+                        .replace("Recipe<?> holder : server.getRecipeManager().getRecipes()",
+                                "Recipe<?> holder : server.getRecipeManager().getRecipes()")
+                        .replace("values.forEach(holder -> result.add(holder))",
+                                "values.forEach(holder -> result.add(holder.value()))")
+                        .replace("holder.id(), unsupported", "holder.getResultItem().getItem(), unsupported")
+                        .replace("ResourceLocation.withDefaultNamespace(", "new ResourceLocation(\"minecraft\", ");
+            }
+            if (relative.endsWith("QuestStructureEvents.java")) {
+                text = text.replace("ItemEntityPickupEvent", "EntityItemPickupEvent")
+                        .replace("EntityItemPickupEvent.Pre", "EntityItemPickupEvent")
+                        .replace("LivingIncomingDamageEvent", "LivingDamageEvent")
+                        .replace("if (e.getEntity() instanceof ServerPlayer p) {\n            QuestStructures.tick(p);",
+                                "if (e.player instanceof ServerPlayer p) {\n            QuestStructures.tick(p);")
+                        .replace("if (e.getPlayer() instanceof ServerPlayer p\n                && !QuestStructures.allows(p, e.getItemEntity().blockPosition(), \"use\"))",
+                                "if (e.getEntity() instanceof ServerPlayer p\n                && !QuestStructures.allows(p, e.getItem().blockPosition(), \"use\"))")
+                        .replace("e.setCanPickup(net.minecraftforge.common.util.TriState.FALSE);",
+                                "e.setCanceled(true);");
+            }
+            if (includeSharedClient && relative.startsWith("xtdpotato/xero_quest_journal/client/")) {
+                text = text.replace("net.neoforged.neoforge.client.event", "net.minecraftforge.client.event")
+                        .replace("net.neoforged.api.distmarker", "net.minecraftforge.api.distmarker")
+                        .replace("net.neoforged.bus.api", "net.minecraftforge.eventbus.api")
+                        .replace("net.neoforged.fml", "net.minecraftforge.fml")
+                        .replace("net.minecraftforge.client.event.ClientTickEvent",
+                                "net.minecraftforge.event.TickEvent.ClientTickEvent")
+                        .replace("ClientTickEvent.Post", "ClientTickEvent")
+                text = text.replaceAll(/((?:[A-Za-z_$][A-Za-z0-9_$]*)(?:\.[A-Za-z_$][A-Za-z0-9_$]*(?:\([^()]*\))?)*)\.getRight\(\)/) { all, receiver ->
+                    "xtdpotato.xero_quest_journal.forgecompat.ForgeCompat.right(${receiver})"
+                }.replaceAll(/((?:[A-Za-z_$][A-Za-z0-9_$]*)(?:\.[A-Za-z_$][A-Za-z0-9_$]*(?:\([^()]*\))?)*)\.getBottom\(\)/) { all, receiver ->
+                    "xtdpotato.xero_quest_journal.forgecompat.ForgeCompat.bottom(${receiver})"
+                }.replaceAll(/(?<![A-Za-z0-9_$.])getRight\(\)/,
+                        "xtdpotato.xero_quest_journal.forgecompat.ForgeCompat.right(this)")
+                        .replaceAll(/(?<![A-Za-z0-9_$.])getBottom\(\)/,
+                                "xtdpotato.xero_quest_journal.forgecompat.ForgeCompat.bottom(this)")
+                if (!relative.endsWith("StyledChoiceButton.java")) {
+                text = text.replaceAll(/(?:@Override\s*)?public boolean mouseScrolled\(double (\w+), double (\w+), double (\w+), double (\w+)\) \{/) { all, x, y, horizontal, vertical ->
+                    "@Override public boolean mouseScrolled(double ${x}, double ${y}, double ${vertical}) { return mouseScrolled(${x}, ${y}, 0, ${vertical}); }\n    public boolean mouseScrolled(double ${x}, double ${y}, double ${horizontal}, double ${vertical}) {"
+                    }.replaceAll(/super\.mouseScrolled\((\w+),\s*(\w+),\s*(\w+),\s*(\w+)\)/,
+                            "super.mouseScrolled(\$1, \$2, \$4)")
+                } else {
+                    text = text.replace("@Override\n    public boolean mouseScrolled", "public boolean mouseScrolled")
+                }
+                text = text.replaceAll(/(?:@Override\s*)?(public|protected) void renderBackground\(GuiGraphics (\w+),\s*int (\w+),\s*int (\w+),\s*float (\w+)\) \{/) { all, visibility, graphics, mouseX, mouseY, delta ->
+                    "@Override ${visibility} void renderBackground(GuiGraphics ${graphics}) { renderBackground(${graphics}, 0, 0, 0); }\n    ${visibility} void renderBackground(GuiGraphics ${graphics}, int ${mouseX}, int ${mouseY}, float ${delta}) {"
+                }.replaceAll(/super\.renderBackground\((\w+),\s*\w+,\s*\w+,\s*\w+\)/,
+                        "super.renderBackground(\$1)")
+                        .replace("Checkbox.builder(",
+                                "xtdpotato.xero_quest_journal.forgecompat.ForgeCompat.checkbox(")
+                if (relative.endsWith("UiCompositor.java") || relative.endsWith("CategoryIconRenderer.java")) {
+                    text = text.replace("Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR)",
+                            "Tesselator.getInstance().getBuilder(); buffer.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR)")
+                            .replace(".addVertex(", ".vertex(")
+                            .replace(".setUv(", ".uv(")
+                            .replace(".setColor(", ".color(")
+                            .replaceAll(/(\.color\([^;\n]*\));/, "\$1.endVertex();")
+                            .replace("buffer.buildOrThrow()", "buffer.end()")
+                }
+                text = text.replace("clearFocus();", "setFocused(null);")
+                        .replace("renderBlurredBackground(delta);",
+                                "graphics.fill(0, 0, width, height, 0x99000000);")
+                        .replace("event.getScrollDeltaX()", "0")
+                        .replace("event.getScrollDeltaY()", "event.getScrollDelta()")
+                text = text.replaceAll(/((?:net\.minecraft\.resources\.)?ResourceLocation)\s*\.fromNamespaceAndPath\(/,
+                        "new net.minecraft.resources.ResourceLocation(")
+                text = text.replaceAll(/net\.minecraft\.resources\.ResourceLocation\.parse\(/,
+                        "net.minecraft.resources.ResourceLocation.tryParse(")
+                if (relative.endsWith("QuestRewardPopupScreen.java")) {
+                    text = text.replace("graphics.fill(0, 0, width, height, 0x99000000);",
+                            "g.fill(0, 0, width, height, 0x99000000);")
+                }
+                if (relative.endsWith("XeroQuestClientModBus.java")) {
+                    text = text.replace("import net.neoforged.neoforge.client.gui.IConfigScreenFactory;\n", "")
+                            .replace("container.registerExtensionPoint(IConfigScreenFactory.class,\n                        (IConfigScreenFactory) (ignored, parent) -> new QuestConfigScreen(parent))",
+                                    "container.registerExtensionPoint(net.minecraftforge.client.ConfigScreenHandler.ConfigScreenFactory.class,\n                        () -> new net.minecraftforge.client.ConfigScreenHandler.ConfigScreenFactory(\n                                (minecraft, parent) -> new QuestConfigScreen(parent)))")
+                            .replace("        event.registerShader(new net.minecraft.client.renderer.ShaderInstance(",
+                                    "        try { event.registerShader(new net.minecraft.client.renderer.ShaderInstance(")
+                            .replace("CategoryIconRenderer::shader);",
+                                    "CategoryIconRenderer::shader); } catch (java.io.IOException missingShader) {\n" +
+                                            "            XeroQuestJournal.LOGGER.warn(\"Category icon shader unavailable; using the built-in icon renderer\", missingShader);\n" +
+                                            "        }")
+                }
+                if (relative.endsWith("ClientMediaManager.java")) {
+                    text = text.replace("Executors.newThreadPerTaskExecutor(\n            Thread.ofVirtual().name(\"xero-media-\", 0).factory())",
+                            "Executors.newCachedThreadPool(runnable -> { Thread thread = new Thread(runnable, \"xero-media\"); thread.setDaemon(true); return thread; })")
+                }
+                if (relative.endsWith("QuestMediaPickerScreen.java")) {
+                    text = text.replace("Thread.ofVirtual().name(\"xero-media-import\").start(() -> {",
+                            "java.util.concurrent.CompletableFuture.runAsync(() -> {")
+                }
+                if (relative.endsWith("BuiltinAudioDecoder.java")) {
+                    text = text.replace("JOrbisAudioStream", "OggAudioStream")
+                }
+                if (relative.endsWith("QuestIcons.java")) {
+                    text = text.replace("ItemStackLinkedSet.createTypeAndComponentsSet()",
+                            "new java.util.LinkedHashSet<net.minecraft.world.item.ItemStack>()")
+                            .replace("stack.save(player.registryAccess())",
+                                    "stack.save(new net.minecraft.nbt.CompoundTag())")
+                }
+                if (relative.endsWith("QuestRewardPopupScreen.java")) {
+                    text = text.replace("holder.value()", "holder")
+                            .replace("getResultItem()", "getResultItem(minecraft.level.registryAccess())")
+                            .replace("Item.TooltipContext.of(minecraft.level),\n                    minecraft == null",
+                                    "minecraft == null")
+                            .replace("minecraft.player.registryAccess()", "minecraft.level.registryAccess()")
+                }
+                if (relative.endsWith("BuiltinAudioDecoder.java")) {
+                    text = text.replace("net.minecraft.client.sounds.OggAudioStream",
+                            "com.mojang.blaze3d.audio.OggAudioStream")
+                }
+                if (relative.endsWith("QuestConfigScreen.java")) {
+                    text = text.replace("net.minecraft.client.gui.screens.options.controls.KeyBindsScreen",
+                            "net.minecraft.client.gui.screens.controls.KeyBindsScreen")
+                }
+                if (relative.endsWith("JourneyScreen.java") || relative.endsWith("MailboxScreen.java")
+                        || relative.endsWith("QuestScreen.java") || relative.endsWith("QuestTemplateControlsScreen.java")
+                        || relative.endsWith("QuestTemplateScreen.java") || relative.endsWith("QuestTriggerGraphScreen.java")) {
+                    text = text.replaceAll(/((?:[A-Za-z_$][A-Za-z0-9_$]*(?:\([^()]*\))?)(?:\.[A-Za-z_$][A-Za-z0-9_$]*(?:\([^()]*\))?)*)\.getLast\(\)/) { all, receiver ->
+                        "xtdpotato.xero_quest_journal.forgecompat.ForgeCompat.last(${receiver})"
+                    }
+                }
+                if (relative.endsWith("QuestSuggestions.java")) {
+                    text = text.replace("holder.display()\n                            .map(display -> display.getTitle().getString()).orElse(holder.getId().toString())",
+                            "(holder.getDisplay() == null ? holder.getId().toString() : holder.getDisplay().getTitle().getString())")
+                }
+                text = text.replace("game.player.registryAccess()", "game.level.registryAccess()")
+                        .replace("minecraft.player.registryAccess()", "minecraft.level.registryAccess()")
+                        .replace("player.registryAccess()", "Minecraft.getInstance().level.registryAccess()")
+                        .replaceAll(/net\.minecraft\.resources\.new ResourceLocation\(/,
+                                "new net.minecraft.resources.ResourceLocation(")
+                if (relative.endsWith("JourneyScreen.java")) {
+                    text = text.replace("remaining.removeFirst()", "remaining.remove(0)")
+                }
+            }
+            if (relative.endsWith("QuestLocation.java")) {
+                text = text.replace("net.minecraft.world.level.chunk.status.ChunkStatus",
+                        "net.minecraft.world.level.chunk.ChunkStatus")
+            }
+            def destination = new File(outputRoot, relative)
+            destination.parentFile.mkdirs()
+            destination.setText(text, "UTF-8")
+        }
+    }
+}
+tasks.named("compileJava").configure { dependsOn("prepareForgeSources") }
+
+processResources {
+    inputs.property "version", project.version
+    exclude "META-INF/neoforge.mods.toml"
+    filesMatching("META-INF/mods.toml") {
+        expand "version": project.version
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = "UTF-8"
+    options.release = 17
+    if (includeSharedClient) options.compilerArgs.addAll(["-Xmaxerrs", "1000"])
+}
+
+jar {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from({
+        configurations.minecraftLibrary.findAll {
+            it.name.startsWith("jsoup-") || it.name.startsWith("rhino-")
+        }.collect { zipTree(it) }
+    }) {
+        exclude "META-INF/MANIFEST.MF"
+        exclude "META-INF/*.SF"
+        exclude "META-INF/*.RSA"
+        exclude "META-INF/*.DSA"
+        exclude "**/module-info.class"
+        exclude "module-info.class"
+    }
+    from(rootProject.file("../../../LICENSE")) {
+        rename { "${it}_${project.archives_base_name}" }
+    }
+}

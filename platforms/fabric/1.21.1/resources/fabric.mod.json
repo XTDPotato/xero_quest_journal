@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "xero_quest_journal",
+  "version": "${version}",
+  "name": "Xero Quest Journal",
+  "description": "A configurable quest journal with a native quest UI.",
+  "authors": [
+    "xtdpotato"
+  ],
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "xtdpotato.xero_quest_journal.fabric.XeroQuestJournalFabric"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.16.9",
+    "minecraft": "1.21.1",
+    "fabric-api": ">=0.108.0+1.21.1"
+  }
+}

@@ -8,7 +8,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Ingredient;
-import net.neoforged.fml.ModList;
+import xtdpotato.xero_quest_journal.platform.PlatformServices;
 import xtdpotato.xero_quest_journal.XeroQuestJournal;
 
 import java.lang.reflect.Method;
@@ -27,7 +27,7 @@ public final class TacticalItemCompat {
 
     public static List<Model> models(HolderLookup.Provider registries) {
         List<Model> result = new ArrayList<>();
-        if (ModList.get().isLoaded("tacz")) {
+        if (PlatformServices.isModLoaded("tacz")) {
             for (String kind : List.of("Gun", "Ammo", "Attachment", "Block")) {
                 try {
                     for (Object value : (Set<?>) callStatic(TACZ, "getAllCommon" + kind + "Index")) {
@@ -58,7 +58,7 @@ public final class TacticalItemCompat {
                 }
             }
         }
-        if (ModList.get().isLoaded("lrtactical")) {
+        if (PlatformServices.isModLoaded("lrtactical")) {
             for (String kind : List.of("Melee", "Throwable", "Consumable")) {
                 try {
                     Class<?> indexApi = Class.forName("me.xjqsh.lrtactical.api.index.ICustomItemIndex");
@@ -84,7 +84,7 @@ public final class TacticalItemCompat {
     }
 
     public static List<Recipe> recipes() {
-        if (!ModList.get().isLoaded("tacz")) return List.of();
+        if (!PlatformServices.isModLoaded("tacz")) return List.of();
         List<Recipe> result = new ArrayList<>();
         try {
             for (Object recipe : ((Map<?, ?>) callStatic(TACZ, "getAllRecipes")).values()) {
@@ -117,7 +117,7 @@ public final class TacticalItemCompat {
                 new String[]{"lrtactical", "me.xjqsh.lrtactical.api.item.IThrowable", "getId", "throwable"},
                 new String[]{"lrtactical", "me.xjqsh.lrtactical.api.item.IConsumable", "getId", "consumable"},
                 new String[]{"lrtactical", "me.xjqsh.lrtactical.api.item.ICustomItem", "getId", "custom"})) {
-            if (!ModList.get().isLoaded(type[0])) continue;
+            if (!PlatformServices.isModLoaded(type[0])) continue;
             try {
                 Class<?> api = Class.forName(type[1]);
                 if (!api.isInstance(stack.getItem())) continue;
@@ -140,7 +140,7 @@ public final class TacticalItemCompat {
         if (id == null) return readable(identity);
         try {
             String key = "";
-            if (Set.of("gun", "ammo", "attachment").contains(kind) && ModList.get().isLoaded("tacz")) {
+            if (Set.of("gun", "ammo", "attachment").contains(kind) && PlatformServices.isModLoaded("tacz")) {
                 String indexKind = switch (kind) {
                     case "gun" -> "Gun";
                     case "ammo" -> "Ammo";
@@ -151,7 +151,7 @@ public final class TacticalItemCompat {
                 if (index == null) return readable(id.getPath());
                 key = (String) call(index, "getName");
             } else if (Set.of("melee", "throwable", "consumable").contains(kind)
-                    && ModList.get().isLoaded("lrtactical")) {
+                    && PlatformServices.isModLoaded("lrtactical")) {
                 String indexKind = switch (kind) {
                     case "melee" -> "Melee";
                     case "throwable" -> "Throwable";

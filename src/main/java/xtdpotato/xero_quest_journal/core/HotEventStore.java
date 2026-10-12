@@ -2,7 +2,7 @@ package xtdpotato.xero_quest_journal.core;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import net.neoforged.fml.loading.FMLPaths;
+import xtdpotato.xero_quest_journal.platform.PlatformServices;
 import net.minecraft.server.level.ServerPlayer;
 import xtdpotato.xero_quest_journal.XeroQuestJournal;
 import xtdpotato.xero_quest_journal.core.io.AtomicFiles;
@@ -22,7 +22,7 @@ import java.util.HashMap;
 
 public final class HotEventStore {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final Path FILE = FMLPaths.CONFIGDIR.get().resolve("xero_quest/hot_events.json");
+    private static final Path FILE = PlatformServices.configDir().resolve("xero_quest/hot_events.json");
     private static HotEventCanvas current = HotEventCanvas.empty();
     private static boolean loaded;
     private static long reconciledRevision = -1;

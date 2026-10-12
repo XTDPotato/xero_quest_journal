@@ -2,7 +2,7 @@ package xtdpotato.xero_quest_journal.core.runtime;
 
 import com.google.gson.Gson;
 import net.minecraft.server.level.ServerPlayer;
-import net.neoforged.fml.ModList;
+import xtdpotato.xero_quest_journal.platform.PlatformServices;
 import java.lang.reflect.InvocationTargetException;
 import java.util.Map;
 
@@ -14,7 +14,7 @@ import java.util.Map;
 public final class QuestKubeJs {
     private static final Gson GSON = new Gson();
     private QuestKubeJs() {}
-    public static boolean available() { return ModList.get().isLoaded("kubejs"); }
+    public static boolean available() { return PlatformServices.isModLoaded("kubejs"); }
     public static void run(ServerPlayer player, String source, Map<String, String> event) {
         if (player == null || !player.server.isSameThread() || !available())
             throw new IllegalStateException("KubeJS is not available on the server");
