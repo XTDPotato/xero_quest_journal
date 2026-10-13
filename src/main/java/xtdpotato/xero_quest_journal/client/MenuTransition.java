@@ -17,8 +17,7 @@ final class MenuTransition implements AutoCloseable {
                 AnimatedQuestScreen.Viewport bounds, int scrimColor, Runnable draw) {
         long now = System.nanoTime();
         var preferences = ClientPreferences.get();
-        int duration = preferences.reducedMotion || AnimatedQuestScreen.animationMillis() == 0
-                ? 0 : preferences.popupAnimationMillis;
+        int duration = AnimatedQuestScreen.popupAnimationMillis();
         if (!Objects.equals(current, key)) {
             if (key != null && current != null) motion.target(false, now, 0);
             motion.target(key != null, now, duration);

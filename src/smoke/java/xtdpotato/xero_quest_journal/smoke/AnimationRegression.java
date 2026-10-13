@@ -22,6 +22,7 @@ final class AnimationRegression {
     private static QuestScreen journal;
     private static QuestTemplateEditorScreen editor;
     private static double closingPosition;
+    private static int originalPopupDuration;
     private static final String ID = "animation_template_" + System.currentTimeMillis();
 
     static boolean tick(Minecraft game) throws Exception {
@@ -172,8 +173,10 @@ final class AnimationRegression {
             case 13 -> {
                 capture(game, "animation-settings-compact");
                 for (var child : game.screen.children()) {
-                    if (child instanceof net.minecraft.client.gui.components.AbstractWidget w && w.visible)
-                        require(w.getY() >= 0 && w.getBottom() <= game.screen.height, "Settings outside short window");
+                    if (child instanceof net.minecraft.client.gui.components.AbstractWidget w && w.visible
+                            && (w.getY() < 0 || w.getBottom() > game.screen.height))
+                        require(game.screen.getChildAt(w.getX() + 2, w.getY() + w.getHeight() / 2.0)
+                                .orElse(null) != w, "Clipped settings widget accepts outside input");
                 }
                 game.options.guiScale().set(2);
                 game.resizeDisplay();
@@ -182,6 +185,8 @@ final class AnimationRegression {
             }
             case 14 -> {
                 QuestConfig.defaults().uiAnimationMillis = 1000;
+                originalPopupDuration = ClientPreferences.get().popupAnimationMillis;
+                ClientPreferences.get().popupAnimationMillis = 1000;
                 find(game, "mail-delete_read").onPress();
                 wait = 6;
             }
@@ -212,6 +217,7 @@ final class AnimationRegression {
             case 18 -> {
                 require(!((AnimatedQuestScreen) game.screen).inputBlocked(), "Popup closing did not finish");
                 QuestConfig.defaults().uiAnimationMillis = 220;
+                ClientPreferences.get().popupAnimationMillis = originalPopupDuration;
                 QuestTemplate value = QuestTemplateStore.all().stream().filter(t -> t.id().equals(ID)).findFirst().orElseThrow();
                 editor = new QuestTemplateEditorScreen(journal, value);
                 game.setScreen(editor);

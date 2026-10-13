@@ -104,7 +104,7 @@ public final class LegendaryScreen extends AnimatedQuestScreen {
         updateLimits();
         cards.advance(dt, animationMillis() == 0);
         filters.advance(dt, animationMillis() == 0);
-        panel.advance(now, animationMillis() == 0 ? 0 : 220);
+        panel.advance(now, popupAnimationMillis());
         lifts.values().forEach(motion -> motion.advance(now, animationMillis() == 0 ? 0 : 140));
         if (!pendingQuest.isBlank() && now >= pendingAt && !inputBlocked()) {
             String id = pendingQuest;
@@ -337,7 +337,7 @@ public final class LegendaryScreen extends AnimatedQuestScreen {
     }
     private void togglePanel() {
         panelOpen = !panelOpen;
-        panel.target(panelOpen, System.nanoTime(), animationMillis() == 0 ? 0 : 220);
+        panel.target(panelOpen, System.nanoTime(), popupAnimationMillis());
     }
     @Override public boolean mouseScrolled(double x, double y, double horizontal, double vertical) {
         if (inputBlocked()) return true;

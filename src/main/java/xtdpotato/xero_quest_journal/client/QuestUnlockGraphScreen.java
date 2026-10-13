@@ -218,7 +218,7 @@ public final class QuestUnlockGraphScreen extends AnimatedQuestScreen {
     }
 
     @Override protected void renderContents(GuiGraphics g, int mx, int my, float delta) {
-        drawerMotion.advance(System.nanoTime(), animationMillis());
+        drawerMotion.advance(System.nanoTime(), popupAnimationMillis());
         drawerProgress = drawerMotion.eased();
         List<QuestDefinition> drawerTasks = drawerTasks();
         drawerScroll.limit(drawerTasks.size() * 28 - Math.max(1, bottom() - top()));
@@ -377,7 +377,7 @@ public final class QuestUnlockGraphScreen extends AnimatedQuestScreen {
     }
     private void toggleDrawer() {
         taskDrawer = !taskDrawer;
-        drawerMotion.target(taskDrawer, System.nanoTime(), animationMillis());
+        drawerMotion.target(taskDrawer, System.nanoTime(), popupAnimationMillis());
         drawerProgress = drawerMotion.eased();
         drawerButton.setSelectionHighlighted(taskDrawer);
         wireFrom = draggingNode = "";

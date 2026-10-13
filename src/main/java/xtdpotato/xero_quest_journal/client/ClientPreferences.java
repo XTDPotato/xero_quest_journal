@@ -9,13 +9,14 @@ import xtdpotato.xero_quest_journal.core.io.AtomicFiles;
 import java.nio.file.*;
 
 public final class ClientPreferences {
+    public static final int DEFAULT_POPUP_ANIMATION_MILLIS = 100;
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static ClientPreferences current;
     public boolean inventoryButton = true;
     public boolean trackingHud = true;
     public boolean reducedMotion;
     public boolean questRewardSources;
-    public int popupAnimationMillis = 100;
+    public int popupAnimationMillis = DEFAULT_POPUP_ANIMATION_MILLIS;
     public int taskToastScalePercent = 33;
     public int taskToastIconScalePercent = 33;
     public PopupAnimationProfile popupAnimation = PopupAnimationProfile.defaults();
@@ -62,7 +63,8 @@ public final class ClientPreferences {
                 .filter(id -> !id.isBlank() && id.length() <= 128).distinct().limit(65536).toList();
         inventoryX = Math.clamp(inventoryX, 0, 16384);
         inventoryY = Math.clamp(inventoryY, 0, 16384);
-        popupAnimationMillis = Math.clamp(popupAnimationMillis <= 0 ? 100 : popupAnimationMillis, 100, 2000);
+        popupAnimationMillis = Math.clamp(popupAnimationMillis <= 0 ? DEFAULT_POPUP_ANIMATION_MILLIS
+                : popupAnimationMillis, DEFAULT_POPUP_ANIMATION_MILLIS, 2000);
         taskToastScalePercent = Math.clamp(taskToastScalePercent <= 0 ? 33 : taskToastScalePercent, 10, 200);
         taskToastIconScalePercent = Math.clamp(
                 taskToastIconScalePercent <= 0 ? 33 : taskToastIconScalePercent, 10, 200);

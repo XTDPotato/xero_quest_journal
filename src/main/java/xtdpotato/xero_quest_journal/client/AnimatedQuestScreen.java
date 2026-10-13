@@ -36,12 +36,20 @@ public abstract class AnimatedQuestScreen extends Screen {
                 : Math.max(0, Math.min(2000, QuestConfig.defaults().uiAnimationMillis));
     }
 
+    public static int popupAnimationMillis() {
+        return animationMillis() == 0 ? 0 : ClientPreferences.get().popupAnimationMillis;
+    }
+
+    private int screenAnimationMillis() {
+        return isModalScreen() || popupKey() != null ? popupAnimationMillis() : animationMillis();
+    }
+
     public final boolean isClosing() { return closing; }
     public final boolean inputBlocked() {
-        return closing || !entered && animationMillis() > 0 || entered && !motion.settled()
+        return closing || !entered && screenAnimationMillis() > 0 || entered && !motion.settled()
                 || !popupMotion.settled() && (popupMotion.visible() || blocksInputWhilePopupClosing())
-                || popupKey() != lastPopup && animationMillis() > 0
-                || animationMillis() > 0 && menuTransitions.values().stream().anyMatch(MenuTransition::transitioning);
+                || popupKey() != lastPopup && popupAnimationMillis() > 0
+                || popupAnimationMillis() > 0 && menuTransitions.values().stream().anyMatch(MenuTransition::transitioning);
     }
     public final double animationPosition() { return motion.position(); }
     public final double popupAnimationPosition() { return popupMotion.position(); }
@@ -66,18 +74,18 @@ public abstract class AnimatedQuestScreen extends Screen {
         closing = false;
         destination = null;
         resetInteraction();
-        motion.target(true, System.nanoTime(), animationMillis());
+        motion.target(true, System.nanoTime(), screenAnimationMillis());
     }
 
     protected final void closeTo(Screen next) {
         if (closing) return;
-        if (animationMillis() == 0 || !entered) {
+        if (screenAnimationMillis() == 0 || !entered) {
             minecraft.setScreen(next);
             return;
         }
         closing = true;
         destination = next;
-        motion.target(false, System.nanoTime(), animationMillis());
+        motion.target(false, System.nanoTime(), screenAnimationMillis());
         resetInteraction();
     }
 
@@ -90,7 +98,7 @@ public abstract class AnimatedQuestScreen extends Screen {
     public final void advanceTransition() {
         if (!entered) return;
         if (closing) resetInteraction();
-        motion.advance(System.nanoTime(), animationMillis());
+        motion.advance(System.nanoTime(), screenAnimationMillis());
         if (closing && motion.settled() && minecraft.screen == this) {
             Screen next = destination;
             closing = false;
@@ -137,9 +145,9 @@ public abstract class AnimatedQuestScreen extends Screen {
     public final void render(GuiGraphics graphics, int x, int y, float delta) {
         if (!entered) {
             entered = true;
-            motion.target(true, System.nanoTime(), animationMillis());
+            motion.target(true, System.nanoTime(), screenAnimationMillis());
         }
-        motion.advance(System.nanoTime(), animationMillis());
+        motion.advance(System.nanoTime(), screenAnimationMillis());
         if (isModalScreen()) {
             renderModal(graphics, x, y, delta);
             return;
@@ -208,11 +216,11 @@ public abstract class AnimatedQuestScreen extends Screen {
         if (currentPopup != lastPopup) {
             resetInteraction();
             if (currentPopup != null && lastPopup != null) popupMotion.target(false, now, 0);
-            popupMotion.target(currentPopup != null, now, animationMillis());
+            popupMotion.target(currentPopup != null, now, popupAnimationMillis());
             lastPopup = currentPopup;
             if (currentPopup != null) popupSurfaceIsolated = isolatePopupSurface(currentPopup);
         }
-        popupMotion.advance(now, animationMillis());
+        popupMotion.advance(now, popupAnimationMillis());
         if (popupSurfaceIsolated) renderPopupBase(graphics, x, y, delta);
         if (currentPopup == null) {
             if (!popupSurfaceIsolated) renderWithChoicePopup(graphics, x, y, delta);

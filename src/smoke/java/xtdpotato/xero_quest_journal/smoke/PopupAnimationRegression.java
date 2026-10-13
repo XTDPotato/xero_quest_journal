@@ -18,6 +18,8 @@ final class PopupAnimationRegression {
     private static double menuOpeningPosition;
     private static xtdpotato.xero_quest_journal.client.QuestScreen journal;
     private static xtdpotato.xero_quest_journal.client.MailComposeScreen composer;
+    private static FastModal fastModal;
+    private static long contextStartFrame;
 
     private PopupAnimationRegression() {}
 
@@ -28,6 +30,16 @@ final class PopupAnimationRegression {
                 ClientPreferencesReset.reset();
                 originalPopupDuration = xtdpotato.xero_quest_journal.client.ClientPreferences.get()
                         .popupAnimationMillis;
+                var preferences = xtdpotato.xero_quest_journal.client.ClientPreferences.get();
+                require(new xtdpotato.xero_quest_journal.client.ClientPreferences().popupAnimationMillis == 100,
+                        "Popup default is not 100ms");
+                preferences.popupAnimationMillis = 100;
+                QuestConfig.defaults().uiAnimationMillis = 600;
+                require(AnimatedQuestScreen.popupAnimationMillis() == 100,
+                        "Slow page duration leaked into popup duration");
+                preferences.reducedMotion = true;
+                require(AnimatedQuestScreen.popupAnimationMillis() == 0, "Reduced motion animates popups");
+                preferences.reducedMotion = false;
                 xtdpotato.xero_quest_journal.client.ClientPreferences.get().popupAnimationMillis = 500;
                 QuestConfig.defaults().uiAnimationMillis = 600;
                 screen = new PopupScreen();
@@ -173,21 +185,28 @@ final class PopupAnimationRegression {
                 var task = xtdpotato.xero_quest_journal.client.ClientQuestDefinitions.all().stream()
                         .findFirst().orElseThrow();
                 context.invoke(journal, 60, 80, "quest:" + task.id());
+                contextStartFrame = ClientSmokeTest.renderedFrames;
                 wait = 5;
             }
             case 20 -> {
+                if (ClientSmokeTest.renderedFrames < contextStartFrame + 2) return false;
                 require(journal.menuAnimationPosition("context") > 0
                                 && journal.menuAnimationPosition("context") < 1,
-                        "Journal context menu skipped entry animation");
+                        "Journal context menu skipped entry animation: progress="
+                                + journal.menuAnimationPosition("context") + ", duration="
+                                + AnimatedQuestScreen.popupAnimationMillis() + ", page="
+                                + journal.animationPosition());
                 capture(game, "journal-context-opening");
                 wait = 20;
             }
             case 21 -> {
                 require(!journal.inputBlocked(), "Journal context menu did not settle");
                 journal.keyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE, 0, 0);
+                contextStartFrame = ClientSmokeTest.renderedFrames;
                 wait = 4;
             }
             case 22 -> {
+                if (ClientSmokeTest.renderedFrames < contextStartFrame + 2) return false;
                 require(journal.menuAnimationPosition("context") > 0
                                 && journal.menuAnimationPosition("context") < 1,
                         "Journal context menu skipped exit animation");
@@ -241,7 +260,20 @@ final class PopupAnimationRegression {
                 require(composer.menuAnimationPosition("confirm") == 0 && !composer.inputBlocked()
                                 && game.screen == composer,
                         "Save draft cancel left the editor blocked or closed it");
-                game.setScreen(null);
+                QuestConfig.defaults().uiAnimationMillis = 2000;
+                xtdpotato.xero_quest_journal.client.ClientPreferences.get().popupAnimationMillis = 100;
+                fastModal = new FastModal();
+                game.setScreen(fastModal);
+                wait = 5;
+            }
+            case 29 -> {
+                require(fastModal.animationPosition() == 1 && !fastModal.inputBlocked(),
+                        "100ms dialog opening inherited slow page timing");
+                fastModal.onClose();
+                wait = 5;
+            }
+            case 30 -> {
+                require(game.screen == null, "100ms dialog closing inherited slow page timing");
                 QuestConfig.defaults().uiAnimationMillis = 220;
                 xtdpotato.xero_quest_journal.client.ClientPreferences.get().popupAnimationMillis =
                         originalPopupDuration;
@@ -294,6 +326,16 @@ final class PopupAnimationRegression {
                     });
         }
 
+        @Override public boolean isPauseScreen() { return false; }
+    }
+
+    private static final class FastModal extends AnimatedQuestScreen {
+        FastModal() { super(Component.literal("100ms dialog")); }
+        @Override protected boolean isModalScreen() { return true; }
+        @Override protected void renderContents(GuiGraphics g, int x, int y, float delta) {
+            g.fill(width / 2 - 80, height / 2 - 40, width / 2 + 80, height / 2 + 40, 0xFF58657A);
+        }
+        @Override public void onClose() { closeTo(null); }
         @Override public boolean isPauseScreen() { return false; }
     }
 
