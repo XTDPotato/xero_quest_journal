@@ -1,69 +1,71 @@
 # 版本与加载器矩阵
 
-本仓库保持一个模组 ID（`xero_quest_journal`）和一个资源命名空间。构建时通过
-`-Pmc_target` 与 `-Ploader` 选择目标组合；每个组合最终仍然是一个独立 JAR，不能把
-NeoForge 和 Fabric 的运行时代码塞进同一个安装包。
+仓库共享一个模组 ID（`xero_quest_journal`）、业务源码和资源目录。
+各 Minecraft/加载器组合生成独立 JAR；不能把不同 Minecraft API 或加载器的代码放进一个通用安装包。
 
-| Minecraft | NeoForge | Fabric | 备注 |
+验证日期：2026-10-13。
+
+| Minecraft | NeoForge / Forge | Fabric | Java |
 | --- | --- | --- | --- |
-| 1.20.1 | 不提供官方 NeoForge 目标 | Fabric 未迁移；**Forge 共享功能已迁移并通过 33 项客户端/集成服务器回归** | Forge 47.3.0。TaCZ 专项跳过；专用/远端服务器未测试，详见[报告](forge-1.20.1-verification.md)。 |
-| 1.21.1 | **完整基线构建通过** | **独立骨架构建通过** | NeoForge 是完整功能基线；Fabric 目前验证 Loom、入口和平台服务，尚未接入完整任务事件/网络/UI。 |
-| 26.1 | 占位目录 | 占位目录 | 尚未接入构建工程；目标使用 Java 25 和新版本映射。 |
-| 26.2 | 占位目录 | 占位目录 | 尚未接入构建工程；需独立配置该版本 API 和插件。 |
-| 26.3 | 占位目录 | 占位目录 | 尚未接入构建工程；需独立配置该版本 API 和插件。 |
+| 1.20.1 | **Forge 47.3.0：共享功能迁移，33 项回归通过**；此版本不提供 NeoForge | **完整共享功能接入，33 项回归通过** | 17 |
+| 1.21.1 | **NeoForge 21.1.233：现有完整基线，生产构建复验通过** | **完整共享功能接入，33 项回归通过** | 21 |
+| 26.1 | NeoForge 26.1.0.19-beta 工程已建立，NeoForm 依赖下载受阻；未完成迁移 | Java 25 / Loom 工程已建立，原生存档层测试通过；完整编译失败 | 25 |
+| 26.2 | NeoForge 26.2.0.90 工程已建立，NeoForm/工具链依赖下载受阻；未完成迁移 | 原生存档层测试通过；完整编译失败 | 25 |
+| 26.3 | NeoForge 26.3.0.76 工程已建立，插件/依赖解析受网络影响；未完成迁移 | 原生存档层测试通过；完整编译失败 | 25 |
 
-## 当前可用命令
+Fabric 1.20.1：Loader 0.16.10、API 0.92.12+1.20.1。
+Fabric 1.21.1：Loader 0.16.9、API 0.108.0+1.21.1。
+两个版本都实际启动了最终重映射 JAR 的物理 SERVER 环境，验证公共入口、Mixin 和嵌入库；
+服务器停在 EULA 拒绝处，保持 `eula=false`，不代表专用服务器游戏过程或远端联机已通过。
+具体回归、补测与限制见 [Fabric 验证报告](fabric-verification.md)
+及 [Forge 验证报告](forge-1.20.1-verification.md)。
 
-默认构建保持当前基线：
+## 构建入口
 
-```powershell
-$env:JAVA_HOME = "C:\Users\26343\.jdks\openjdk-21.0.6\jdk-21.0.2"
-.\gradlew.bat build
-```
-
-查看矩阵：
-
-```powershell
-.\gradlew.bat printPortMatrix
-```
-
-构建当前选择的配置：
+默认 `.\gradlew.bat build` 构建 NeoForge 1.21.1。其他已完成组合：
 
 ```powershell
-.\gradlew.bat buildSelected
-.\gradlew.bat buildSelected '-Pmc_target=1.21.1' '-Ploader=fabric'
-.\gradlew.bat buildSelected '-Pmc_target=1.20.1' '-Ploader=forge'
+# Java 17
+.\gradlew.bat buildSelected "-Pmc_target=1.20.1" "-Ploader=forge"
+.\gradlew.bat buildSelected "-Pmc_target=1.20.1" "-Ploader=fabric"
+
+# Java 21
+.\gradlew.bat buildSelected "-Pmc_target=1.21.1" "-Ploader=fabric"
 ```
 
-Forge 1.20.1 使用 Java 17；NeoForge 1.21.1 和 Fabric 1.21.1 使用 Java 21。
-完整矩阵验证可使用：
+也可直接运行子工程：
 
 ```powershell
-.\tools\verify-version-matrix.ps1 `
-  -Java21 "C:\Users\26343\.jdks\openjdk-21.0.6\jdk-21.0.2" `
-  -Java17 "C:\Program Files\Java\jdk-17.0.16+8" `
-  -IncludeIncomplete
+.\gradlew.bat -p platforms/fabric/1.20.1 build -PuseDownloadMirror
+.\gradlew.bat -p platforms/fabric/1.21.1 build -PuseDownloadMirror
 ```
 
-尝试尚未完成的组合会立即失败并指出原因，例如：
+尚未完成的 26.x 组合不会通过根工程路由。其独立工程可用于继续开发，
+使用集中在 `platforms/shared/26` 的 Gradle 9.2.1 Wrapper 和 Java 25：
 
 ```powershell
-.\gradlew.bat build -Pmc_target=1.21.1 -Ploader=fabric
+.\platforms\shared\26\gradlew.bat -p platforms/fabric/26.1 verifyModernSavedData -PuseDownloadMirror
+.\platforms\shared\26\gradlew.bat -p platforms/fabric/26.2 verifyModernSavedData -PuseDownloadMirror
+.\platforms\shared\26\gradlew.bat -p platforms/fabric/26.3 verifyModernSavedData -PuseDownloadMirror
 ```
 
-## 架构约定
+`verifyModernSavedData` 仅测试独立适配层的实际磁盘存取，不需要客户端或接受 EULA，
+**不代表整个模组通过编译**。26.x 全量编译仍需迁移新的 GUI 提取渲染、输入记录、
+物品/配方、权限和实体存取 API；不能发布这些工程作为已完成版本。
+NeoForge 官方仓库在本机存在 DNS/连接异常，BMCLAPI 未缓存部分 NeoForm 新版本，
+不会用其他 Minecraft 的依赖伪装成对应目标。
 
-- `src/main/java`：共享任务模型、运行时、网络载荷和 UI 逻辑。
-- `platforms/neoforge/1.21.1`：当前 NeoForge 平台实现。
-- `platforms/fabric/1.21.1`：可构建的 Fabric 入口骨架，尚未补齐事件、网络注册和客户端 UI。
-- `platforms/forge/1.20.1`：共享服务端和客户端源码已完成 Forge API 转换；真实客户端与集成服务器
-  验证了网络往返、任务、奖励、邮件、编辑器和结构场景。专用/远端服务器与可选集成仍需独立验证。
-- `platforms/{neoforge,fabric}/26.x`：26.1、26.2、26.3 分版本适配目录。
-- `gradle/versions/*.properties`：版本线的 Java/加载器依赖声明，不代表该组合已经通过编译。
+## 目录约定
 
-当前共享业务树仍以 NeoForge 1.21.1 为 API 基线，Forge 1.20.1 通过生成源码转换适配；
-Fabric 1.21.1 子工程目前只打包平台服务和入口骨架，仍需迁移网络、事件和渲染钩子，
-才能达到完整功能 parity。
+- `src/main`：共享任务、邮件、作者编辑、网络载荷、场景和 UI。
+- `platforms/fabric/1.21.1/java`：Fabric 公共适配器与针对原版入口的 Mixin。
+- `platforms/fabric/1.20.1/java`：旧协议、旧容器输入等差异；构建时复用 Forge 的旧 Minecraft API 转换。
+- `platforms/fabric/shared-build.gradle`：Fabric 共享构建；源码副本输出到目标 `build/generated`。
+- `platforms/fabric/smoke`：独立测试辅助代码，不进入发布 JAR。
+- `platforms/shared/26`：26.x 共享转换、原生存档适配和唯一 Gradle 9 Wrapper。
+- `build/verification`：集中保存测试日志、断言结果与截图；不提交游戏世界。
+- `platforms/fabric/<版本>/build/smoke-runs`：新批次的隔离测试世界。
 
-1.20.1 的 NeoForge 组合不会被伪造为可用目标；要做 1.20.1，应增加 Forge 适配器并在产物
-元数据中标注 Forge，而不是写成 NeoForge。
+旧批次的 184 个自动测试目录已保留并归档到各目标的 `build/smoke-runs/archive`，
+目标根目录不再铺满带时间戳的世界。它们属于忽略的本地验证数据，不会打包或上传。
+源码生成结果不手工修改，应修正原始共享源码、适配器或构建转换。

@@ -1,0 +1,256 @@
+plugins {
+    id "fabric-loom" version "1.9.2"
+    id "maven-publish"
+}
+version = project.mod_version
+group = project.maven_group
+apply from: "../production-verification.gradle"
+if (project.hasProperty("useDownloadMirror")) {
+    ext.loom_resources_base = "https://bmclapi2.bangbang93.com/assets/"
+    ext.loom_libraries_base = "https://bmclapi2.bangbang93.com/maven/"
+}
+base { archivesName = project.archives_base_name }
+repositories {
+    maven { url = "https://maven.fabricmc.net/" }
+    maven { url = "https://maven.aliyun.com/repository/central" }
+    mavenCentral()
+}
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    mappings loom.officialMojangMappings()
+    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+    implementation include("org.jsoup:jsoup:1.18.3")
+    implementation include("org.mozilla:rhino:1.7.15")
+}
+java.toolchain.languageVersion = JavaLanguageVersion.of(17)
+loom {
+    accessWidenerPath = file("resources/xero_quest_journal.accesswidener")
+    runs.server { runDir("run-server-bootstrap") }
+}
+sourceSets.main {
+    java.srcDirs = ["java", layout.buildDirectory.dir("generated/fabric/java")]
+    resources.srcDirs = ["resources", "../../../src/main/resources"]
+}
+def smokeModes = [
+        "smokeTest", "mailboxTest", "mailReferenceTest", "popupAnimationTest",
+        "mailBodyEditorTest", "mailAdminTest", "hotEventsTest", "spotlightUiTest",
+        "journeyTest", "journeyEditingTest", "overviewTest", "overviewAuthoringTest",
+        "journalFocusTest", "journalOrderTest", "generateTasksTest", "generatedDeletionTest",
+        "trackingHudTest", "lootTableTest", "canvasEditorTest", "locationItemTest", "mediaTest",
+        "controlGraphTest", "unlockGraphTest", "rewardPopupTest", "claimReceiptTest",
+        "rewardQualityTest", "creationTest", "animationTest", "runtimeTest", "structureSceneTest",
+        "buttonImageTest", "rewardsTest", "templateTest"
+]
+def requestedModes = smokeModes.findAll { project.hasProperty("fabric${it.capitalize()}") }
+def includeSmoke = !requestedModes.isEmpty()
+if (includeSmoke) {
+    sourceSets.main.resources.srcDir("../../../src/smoke/resources")
+    loom.runs.client {
+        runDir(project.findProperty("fabricSmokeRunDir") ?: "run-${requestedModes.first()}")
+        vmArg("-Dxero.${requestedModes.first()}=true")
+        vmArg("-Dxero.fabricSmoke=true")
+        vmArg("-Dxero.verificationDir=${layout.buildDirectory.dir('verification').get().asFile.absolutePath}")
+        vmArg("-Dxero.forge1201Test=true")
+        programArg("--username")
+        programArg("Dev")
+    }
+}
+tasks.register("prepareLegacyMinecraftSources", GradleBuild) {
+    dir = file("../../forge/1.20.1")
+    tasks = ["prepareForgeSources"]
+    startParameter.projectProperties = includeSmoke ? ["forgeSmokeTest": "true"] : [:]
+}
+tasks.register("prepareFabricSources") {
+    dependsOn "prepareLegacyMinecraftSources"
+    inputs.files(fileTree("../../forge/1.20.1/build/generated/forge/java"))
+    inputs.files(fileTree("../1.21.1/java"))
+    inputs.files(fileTree("../../forge/1.20.1/java"))
+    if (includeSmoke) inputs.files(fileTree("../smoke/java"))
+    inputs.property("includeSmoke", includeSmoke)
+    outputs.dir(layout.buildDirectory.dir("generated/fabric/java"))
+    doLast {
+        def root = layout.buildDirectory.dir("generated/fabric/java").get().asFile
+        delete(root)
+        def sourceRoots = [file("../../forge/1.20.1/build/generated/forge/java"),
+                           file("../1.21.1/java"), file("../../forge/1.20.1/java"),
+                           file("../../../src/main/java")]
+        if (includeSmoke) sourceRoots << file("../smoke/java")
+        def excluded = [
+                "fabriccompat/FabricNetwork.java", "fabriccompat/FabricPayloadRegistrar.java",
+                "fabriccompat/FabricClientNetwork.java",
+                "fabriccompat/FabricPayloadContext.java", "fabriccompat/FabricServerAccess.java"
+        ]
+        sourceRoots.each { sourceRoot ->
+        fileTree(sourceRoot).matching { include "**/*.java" }.files.each { source ->
+            def relative = sourceRoot.toPath().relativize(source.toPath()).toString().replace("\\", "/")
+            def shortPath = relative.replace("xtdpotato/xero_quest_journal/", "")
+            if (sourceRoot == file("../../../src/main/java")
+                    && shortPath != "core/runtime/QuestSceneBlocks.java") return
+            if (excluded.contains(shortPath) || shortPath.startsWith("platform/forge/")) return
+            if (shortPath.endsWith("XeroQuestClientModBus.java")) return
+            if (sourceRoot == file("../../forge/1.20.1/java")
+                    && !(shortPath in ["forgecompat/CustomPacketPayload.java", "forgecompat/StreamCodec.java",
+                    "forgecompat/RegistryFriendlyByteBuf.java", "forgecompat/ForgeCompat.java",
+                    "forgecompat/ForgeCheckboxBuilder.java", "client/ClientEditMode.java",
+                    "core/runtime/QuestCommands.java"])) return
+            def text = source.getText("UTF-8")
+            if (shortPath.endsWith("QuestConditionEvents.java") || shortPath.endsWith("QuestGraphEvents.java")
+                    || shortPath.endsWith("QuestStructureEvents.java") || shortPath.endsWith("QuestSceneBlocks.java")) {
+                text = new File(file("../../../src/main/java"), relative).getText("UTF-8")
+            }
+            text = text.replaceAll(/(?m)^import net\.(?:neoforged|minecraftforge)\.(?:bus\.api|eventbus\.api|fml\.common|api\.distmarker)\.[^;]+;\r?\n/, "")
+                    .replaceAll(/@EventBusSubscriber\([\s\S]*?\)\s*/, "")
+                    .replaceAll(/@SubscribeEvent(?:\([^)]*\))?\s*/, "")
+                    .replaceAll(/(?m)^\s*if \(\w+\.phase != net\.minecraftforge\.event\.TickEvent\.Phase\.END\) return;\r?\n/, "")
+            [
+                    "net.neoforged.neoforge.event.entity.player.*": "xtdpotato.xero_quest_journal.fabriccompat.FabricEvents.*",
+                    "net.minecraftforge.event.entity.player.*": "xtdpotato.xero_quest_journal.fabriccompat.FabricEvents.*",
+                    "net.neoforged.neoforge.common.NeoForge": "xtdpotato.xero_quest_journal.fabriccompat.FabricEventBus",
+                    "net.minecraftforge.common.MinecraftForge": "xtdpotato.xero_quest_journal.fabriccompat.FabricEventBus",
+                    "net.minecraftforge.event.CommandEvent": "xtdpotato.xero_quest_journal.fabriccompat.FabricCommandEvent",
+                    "net.minecraftforge.fml.ModList": "xtdpotato.xero_quest_journal.fabriccompat.FabricModList",
+                    "net.minecraftforge.server.ServerLifecycleHooks": "xtdpotato.xero_quest_journal.fabriccompat.FabricServerLifecycle",
+                    "net.minecraftforge.client.event.ScreenEvent": "xtdpotato.xero_quest_journal.fabriccompat.FabricScreenEvent",
+                    "net.minecraftforge.client.event.InputEvent": "xtdpotato.xero_quest_journal.fabriccompat.FabricInputEvent",
+                    "net.neoforged.neoforge.registries.DeferredRegister": "xtdpotato.xero_quest_journal.fabriccompat.FabricDeferredRegister",
+                    "net.neoforged.bus.api.IEventBus": "xtdpotato.xero_quest_journal.fabriccompat.FabricEventBus",
+                    "net.neoforged.neoforge.event.RegisterCommandsEvent": "xtdpotato.xero_quest_journal.fabriccompat.FabricEvents.RegisterCommandsEvent",
+                    "net.minecraftforge.event.TickEvent.ClientTickEvent": "xtdpotato.xero_quest_journal.fabriccompat.FabricEvents.ClientTickEvent",
+                    "net.minecraftforge.event.TickEvent.ServerTickEvent": "xtdpotato.xero_quest_journal.fabriccompat.FabricEvents.ServerTickEvent",
+                    "net.neoforged.neoforge.common.util.TriState": "xtdpotato.xero_quest_journal.fabriccompat.FabricEvents.TriState",
+                    "xtdpotato.xero_quest_journal.forgecompat.PacketDistributor": "xtdpotato.xero_quest_journal.fabriccompat.FabricNetwork",
+                    "xtdpotato.xero_quest_journal.forgecompat.PayloadRegistrar": "xtdpotato.xero_quest_journal.fabriccompat.FabricPayloadRegistrar",
+                    "xtdpotato.xero_quest_journal.forgecompat.RegisterPayloadHandlersEvent": "xtdpotato.xero_quest_journal.fabriccompat.FabricRegisterPayloads",
+                    "xtdpotato.xero_quest_journal.forgecompat.IPayloadContext": "xtdpotato.xero_quest_journal.fabriccompat.FabricPayloadContext"
+            ].each { from, to -> text = text.replace(from, to) }
+            text = text.replaceAll(/net\.(?:neoforged\.neoforge|minecraftforge)\.(?:event\.(?:tick|server|level|entity(?:\.living|\.player)?)|client\.event)\.(\w+)/,
+                    'xtdpotato.xero_quest_journal.fabriccompat.FabricEvents.$1')
+                    .replace("net.minecraft.advancements.AdvancementHolder", "net.minecraft.advancements.Advancement")
+                    .replace("net.minecraft.network.protocol.common.custom.CustomPacketPayload",
+                            "xtdpotato.xero_quest_journal.forgecompat.CustomPacketPayload")
+                    .replace("net.minecraft.network.RegistryFriendlyByteBuf",
+                            "xtdpotato.xero_quest_journal.forgecompat.RegistryFriendlyByteBuf")
+                    .replace("net.minecraft.network.codec.StreamCodec", "xtdpotato.xero_quest_journal.forgecompat.StreamCodec")
+                    .replace("import net.neoforged.bus.api.IEventBus;", "")
+                    .replaceAll(/(\w+)\.getPersistentData\(\)/,
+                            'xtdpotato.xero_quest_journal.fabriccompat.FabricPlayerData.get($1)')
+                    .replace("holder.getMetadata().getName()", "holder.getMetadata().getName()")
+            [
+                    "PacketDistributor": "FabricNetwork", "PayloadRegistrar": "FabricPayloadRegistrar",
+                    "RegisterPayloadHandlersEvent": "FabricRegisterPayloads", "IPayloadContext": "FabricPayloadContext",
+                    "ModList": "FabricModList", "ServerLifecycleHooks": "FabricServerLifecycle",
+                    "NeoForge": "FabricEventBus", "MinecraftForge": "FabricEventBus",
+                    "CommandEvent": "FabricCommandEvent", "ScreenEvent": "FabricScreenEvent", "InputEvent": "FabricInputEvent",
+                    "DeferredRegister": "FabricDeferredRegister", "IEventBus": "FabricEventBus",
+                    "AdvancementHolder": "Advancement"
+            ].each { from, to -> text = text.replaceAll("\\b${from}\\b", to) }
+            text = text.replace("ClientTickEvent event", "ClientTickEvent.Post event")
+                    .replace("ServerTickEvent event", "ServerTickEvent.Post event")
+                    .replace("e.getAdvancement().id()", "e.getAdvancement().getId()")
+                    .replace("event.getScrollDelta()", "event.getScrollDeltaY()")
+                    .replace("ResourceLocation.fromNamespaceAndPath(", "new ResourceLocation(")
+                    .replace("new net.minecraft.resources.ResourceLocation.fromNamespaceAndPath(",
+                            "new net.minecraft.resources.ResourceLocation(")
+                    .replace("net.minecraft.resources.new ResourceLocation(", "new net.minecraft.resources.ResourceLocation(")
+                    .replace("container.getModInfo().getDisplayName()", "container.getMetadata().getName()")
+                    .replace("player.server.getServerResources().managers()",
+                            "xtdpotato.xero_quest_journal.fabriccompat.FabricServerAccess.resources(player.server)")
+            if (shortPath.endsWith("StyledButton.java"))
+                text = text.replace("public class StyledButton extends Button {",
+                        "public class StyledButton extends Button {\n    public void setHeight(int value) { this.height = value; }")
+            if (shortPath.endsWith("QuestCommands.java"))
+                text = text.replace("FabricEventBus.EVENT_BUS.post(event))",
+                        "FabricEventBus.EVENT_BUS.post(event).isCanceled())")
+            if (shortPath.endsWith("QuestSceneBlocks.java")) {
+                text = text.replace("public static void register(FabricEventBus",
+                        "public static void register(xtdpotato.xero_quest_journal.fabriccompat.FabricEventBus")
+                text = text.replace("MapCodec<CompletionBlock> CODEC = simpleCodec(CompletionBlock::new);", "String CODEC = \"scene_completion\";")
+                        .replace("import com.mojang.serialization.MapCodec;", "")
+                        .replace("@Override public MapCodec<CompletionBlock> codec() { return CODEC; }", "")
+                        .replace("@Override protected void onPlace", "@Override public void onPlace")
+                        .replace("@Override protected void tick", "@Override public void tick")
+                        .replace("@Override protected void neighborChanged", "@Override public void neighborChanged")
+            }
+            if (shortPath.endsWith("FabricEvents.java"))
+                text = text.replace("net.minecraft.client.gui.GuiGraphics", "net.minecraft.client.gui.GuiGraphics")
+            if (shortPath.endsWith("EntityDataMixin.java"))
+                text = text.replace('method = "saveWithoutId"', 'method = "saveWithoutId"')
+            text = text.replace("net.minecraft.world.level.portal.DimensionTransition", "net.minecraft.server.level.ServerLevel")
+                    .replace("DimensionTransition transition", "ServerLevel transition")
+                    .replace("transition.newLevel()", "transition")
+            if (shortPath.endsWith("MouseHandlerMixin.java")) {
+                text = text.replace('"method_55795"', '"method_1602"')
+                        .replace('mouseScrolled(DDDD)Z', 'mouseScrolled(DDD)Z')
+                        .replace("double h, double v, Operation<Boolean>", "double v, Operation<Boolean>")
+                        .replace("Pre(screen, x, y, h, v)", "Pre(screen, x, y, 0, v)")
+                        .replace("original.call(screen, x, y, h, v)", "original.call(screen, x, y, v)")
+            }
+            if (shortPath.startsWith("smoke/")) {
+                text = text.replace('Path.of("..", "build", "verification")',
+                        'Path.of(System.getProperty("xero.verificationDir", "../build/verification"))')
+                        .replace('Path.of("..", "build", "verification", ',
+                                'Path.of(System.getProperty("xero.verificationDir", "../build/verification"), ')
+                text = text.replace("new DimensionTransition(target, player, DimensionTransition.DO_NOTHING)", "target")
+                        .replace("new DimensionTransition(target, entity, DimensionTransition.DO_NOTHING)", "target")
+                        .replace("settings factory", "settings screen")
+                text = text.replace("void frame(net.minecraftforge.client.event.RenderGuiEvent.Post event)",
+                        "void frame(xtdpotato.xero_quest_journal.fabriccompat.FabricEvents.RenderFrameEvent.Post event)")
+                        .replace("void frame(xtdpotato.xero_quest_journal.fabriccompat.FabricEvents.RenderGuiEvent.Post event)",
+                                "void frame(xtdpotato.xero_quest_journal.fabriccompat.FabricEvents.RenderFrameEvent.Post event)")
+                        .replace("    static long renderedFrames;", "    public static long renderedFrames;")
+                        .replace("import net.minecraftforge.client.ConfigScreenHandler;", "")
+                        .replaceAll(/net\.minecraftforge\.client\.ConfigScreenHandler\.getScreenFactoryFor\([\s\S]*?\.isPresent\(\)/,
+                                "new xtdpotato.xero_quest_journal.client.QuestConfigScreen(null) != null")
+                        .replace("net.minecraftforge.fml.loading.FMLPaths.CONFIGDIR.get()",
+                                "xtdpotato.xero_quest_journal.platform.PlatformServices.configDir()")
+                        .replace("QuestKeyMappings.OPEN_MAILBOX.getKey()",
+                                "com.mojang.blaze3d.platform.InputConstants.Type.KEYSYM.getOrCreate(org.lwjgl.glfw.GLFW.GLFW_KEY_F8)")
+                        .replaceAll(/\be\.player\b/, "e.getEntity()")
+                        .replaceAll(/\be\.level\b/, "e.getLevel()")
+                        .replace("new net.minecraftforge.event.TickEvent.LevelTickEvent(net.minecraftforge.fml.LogicalSide.SERVER, net.minecraftforge.event.TickEvent.Phase.END, level, () -> true)",
+                                "new xtdpotato.xero_quest_journal.fabriccompat.FabricEvents.LevelTickEvent.Post(level)")
+                if (shortPath.endsWith("StructureSceneRegression.java")) {
+                    text = text.replace("var quest = QuestRepository.find(ID);\n        QuestStructures.enter",
+                            "FabricTravelChecks.blockedTravel(p);\n        var quest = QuestRepository.find(ID);\n        QuestStructures.enter")
+                            .replace("QuestStructures.enter(p, quest, quest.presentation().controls().get(0));",
+                                    "QuestStructures.enter(p, quest, quest.presentation().controls().get(0));\n        FabricTravelChecks.blockedTravel(p);")
+                }
+            }
+            def destination = new File(root, relative)
+            destination.parentFile.mkdirs()
+            destination.setText(text, "UTF-8")
+        }
+        }
+    }
+}
+tasks.named("compileJava") { dependsOn "prepareFabricSources" }
+tasks.withType(Zip).configureEach {
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+}
+tasks.named("jar") {
+    from("../../../LICENSE") { rename { "${it}_${project.archives_base_name}" } }
+}
+processResources {
+    inputs.property "version", project.version
+    exclude "META-INF/neoforge.mods.toml", "META-INF/mods.toml"
+    eachFile { if(path.startsWith("data/")) path = path.replace("/loot_table/", "/loot_tables/") }
+    eachFile { if(path.startsWith("data/")) path = path.replace("/function/", "/functions/") }
+    filesMatching("fabric.mod.json") { expand "version": project.version }
+}
+if (includeSmoke) {
+    tasks.named("runClient") {
+        doFirst { delete(layout.buildDirectory.file("verification/result.txt")) }
+        doLast {
+            def result = layout.buildDirectory.file("verification/result.txt").get().asFile
+            if (!result.exists() || !result.text.startsWith("PASS:"))
+                throw new GradleException(result.exists() ? result.text : "Fabric client did not produce a result")
+        }
+    }
+}
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = "UTF-8"
+    options.release = 17
+    options.compilerArgs.addAll(["-Xmaxerrs", "150"])
+}

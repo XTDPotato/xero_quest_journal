@@ -36,6 +36,8 @@ final class UnlockGraphRegression {
     private static QuestScreen journal;
     private static CompletableFuture<String> lockRequest;
     private static int waitTicks;
+    private static long transitionStartFrame;
+    private static int originalPopupMillis;
 
     static boolean tick(Minecraft game) throws Exception {
         switch (stage) {
@@ -258,10 +260,14 @@ final class UnlockGraphRegression {
                 var motion = (UiMotion) field(editor, "drawerMotion").get(editor);
                 require(motion.settled() && motion.position() == 0, "Drawer close animation failed to settle");
                 xtdpotato.xero_quest_journal.core.QuestConfig.defaults().uiAnimationMillis = 600;
+                originalPopupMillis = ClientPreferences.get().popupAnimationMillis;
+                ClientPreferences.get().popupAnimationMillis = 600;
                 field(editor, "propertiesTask").set(editor, A);
+                transitionStartFrame = ClientSmokeTest.renderedFrames;
                 waitTicks = 1;
             }
             case 13 -> {
+                if (ClientSmokeTest.renderedFrames < transitionStartFrame + 2) return false;
                 if (--waitTicks > 0) return false;
                 require(editor.menuAnimationPosition("properties") > 0
                                 && editor.menuAnimationPosition("properties") < 1 && editor.inputBlocked(),
@@ -275,9 +281,11 @@ final class UnlockGraphRegression {
                         "Task properties entry did not settle");
                 editor.keyPressed(GLFW.GLFW_KEY_ESCAPE, 0, 0);
                 require(field(editor, "propertiesTask").get(editor).equals(""), "Escape did not close properties");
+                transitionStartFrame = ClientSmokeTest.renderedFrames;
                 waitTicks = 1;
             }
             case 15 -> {
+                if (ClientSmokeTest.renderedFrames < transitionStartFrame + 2) return false;
                 if (--waitTicks > 0) return false;
                 require(editor.menuAnimationPosition("properties") > 0
                                 && editor.menuAnimationPosition("properties") < 1 && editor.inputBlocked(),
@@ -292,9 +300,11 @@ final class UnlockGraphRegression {
                 method(editor, "removeLink", links(editor).iterator().next().getClass())
                         .invoke(editor, links(editor).iterator().next());
                 editor.onClose();
+                transitionStartFrame = ClientSmokeTest.renderedFrames;
                 waitTicks = 1;
             }
             case 17 -> {
+                if (ClientSmokeTest.renderedFrames < transitionStartFrame + 2) return false;
                 if (--waitTicks > 0) return false;
                 require(editor.menuAnimationPosition("confirm") > 0 && editor.menuAnimationPosition("confirm") < 1,
                         "Unsaved confirmation skipped scale/fade entry");
@@ -309,9 +319,11 @@ final class UnlockGraphRegression {
                 editor.mouseClicked(cancel.getX() + 10, cancel.getY() + 10, 0);
                 editor.mouseReleased(cancel.getX() + 10, cancel.getY() + 10, 0);
                 require(!field(editor, "confirmExit").getBoolean(editor), "Cancel did not dismiss confirmation");
+                transitionStartFrame = ClientSmokeTest.renderedFrames;
                 waitTicks = 1;
             }
             case 19 -> {
+                if (ClientSmokeTest.renderedFrames < transitionStartFrame + 2) return false;
                 if (--waitTicks > 0) return false;
                 require(editor.menuAnimationPosition("confirm") > 0 && editor.menuAnimationPosition("confirm") < 1,
                         "Unsaved confirmation skipped shrink/fade exit");
@@ -323,6 +335,7 @@ final class UnlockGraphRegression {
                 require(editor.menuAnimationPosition("confirm") == 0 && !editor.inputBlocked() && game.screen == editor,
                         "Cancel left editor input blocked or closed the editor");
                 xtdpotato.xero_quest_journal.core.QuestConfig.defaults().uiAnimationMillis = 220;
+                ClientPreferences.get().popupAnimationMillis = originalPopupMillis;
                 return true;
             }
         }

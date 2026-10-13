@@ -1,0 +1,56 @@
+// Changes in this file apply only to the unobfuscated 26.x source copies.
+ext.adaptModernMinecraftSource = { String relative, String text ->
+    text = text.replace("ResourceLocation", "Identifier")
+            .replace("net.minecraft.world.level.saveddata.SavedData", "xtdpotato.xero_quest_journal.modern.ModernSavedData")
+            .replaceAll(/\bextends SavedData\b/, "extends ModernSavedData")
+            .replace(".getAllKeys()", ".keySet()")
+            .replace(".getDataStorage().save()", ".getDataStorage().saveAndJoin()")
+    // NBT scalar accessors now return Optional. Zero-argument Component.getString and
+    // the two-argument Brigadier accessors must keep their original meaning.
+    if (text.contains("net.minecraft.nbt.") || text.contains("getPersistentData()")
+            || text.contains("FabricPlayerData.get(")) {
+        text = text.replaceAll(/\.getCompound\(([^()\r\n]+)\)/, '.getCompoundOrEmpty($1)')
+                .replaceAll(/\.getList\(([^,()\r\n]+),\s*Tag\.TAG_\w+\)/, '.getListOrEmpty($1)')
+        ["String": '""', "Int": "0", "Long": "0L", "Float": "0F", "Double": "0D",
+         "Boolean": "false", "Byte": "(byte) 0", "Short": "(short) 0"].each { suffix, fallback ->
+            text = text.replaceAll("\\.get${suffix}\\(([^,()\\r\\n]+)\\)", ".get${suffix}Or(\$1, ${fallback})")
+        }
+        text = text.replaceAll(/\.putUUID\(([^,()\r\n]+),\s*([^()\r\n]+)\)/,
+                '.store($1, net.minecraft.core.UUIDUtil.CODEC, $2)')
+                .replaceAll(/\.getUUID\(([^()\r\n]+)\)/,
+                        '.read($1, net.minecraft.core.UUIDUtil.CODEC).orElseThrow()')
+                .replaceAll(/\.hasUUID\(([^()\r\n]+)\)/,
+                        '.read($1, net.minecraft.core.UUIDUtil.CODEC).isPresent()')
+    }
+    if (relative.endsWith("QuestProgressData.java")) {
+        text = text.replace(
+                "server.overworld().getDataStorage().computeIfAbsent(\n                new Factory<>(QuestProgressData::new, QuestProgressData::load, null), FILE)",
+                "ModernSavedData.get(server, FILE, QuestProgressData::new, QuestProgressData::load)")
+                .replace(
+                        "server.overworld().getDataStorage().computeIfAbsent(\n                new Factory<>(QuestProgressData::new, QuestProgressData::load), FILE)",
+                        "ModernSavedData.get(server, FILE, QuestProgressData::new, QuestProgressData::load)")
+    }
+    if (relative.endsWith("MailboxData.java")) {
+        text = text.replace(
+                "server.overworld().getDataStorage().computeIfAbsent(\n                new Factory<>(MailboxData::new, MailboxData::load, null), FILE)",
+                "ModernSavedData.get(server, FILE, MailboxData::new, MailboxData::load)")
+                .replace(
+                        "server.overworld().getDataStorage().computeIfAbsent(\n                new Factory<>(MailboxData::new, MailboxData::load), FILE)",
+                        "ModernSavedData.get(server, FILE, MailboxData::new, MailboxData::load)")
+    }
+    if (relative.endsWith("QuestControlData.java")) {
+        text = text.replace("player.server.overworld().getDataStorage().computeIfAbsent(new Factory<>(QuestControlData::new,",
+                'ModernSavedData.get(player.server, "xero_control_state", QuestControlData::new,')
+                .replace('return data; }, null),\n                "xero_control_state")', "return data; })")
+                .replace('return data; }),\n                "xero_control_state")', "return data; })")
+    }
+    if (relative.endsWith("QuestStructures.java")) {
+        text = text.replace("player.server.overworld().getDataStorage().computeIfAbsent(new SavedData.Factory<>(Sessions::new,",
+                "ModernSavedData.get(player.server, KEY, Sessions::new,")
+                .replace("server.overworld().getDataStorage().computeIfAbsent(new SavedData.Factory<>(Sessions::new,",
+                        "ModernSavedData.get(server, KEY, Sessions::new,")
+                .replace("return data; }, null), KEY)", "return data; })")
+                .replace("return data; }), KEY)", "return data; })")
+    }
+    return text
+}

@@ -304,8 +304,8 @@ final class CanvasEditorRegression {
                         String template = QuestStructureLibrary.worldTemplates(player).stream()
                                 .filter(name -> {
                                     try {
-                                        QuestStructureLibrary.previewTemplate(player, name);
-                                        return true;
+                                        return !QuestStructureLibrary.previewTemplate(player, name)
+                                                .getList("blocks", net.minecraft.nbt.Tag.TAG_COMPOUND).isEmpty();
                                     } catch (Exception unsupported) {
                                         return false;
                                     }

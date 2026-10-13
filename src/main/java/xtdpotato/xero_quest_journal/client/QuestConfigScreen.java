@@ -2,12 +2,14 @@ package xtdpotato.xero_quest_journal.client;
 
 import net.minecraft.Util;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.options.controls.KeyBindsScreen;
 import net.minecraft.network.chat.Component;
 import xtdpotato.xero_quest_journal.core.QuestConfig;
 
 import java.util.List;
+import java.util.ArrayList;
 import java.util.concurrent.CompletableFuture;
 
 /** Tabbed settings hub for personal controls and server-owned journal options. */
@@ -19,6 +21,9 @@ public final class QuestConfigScreen extends AnimatedQuestScreen {
     private boolean saveFailed;
     private CompletableFuture<String> configPending;
     private String configMessage = "";
+    private final SmoothScroll scroll = new SmoothScroll();
+    private final List<AbstractWidget> bodyWidgets = new ArrayList<>();
+    private int lastScroll;
 
     public QuestConfigScreen(Screen parent) {
         super(Component.translatable("screen.xero_quest_journal.config.title"));
@@ -30,19 +35,21 @@ public final class QuestConfigScreen extends AnimatedQuestScreen {
     }
     private int panelWidth() { return Math.min(650, width - 24); }
     private int panelLeft() { return (width - panelWidth()) / 2; }
-    private int panelTop() { return 39; }
-    private int panelBottom() { return height - 38; }
-    private int contentTop() { return panelTop() + 70; }
+    private int panelTop() { return height < 300 ? 12 : 39; }
+    private int panelBottom() { return height - (height < 300 ? 12 : 38); }
+    private int contentTop() { return panelTop() + 82; }
     private int footerY() { return panelBottom() - 31; }
+    private int bodyBottom() { return footerY() - 8; }
     private int rowStep() { return Math.clamp((panelBottom() - contentTop() - 40) / 7, 32, 44); }
     private int innerLeft() { return panelLeft() + 22; }
-    private int innerWidth() { return panelWidth() - 44; }
+    private int innerWidth() { return panelWidth() - 44 - (scroll.maximum() > 0 ? 12 : 0); }
 
     @Override
     protected void init() {
         if (!ClientEditMode.enabled()) { onClose(); return; }
         styles = ButtonStyleSheet.load();
         clearWidgets();
+        bodyWidgets.clear();
         var config = ClientPreferences.get();
         int left = panelLeft(), w = panelWidth();
         int tabY = panelTop() + 34, tabGap = 4;
@@ -50,30 +57,42 @@ public final class QuestConfigScreen extends AnimatedQuestScreen {
         for (int i = 0; i < TABS.size(); i++) {
             String value = TABS.get(i);
             var button = new StyledButton(left + 12 + i * (tabWidth + tabGap), tabY, tabWidth, 24,
-                    text("tab." + value), ignored -> { tab = value; init(); },
+                    text("tab." + value), ignored -> { tab = value; scroll.jump(0); init(); },
                     styles, "config-tab-" + value, "toolbar-button");
             button.setSelectionHighlighted(tab.equals(value));
             addRenderableWidget(button);
         }
-        int x = innerLeft(), half = (innerWidth() - 10) / 2, y = contentTop(), step = rowStep();
+        boolean stackGeneral = panelWidth() < 500;
+        int rows = switch (tab) {
+            case "general" -> stackGeneral ? 5 : 4;
+            case "appearance" -> 5;
+            case "advanced" -> 3;
+            default -> 4;
+        };
+        scroll.limit((rows - 1) * rowStep() + 26 - Math.max(1, bodyBottom() - contentTop()));
+        lastScroll = scroll.pixels();
+        int bodyStart = children().size();
+        int x = innerLeft(), half = (innerWidth() - 10) / 2, y = contentTop() - lastScroll, step = rowStep();
         switch (tab) {
             case "general" -> {
-                toggle("inventory", x, y, half, config.inventoryButton,
+                toggle("inventory", x, y, stackGeneral ? innerWidth() : half, config.inventoryButton,
                         value -> { config.inventoryButton = value; saveLocal(); });
-                toggle("hud", x + half + 10, y, half, config.trackingHud,
+                toggle("hud", stackGeneral ? x : x + half + 10, stackGeneral ? y + step : y,
+                        stackGeneral ? innerWidth() : half, config.trackingHud,
                         value -> { config.trackingHud = value; saveLocal(); });
-                addRenderableWidget(new StyledChoiceButton<>(x, y + step, innerWidth(), 24,
+                int remainingY = y + step * (stackGeneral ? 2 : 1);
+                addRenderableWidget(new StyledChoiceButton<>(x, remainingY, innerWidth(), 24,
                         text("default_view"), List.of("journal", "overview"), config.defaultView,
                         value -> text("view." + value), value -> {
                             config.defaultView = value;
                             saveLocal();
                         }, styles, "default-view"));
-                toggle("quest_reward_sources", x, y + step * 2, innerWidth(),
+                toggle("quest_reward_sources", x, remainingY + step, innerWidth(),
                         config.questRewardSources, value -> {
                             config.questRewardSources = value;
                             saveLocal();
                         });
-                addRenderableWidget(new StyledButton(x, y + step * 3, innerWidth(), 24, text("keys"),
+                addRenderableWidget(new StyledButton(x, remainingY + step * 2, innerWidth(), 24, text("keys"),
                         ignored -> minecraft.setScreen(new KeyBindsScreen(this, minecraft.options)),
                         styles, "keys"));
             }
@@ -139,6 +158,10 @@ public final class QuestConfigScreen extends AnimatedQuestScreen {
             }
             default -> throw new IllegalStateException("Unknown settings tab " + tab);
         }
+        bodyWidgets.addAll(children().subList(bodyStart, children().size()).stream()
+                .filter(AbstractWidget.class::isInstance).map(AbstractWidget.class::cast).toList());
+        if (scroll.maximum() > 0)
+            addRenderableWidget(new ScrollRail(left + w - 26, contentTop(), bodyBottom() - contentTop(), scroll));
         addRenderableWidget(new StyledButton(left + w - 112, footerY(), 96, 23,
                 Component.translatable("gui.done"), ignored -> onClose(), styles, "done"));
     }
@@ -204,20 +227,38 @@ public final class QuestConfigScreen extends AnimatedQuestScreen {
 
     @Override protected void renderContents(GuiGraphics g, int mouseX, int mouseY, float delta) {
         backdrop(g, 0xE51C222B);
+        scroll.advance();
+        int change = scroll.pixels() - lastScroll;
+        if (change != 0) bodyWidgets.forEach(widget -> widget.setY(widget.getY() - change));
+        lastScroll = scroll.pixels();
         int x = panelLeft(), y = panelTop(), w = panelWidth(), bottom = panelBottom();
         g.fill(x, y, x + w, bottom, 0xEF222832);
         g.fill(x, y, x + w, y + 30, 0xFF313B49);
         g.fill(x, y + 30, x + w, y + 31, 0xFF8F9EB1);
         g.drawString(font, title, x + 18, y + 10, 0xFFF3D48B, false);
-        g.drawString(font, text("section." + tab), x + 22, y + 67 - 10, 0xFFB8C7D9, false);
-        g.fill(x + 22, y + 69, x + w - 22, y + 70, 0x665D6978);
+        g.drawString(font, text("section." + tab), x + 22, y + 65, 0xFFB8C7D9, false);
+        g.fill(x + 22, y + 80, x + w - 22, y + 81, 0x665D6978);
         if (saveFailed)
-            g.drawString(font, text("server_save_failed"), x + 18, bottom - 18, 0xFFFF8C83, false);
+            g.drawString(font, font.plainSubstrByWidth(text("server_save_failed").getString(), w - 144),
+                    x + 18, bottom - 18, 0xFFFF8C83, false);
         else if (!configMessage.isBlank())
-            g.drawString(font, text(configMessage), x + 18, bottom - 18, 0xFF9DD7BC, false);
+            g.drawString(font, font.plainSubstrByWidth(text(configMessage).getString(), w - 144),
+                    x + 18, bottom - 18, 0xFF9DD7BC, false);
         super.renderContents(g, mouseX, mouseY, delta);
     }
 
+    @Override protected Viewport widgetViewport(AbstractWidget widget) {
+        return bodyWidgets.contains(widget) ? viewport(innerLeft(), contentTop(), innerLeft() + innerWidth(), bodyBottom()) : null;
+    }
+    @Override public boolean mouseScrolled(double x, double y, double horizontal, double vertical) {
+        if (inputBlocked()) return true;
+        if (scrollChoicePopup(x, y, horizontal, vertical)) return true;
+        if (x >= innerLeft() && x < panelLeft() + panelWidth() - 16 && y >= contentTop() && y < bodyBottom()) {
+            scroll.wheel(vertical * 28);
+            return true;
+        }
+        return super.mouseScrolled(x, y, horizontal, vertical);
+    }
     @Override public void onClose() { closeTo(parent); }
     @Override protected int animationHeaderBottom() { return 34; }
     @Override protected int animationFooterTop() { return panelBottom(); }

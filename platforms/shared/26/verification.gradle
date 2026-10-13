@@ -1,0 +1,15 @@
+sourceSets {
+    modernDataCheck {
+        java.srcDirs = ["../../shared/26/java", "../../shared/26/test"]
+        compileClasspath += sourceSets.main.compileClasspath
+        runtimeClasspath += output + compileClasspath
+    }
+}
+tasks.register("verifyModernSavedData", JavaExec) {
+    group = "verification"
+    description = "Check actual 26.x SavedData persistence without a game client or server."
+    dependsOn "modernDataCheckClasses"
+    classpath = sourceSets.modernDataCheck.runtimeClasspath
+    mainClass = "xtdpotato.xero_quest_journal.modern.ModernSavedDataCheck"
+    doFirst { layout.buildDirectory.get().asFile.mkdirs() }
+}

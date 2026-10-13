@@ -1,0 +1,240 @@
+version = project.mod_version
+group = project.maven_group
+def modernMinecraft = project.minecraft_version.startsWith("26.")
+if (!modernMinecraft) apply from: "../production-verification.gradle"
+if (modernMinecraft) apply from: "../../shared/26/source-transforms.gradle"
+if (modernMinecraft) apply from: "../../shared/26/verification.gradle"
+if (project.hasProperty("useDownloadMirror")) {
+    ext.loom_resources_base = "https://bmclapi2.bangbang93.com/assets/"
+    ext.loom_libraries_base = "https://bmclapi2.bangbang93.com/maven/"
+}
+
+base {
+    archivesName = project.archives_base_name
+}
+
+repositories {
+    maven { name = "AliyunCentral"; url = "https://maven.aliyun.com/repository/central" }
+    maven { name = "TencentCentral"; url = "https://mirrors.cloud.tencent.com/repository/maven-public" }
+    maven { url = "https://maven.fabricmc.net/" }
+    mavenCentral()
+}
+
+sourceSets {
+    main {
+        java.srcDirs = ["java", layout.buildDirectory.dir("generated/fabric/java")]
+        resources.srcDirs = ["resources", "../../../src/main/resources"]
+        if (project.minecraft_version != "1.21.1") {
+            resources.srcDir("../1.21.1/resources")
+        }
+        if (modernMinecraft) java.srcDir("../../shared/26/java")
+    }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    if (!project.minecraft_version.startsWith("26.")) mappings loom.officialMojangMappings()
+    if (project.minecraft_version.startsWith("26.")) {
+        implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+        implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+    } else {
+        modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+        modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+    }
+    implementation include("org.jsoup:jsoup:1.18.3")
+    implementation include("org.mozilla:rhino:1.7.15")
+}
+
+loom {
+    if (!project.minecraft_version.startsWith("26."))
+        accessWidenerPath = file("resources/xero_quest_journal.accesswidener")
+    runs.server { runDir("run-server-bootstrap") }
+}
+
+def generatedSources = layout.buildDirectory.dir("generated/fabric/java")
+def smokeModes = [
+        "smokeTest", "mailboxTest", "mailReferenceTest", "popupAnimationTest",
+        "mailBodyEditorTest", "mailAdminTest", "hotEventsTest", "spotlightUiTest",
+        "journeyTest", "journeyEditingTest", "overviewTest", "overviewAuthoringTest",
+        "journalFocusTest", "journalOrderTest", "generateTasksTest", "generatedDeletionTest",
+        "trackingHudTest", "lootTableTest", "canvasEditorTest", "locationItemTest", "mediaTest",
+        "controlGraphTest", "unlockGraphTest", "rewardPopupTest", "claimReceiptTest",
+        "rewardQualityTest", "creationTest", "animationTest", "runtimeTest", "structureSceneTest",
+        "buttonImageTest", "rewardsTest", "templateTest"
+]
+def requestedModes = smokeModes.findAll { project.hasProperty("fabric${it.capitalize()}") }
+def includeSmoke = !requestedModes.isEmpty()
+if (includeSmoke) {
+    sourceSets.main.resources.srcDir("../../../src/smoke/resources")
+    loom.runs.client {
+        runDir(project.findProperty("fabricSmokeRunDir") ?: "run-${requestedModes.first()}")
+        vmArg("-Dxero.${requestedModes.first()}=true")
+        vmArg("-Dxero.fabricSmoke=true")
+        vmArg("-Dxero.verificationDir=${layout.buildDirectory.dir('verification').get().asFile.absolutePath}")
+        programArg("--username")
+        programArg("Dev")
+    }
+}
+tasks.register("prepareFabricSources") {
+    inputs.property("includeSmoke", includeSmoke)
+    inputs.files(fileTree("../../../src/main/java"))
+    if (modernMinecraft) {
+        inputs.files(fileTree("../1.21.1/java"))
+        inputs.file("../../shared/26/source-transforms.gradle")
+    }
+    if (includeSmoke) {
+        inputs.files(fileTree("../../../src/smoke/java"))
+        inputs.files(fileTree("../smoke/java"))
+    }
+    outputs.dir(generatedSources)
+    doLast {
+        def outputRoot = generatedSources.get().asFile
+        delete(outputRoot)
+        def roots = [file("../../../src/main/java")]
+        if (modernMinecraft) roots << file("../1.21.1/java")
+        if (includeSmoke) roots.addAll([file("../../../src/smoke/java"), file("../smoke/java")])
+        roots.each { sourceRoot ->
+        fileTree(sourceRoot).matching { include "**/*.java" }.files.each { source ->
+            def relative = sourceRoot.toPath().relativize(source.toPath()).toString().replace("\\", "/")
+            if (sourceRoot == file("../../../src/main/java") && (
+                    relative == "xtdpotato/xero_quest_journal/XeroQuestJournal.java"
+                    || relative.startsWith("xtdpotato/xero_quest_journal/platform/")
+                    || relative.endsWith("XeroQuestClientModBus.java"))) return
+            def text = source.getText("UTF-8")
+            text = text.replaceAll(/(?m)^import net\.neoforged\.(?:bus\.api|fml\.common|api\.distmarker)\.[^;]+;\r?\n/, "")
+                    .replaceAll(/@EventBusSubscriber\([\s\S]*?\)\s*/, "")
+                    .replaceAll(/@SubscribeEvent(?:\([^)]*\))?\s*/, "")
+            [
+                    "net.neoforged.neoforge.network.PacketDistributor": "xtdpotato.xero_quest_journal.fabriccompat.FabricNetwork",
+                    "net.neoforged.neoforge.network.registration.PayloadRegistrar": "xtdpotato.xero_quest_journal.fabriccompat.FabricPayloadRegistrar",
+                    "net.neoforged.neoforge.network.handling.IPayloadContext": "xtdpotato.xero_quest_journal.fabriccompat.FabricPayloadContext",
+                    "net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent": "xtdpotato.xero_quest_journal.fabriccompat.FabricRegisterPayloads",
+                    "net.neoforged.fml.ModList": "xtdpotato.xero_quest_journal.fabriccompat.FabricModList",
+                    "net.neoforged.neoforge.server.ServerLifecycleHooks": "xtdpotato.xero_quest_journal.fabriccompat.FabricServerLifecycle",
+                    "net.neoforged.neoforge.common.NeoForge": "xtdpotato.xero_quest_journal.fabriccompat.FabricEventBus",
+                    "net.neoforged.neoforge.event.CommandEvent": "xtdpotato.xero_quest_journal.fabriccompat.FabricCommandEvent",
+                    "net.neoforged.neoforge.common.util.TriState": "xtdpotato.xero_quest_journal.fabriccompat.FabricEvents.TriState",
+                    "net.neoforged.neoforge.registries.DeferredRegister": "xtdpotato.xero_quest_journal.fabriccompat.FabricDeferredRegister",
+                    "net.neoforged.neoforge.client.event.ScreenEvent": "xtdpotato.xero_quest_journal.fabriccompat.FabricScreenEvent",
+                    "net.neoforged.neoforge.client.event.InputEvent": "xtdpotato.xero_quest_journal.fabriccompat.FabricInputEvent"
+            ].each { from, to -> text = text.replace(from, to) }
+            [
+                    "PacketDistributor": "FabricNetwork",
+                    "PayloadRegistrar": "FabricPayloadRegistrar",
+                    "IPayloadContext": "FabricPayloadContext",
+                    "RegisterPayloadHandlersEvent": "FabricRegisterPayloads",
+                    "ModList": "FabricModList",
+                    "ServerLifecycleHooks": "FabricServerLifecycle",
+                    "NeoForge": "FabricEventBus",
+                    "CommandEvent": "FabricCommandEvent",
+                    "ScreenEvent": "FabricScreenEvent",
+                    "InputEvent": "FabricInputEvent"
+            ].each { from, to ->
+                text = text.replaceAll("\\b${from}\\b", to)
+            }
+            text = text.replaceAll(/net\.neoforged\.neoforge\.event\.entity\.player\.\*/, "xtdpotato.xero_quest_journal.fabriccompat.FabricEvents.*")
+                    .replaceAll(/net\.neoforged\.neoforge\.(?:event\.(?:tick|server|level|entity(?:\.living|\.player)?)|client\.event)\.(\w+)/,
+                            'xtdpotato.xero_quest_journal.fabriccompat.FabricEvents.$1')
+                    .replace("net.neoforged.neoforge.event.RegisterCommandsEvent",
+                            "xtdpotato.xero_quest_journal.fabriccompat.FabricEvents.RegisterCommandsEvent")
+                    .replace("import net.neoforged.bus.api.IEventBus;\n",
+                            "import xtdpotato.xero_quest_journal.fabriccompat.FabricEventBus;\n")
+                    .replace("IEventBus", "xtdpotato.xero_quest_journal.fabriccompat.FabricEventBus")
+                    .replace("DeferredRegister", "FabricDeferredRegister")
+                    .replace("FabricFabricDeferredRegister", "FabricDeferredRegister")
+                    .replaceAll(/(\w+)\.getPersistentData\(\)/, 'xtdpotato.xero_quest_journal.fabriccompat.FabricPlayerData.get($1)')
+            text = text.replace("new Factory<>(QuestProgressData::new, QuestProgressData::load)",
+                    "new Factory<>(QuestProgressData::new, QuestProgressData::load, null)")
+                    .replace("new Factory<>(MailboxData::new, MailboxData::load)",
+                            "new Factory<>(MailboxData::new, MailboxData::load, null)")
+                    .replace('return data; }),', 'return data; }, null),')
+                    .replace('return data; }), KEY', 'return data; }, null), KEY')
+            if (relative.endsWith("QuestGenerator.java")) {
+                text = text.replace("container.getModInfo().getDisplayName()", "container.getMetadata().getName()")
+            }
+            if (relative.endsWith("QuestKubeJs.java")) {
+                text = text.replace("player.server.getServerResources().managers()",
+                        "xtdpotato.xero_quest_journal.fabriccompat.FabricServerAccess.resources(player.server)")
+            }
+            if (relative.startsWith("xtdpotato/xero_quest_journal/smoke/")) {
+                text = text.replace('Path.of("..", "build", "verification")',
+                        'Path.of(System.getProperty("xero.verificationDir", "../build/verification"))')
+                        .replace('Path.of("..", "build", "verification", ',
+                                'Path.of(System.getProperty("xero.verificationDir", "../build/verification"), ')
+                text = text.replace("import net.neoforged.neoforge.client.gui.IConfigScreenFactory;", "")
+                        .replace("IConfigScreenFactory.getForMod(FabricModList.get().getModContainerById(XeroQuestJournal.MOD_ID)\n                            .orElseThrow().getModInfo()).isPresent()",
+                                "new xtdpotato.xero_quest_journal.client.QuestConfigScreen(null) != null")
+                        .replace("net.neoforged.fml.loading.FMLPaths.CONFIGDIR.get()",
+                                "xtdpotato.xero_quest_journal.platform.PlatformServices.configDir()")
+                        .replace("setRotation(yaw, pitch, roll)", "setRotation(yaw, pitch)")
+                        .replace("QuestKeyMappings.OPEN_MAILBOX.getKey()",
+                                "com.mojang.blaze3d.platform.InputConstants.Type.KEYSYM.getOrCreate(org.lwjgl.glfw.GLFW.GLFW_KEY_F8)")
+                if (relative.endsWith("ClientSmokeTest.java")) {
+                    text = text.replace('"hud-toggle"', '"config-hud"')
+                            .replace("    static long renderedFrames;", "    public static long renderedFrames;")
+                }
+                text = text.replace("settings factory", "settings screen")
+                if (relative.endsWith("StructureSceneRegression.java")) {
+                    text = text.replace("var quest = QuestRepository.find(ID);\n        QuestStructures.enter",
+                            "FabricTravelChecks.blockedTravel(p);\n        var quest = QuestRepository.find(ID);\n        QuestStructures.enter")
+                            .replace("QuestStructures.enter(p, quest, quest.presentation().controls().getFirst());",
+                                    "QuestStructures.enter(p, quest, quest.presentation().controls().getFirst());\n        FabricTravelChecks.blockedTravel(p);")
+                }
+            }
+            if (modernMinecraft) text = adaptModernMinecraftSource(relative, text)
+            def destination = new File(outputRoot, relative)
+            destination.parentFile.mkdirs()
+            destination.setText(text, "UTF-8")
+        }
+        }
+    }
+}
+tasks.named("compileJava") { dependsOn "prepareFabricSources" }
+tasks.withType(Zip).configureEach {
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+}
+tasks.named("jar") {
+    from("../../../LICENSE") { rename { "${it}_${project.archives_base_name}" } }
+}
+
+processResources {
+    inputs.property "version", project.version
+    inputs.property "minecraft_version", project.minecraft_version
+    inputs.property "loader_version", project.loader_version
+    inputs.property "fabric_version", project.fabric_version
+    exclude "META-INF/neoforge.mods.toml", "META-INF/mods.toml"
+    filesMatching("fabric.mod.json") {
+        expand "version": project.version, "minecraft_version": project.minecraft_version,
+                "loader_version": project.loader_version, "fabric_version": project.fabric_version
+    }
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(project.minecraft_version.startsWith("26.") ? 25 : 21)
+}
+// Mercury/JDT fails on this Java 21 source tree. Keep sources in their declared
+// Mojang names as a ZIP instead of publishing a partly remapped sources JAR.
+tasks.register("namedSourcesZip", Zip) {
+    dependsOn "prepareFabricSources"
+    archiveClassifier = "mojmap-sources"
+    from(sourceSets.main.allSource)
+    from("../../../LICENSE")
+}
+tasks.named("assemble") { dependsOn "namedSourcesZip" }
+if (includeSmoke) {
+    tasks.named("runClient") {
+        doFirst { delete(layout.buildDirectory.file("verification/result.txt")) }
+        doLast {
+            def result = layout.buildDirectory.file("verification/result.txt").get().asFile
+            if (!result.exists() || !result.text.startsWith("PASS:"))
+                throw new GradleException(result.exists() ? result.text : "Fabric client did not produce a result")
+        }
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = "UTF-8"
+    options.release = project.minecraft_version.startsWith("26.") ? 25 : 21
+    if (modernMinecraft) options.compilerArgs.addAll(["-Xmaxerrs", "5000"])
+}

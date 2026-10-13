@@ -1,0 +1,8 @@
+{
+  "required": true,
+  "package": "xtdpotato.xero_quest_journal.fabric.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "mixins": ["EntityDataMixin", "ItemPickupMixin", "ResultSlotMixin", "FurnaceResultSlotMixin", "LivingEntityMixin", "EntityTravelMixin", "ServerPlayerTravelMixin", "ServerPlayerTeleportMixin", "PlayerWakeMixin", "AdvancementMixin", "BlockItemMixin"],
+  "client": ["MouseHandlerMixin", "KeyboardHandlerMixin", "MinecraftScreenMixin", "ContainerInputMixin"],
+  "injectors": { "defaultRequire": 1 }
+}

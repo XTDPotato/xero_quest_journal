@@ -1,0 +1,64 @@
+sourceSets {
+    productionClientCheck {
+        java.srcDirs = ["../smoke/production/java"]
+        resources.srcDirs = ["../smoke/production/resources"]
+        compileClasspath += sourceSets.main.compileClasspath + sourceSets.main.output
+    }
+}
+def clientCheckJar = tasks.register("productionClientCheckJar", Jar) {
+    from(sourceSets.productionClientCheck.output)
+    archiveFileName = "xero-production-client-check-dev.jar"
+    destinationDirectory = layout.buildDirectory.dir("production-check")
+}
+def remapTaskType = project.plugins.getPlugin("fabric-loom").getClass().classLoader
+        .loadClass("net.fabricmc.loom.task.RemapJarTask")
+def remapClientCheck = tasks.register("remapProductionClientCheck", remapTaskType) {
+    dependsOn clientCheckJar
+    inputFile = clientCheckJar.flatMap { it.archiveFile }
+    archiveFileName = "xero-production-client-check.jar"
+    destinationDirectory = layout.buildDirectory.dir("production-check")
+    addNestedDependencies = false
+    classpath.from(sourceSets.main.compileClasspath, sourceSets.main.output)
+}
+tasks.register("extractProductionNatives", Sync) {
+    from { configurations.minecraftNatives.collect { zipTree(it) } }
+    into(layout.buildDirectory.dir("production-natives"))
+    exclude "META-INF/**"
+}
+tasks.register("exportProductionRuntime") {
+    group = "verification"
+    dependsOn "remapJar"
+    doLast {
+        def named = sourceSets.main.runtimeClasspath.files.find {
+            it.name.startsWith("minecraft-merged-") && !it.name.contains("intermediary")
+        }
+        if (named == null) throw new GradleException("Could not locate the Minecraft runtime")
+        def intermediaryFolder = new File(gradle.gradleUserHomeDir,
+                "caches/fabric-loom/minecraftMaven/net/minecraft/minecraft-merged-intermediary/${named.parentFile.name}")
+        def intermediary = fileTree(intermediaryFolder).matching { include "*.jar" }.files.find()
+        if (intermediary == null) throw new GradleException("Intermediary runtime is missing: ${intermediaryFolder}")
+        def originalMods = configurations.modCompileClasspath.files
+        def libraries = configurations.minecraftRuntimeLibraries.files +
+                configurations.loaderLibraries.files + originalMods.findAll { it.name.startsWith("fabric-loader-") }
+        def releaseJar = tasks.named("remapJar").get().archiveFile.get().asFile
+        def assets = new File(gradle.gradleUserHomeDir, "caches/fabric-loom/assets")
+        def assetIndex = fileTree(new File(assets, "indexes")).matching {
+            include "${project.minecraft_version}-*.json"
+        }.files.find()
+        def runtime = [minecraft: project.minecraft_version,
+                       jar: releaseJar.absolutePath,
+                       mods: ([releaseJar] + originalMods.findAll { it.name.startsWith("fabric-api-") })
+                               .collect { it.absolutePath },
+                       classpath: ([intermediary, releaseJar] + libraries).collect { it.absolutePath }.unique(),
+                       assets: assets.absolutePath,
+                       assetIndex: assetIndex == null ? "" : assetIndex.name.replaceFirst(/\.json$/, ""),
+                       natives: layout.buildDirectory.dir("production-natives").get().asFile.absolutePath,
+                       clientCheck: remapClientCheck.flatMap { it.archiveFile }.get().asFile.absolutePath]
+        def output = layout.buildDirectory.file("production-runtime.json").get().asFile
+        output.parentFile.mkdirs()
+        output.setText(groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(runtime)), "UTF-8")
+    }
+}
+tasks.register("prepareProductionClientCheck") {
+    dependsOn "exportProductionRuntime", remapClientCheck, "extractProductionNatives"
+}

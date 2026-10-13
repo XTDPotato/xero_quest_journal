@@ -1,11 +1,15 @@
 # Xero Quest Journal
 
-**Minecraft 1.21.1 · NeoForge · Java 21 · 原生任务日志与可视化编辑器**
+**Minecraft 1.20.1 / 1.21.1 · Forge / NeoForge / Fabric · 原生任务日志与可视化编辑器**
 
 项目采用单仓库、单模组 ID 的多加载器布局。当前完整构建基线仍是
-Minecraft 1.21.1 NeoForge；Forge 1.20.1 已接入共享功能并进行真实客户端专项回归；
-1.21.1 Fabric 已有独立 Loom 构建骨架，1.20.1 Fabric、26.1–26.3 的平台适配正在按矩阵推进，
-不会把不同加载器的运行时代码混装在同一个 JAR 中。详见 [版本与加载器矩阵](docs/porting-matrix.md)。
+Minecraft 1.21.1 NeoForge。Forge 1.20.1、Fabric 1.20.1 和 Fabric 1.21.1
+已接入共享功能，各移植版本通过 33 项客户端/集成服务器专项回归。
+两个 Fabric 发布 JAR 另通过生产专用服务器初始化检查；服务器保持 `eula=false`，
+未验证远端联机。26.1–26.3 已建立 Java 25 工程并验证原生存档适配层，
+完整渲染、输入与运行时迁移尚未完成，暂无可安装包。
+每个游戏版本/加载器使用独立 JAR。详见 [版本矩阵](docs/porting-matrix.md)
+和 [Fabric 验证报告](docs/fabric-verification.md)。
 
 Xero Quest Journal 面向整合包作者、地图作者与喜欢任务引导的玩家，把任务列表、章节历程、世界目标、奖励和邮箱放在一套原生游戏界面中。作者可以在本地世界内编辑任务，也可以用 JSON、HTML 或 XML 配置任务文件。
 
@@ -307,6 +311,19 @@ build/libs/xero_quest_journal-0.1.0-sources.jar
 
 `build` 包含核心 JAR 的 **5,000,000 字节上限检查**与可选媒体依赖隔离检查。它不会自动运行真实客户端 smoke 测试。
 
+多版本构建（1.20.1 使用 Java 17，1.21.1 使用 Java 21）：
+
+```powershell
+.\gradlew.bat buildSelected "-Pmc_target=1.20.1" "-Ploader=forge"
+.\gradlew.bat buildSelected "-Pmc_target=1.20.1" "-Ploader=fabric"
+.\gradlew.bat buildSelected "-Pmc_target=1.21.1" "-Ploader=fabric"
+```
+
+Fabric 输出位于 `platforms/fabric/<版本>/build/libs`；安装时还需对应版本的 Fabric API。
+1.21.1 的可读源码另打包为 `build/distributions/*-mojmap-sources.zip`，
+源码 ZIP 不用于安装。下载缓慢时可在独立 Fabric 命令后加 `-PuseDownloadMirror`，
+将游戏资源与库下载切至 BMCLAPI；Maven 已配置阿里云等镜像。
+
 本项目配置了腾讯 Gradle 镜像与国内 Maven 镜像；若所在网络无法访问，可以在 `gradle/wrapper/gradle-wrapper.properties` 和 Gradle 仓库配置中切换下载源。不要删除必需的解析或脚本依赖来压缩体积。
 
 ### 可选媒体
@@ -335,9 +352,12 @@ src/
   smoke/                   真实客户端回归及测试夹具
 platforms/
   neoforge/1.21.1/         当前完整 NeoForge 平台入口和元数据
-  fabric/1.21.1/           Fabric 平台入口骨架
-  forge/1.20.1/             1.20.1 Forge 适配器预留目录
+  fabric/1.20.1/           Fabric 旧版网络和 Minecraft API 适配
+  fabric/1.21.1/           Fabric 事件、网络、持久化、输入和渲染钩子
+  fabric/shared-build.gradle  Fabric 共享源码生成及构建
+  forge/1.20.1/            Forge 完整功能适配
   */26.1..26.3/             26.x 分版本适配目录
+  shared/26/               Java 25 / Gradle 9 启动器与原生存档适配层
 docs/
   images/                  README 使用的项目截图
   guide.md                 玩家与作者指南

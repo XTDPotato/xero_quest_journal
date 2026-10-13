@@ -1,0 +1,71 @@
+version = project.mod_version
+group = project.maven_group
+base { archivesName = project.archives_base_name }
+apply from: "../../shared/26/source-transforms.gradle"
+apply from: "../../shared/26/verification.gradle"
+repositories {
+    maven {
+        name = "BMCLNeoForge"
+        url = "https://bmclapi2.bangbang93.com/maven/"
+        content { includeGroupByRegex "net\\.neoforged.*" }
+    }
+    maven { url = "https://maven.aliyun.com/repository/central" }
+    maven { url = "https://mirrors.cloud.tencent.com/repository/maven-public" }
+    maven { url = "https://maven.neoforged.net/releases" }
+    mavenCentral()
+}
+java.toolchain.languageVersion = JavaLanguageVersion.of(25)
+sourceSets {
+    main {
+        java.srcDirs = [layout.buildDirectory.dir("generated/modern/java"), "../../shared/26/java"]
+        resources.srcDirs = ["../../../src/main/resources"]
+    }
+}
+tasks.register("prepareModernSources") {
+    inputs.files(fileTree("../../../src/main/java"), fileTree("../1.21.1/java"))
+    inputs.file("../../shared/26/source-transforms.gradle")
+    def generated = layout.buildDirectory.dir("generated/modern/java")
+    outputs.dir(generated)
+    doLast {
+        def root = generated.get().asFile
+        delete(root)
+        [file("../../../src/main/java"), file("../1.21.1/java")].each { sourceRoot ->
+            fileTree(sourceRoot).matching { include "**/*.java" }.files.each { source ->
+                def relative = sourceRoot.toPath().relativize(source.toPath()).toString().replace("\\", "/")
+                def destination = new File(root, relative)
+                destination.parentFile.mkdirs()
+                destination.setText(adaptModernMinecraftSource(relative, source.getText("UTF-8")), "UTF-8")
+            }
+        }
+    }
+}
+tasks.named("compileJava") { dependsOn "prepareModernSources" }
+neoForge {
+    version = project.neoforge_version
+    runs {
+        client { client(); gameDirectory = file("run") }
+        server { server(); gameDirectory = file("run-server") }
+    }
+    mods { xero_quest_journal { sourceSet sourceSets.main } }
+}
+dependencies {
+    implementation "org.jsoup:jsoup:1.18.3"
+    implementation "org.mozilla:rhino:1.7.15"
+    jarJar "org.jsoup:jsoup:1.18.3"
+    jarJar "org.mozilla:rhino:1.7.15"
+}
+processResources {
+    inputs.property "version", project.version
+    filesMatching("META-INF/neoforge.mods.toml") {
+        expand "version": project.version
+        filter { line ->
+            line.replace('versionRange="[1.21.1]"', "versionRange=\"[${project.minecraft_version}]\"")
+                    .replace('versionRange="[21.1,)"', "versionRange=\"[${project.neoforge_version},)\"")
+        }
+    }
+}
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = "UTF-8"
+    options.release = 25
+    options.compilerArgs.addAll(["-Xmaxerrs", "200"])
+}

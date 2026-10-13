@@ -6,6 +6,7 @@
 /run-*/
 **/.gradle/
 **/build/
+**/logs/
 **/run/
 **/run-*/
 *.class
