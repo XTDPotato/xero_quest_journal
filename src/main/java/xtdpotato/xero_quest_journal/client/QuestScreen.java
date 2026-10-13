@@ -7575,6 +7575,11 @@ public final class QuestScreen extends AnimatedQuestScreen {
             }
             return coordinateEditor.keyPressed(key, scan, modifiers);
         }
+        if (key == GLFW.GLFW_KEY_V && (modifiers & GLFW.GLFW_MOD_CONTROL) != 0
+                && taskSearch != null && getFocused() == taskSearch && taskSearch.isFocused()) {
+            taskSearch.insertText(minecraft.keyboardHandler.getClipboard());
+            return true;
+        }
         if (key == GLFW.GLFW_KEY_LEFT_CONTROL || key == GLFW.GLFW_KEY_RIGHT_CONTROL) selectionControlDown = true;
         if (iconPicker != null) {
             if (key == GLFW.GLFW_KEY_ESCAPE) {

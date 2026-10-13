@@ -71,9 +71,9 @@ final class ScrollViewportRegression {
         int x = Math.max(first.getX() + 6, first.getRight() - 24);
         try (var image = Screenshot.takeScreenshot(game.getMainRenderTarget())) {
             // Both samples are in the blank fixed padding, where input backgrounds used to leak.
-            require(rgb(image, screen.width, screen.height, x, top - 2) == 0x292E36,
+            require(rgb(image, screen.width, screen.height, x, top - 2) == 0x424A5C,
                     "Input background escaped above property viewport");
-            require(rgb(image, screen.width, screen.height, x, bottom + 2) == 0x292E36,
+            require(rgb(image, screen.width, screen.height, x, bottom + 2) == 0x424A5C,
                     "Input background escaped below property viewport");
             require(rgb(image, screen.width, screen.height, x, top + 2) == 0,
                     "Partially visible input was hidden instead of clipped");

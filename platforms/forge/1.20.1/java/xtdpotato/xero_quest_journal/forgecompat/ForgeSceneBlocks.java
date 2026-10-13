@@ -21,7 +21,7 @@ public final class ForgeSceneBlocks {
             DeferredRegister.create(ForgeRegistries.BLOCKS, XeroQuestJournal.MOD_ID);
     private static final DeferredRegister<Item> ITEMS =
             DeferredRegister.create(ForgeRegistries.ITEMS, XeroQuestJournal.MOD_ID);
-    private static final RegistryObject<CompletionBlock> COMPLETION = BLOCKS.register(
+    public static final RegistryObject<CompletionBlock> COMPLETION = BLOCKS.register(
             "scene_completion",
             () -> new CompletionBlock(BlockBehaviour.Properties.of().strength(2)
                     .lightLevel(state -> state.getValue(RedstoneLampBlock.LIT) ? 15 : 0)));

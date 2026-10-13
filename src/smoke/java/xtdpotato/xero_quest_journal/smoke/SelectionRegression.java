@@ -18,6 +18,7 @@ public final class SelectionRegression {
     private static String first;
     private static String second;
     private static String standalone;
+    private static StyledButton cssTarget;
 
     public static boolean tick(Minecraft game, String guide) throws Exception {
         if (phase > 0 && game.screen instanceof AnimatedQuestScreen screen && screen.inputBlocked()) {
@@ -96,6 +97,9 @@ public final class SelectionRegression {
                 require(!find(game, "group-" + group).selectionHighlighted(), "Previous group still highlighted");
                 EditorRegression.reveal(game, standalone);
                 click(game, find(game, "quest-" + standalone));
+                GLFW.glfwSetCursorPos(game.getWindow().getWindow(),
+                        (game.screen.width - 2) * game.getWindow().getGuiScale(),
+                        (game.screen.height - 2) * game.getWindow().getGuiScale());
             }
             case 4 -> {
                 checkSelected(game, standalone, "");
@@ -103,10 +107,18 @@ public final class SelectionRegression {
                     assertBackground(game, image, find(game, "quest-" + standalone), 0xECE6DA);
                     image.writeToFile(Path.of("..", "build", "verification", "28-selection-standalone.png"));
                 }
-                find(game, "quest-" + standalone).extraCss(
+                cssTarget = find(game, "quest-" + standalone);
+                cssTarget.extraCss(
                         ".quest-button:selected { background-color: #e8f2ff; color: #19202d; }");
             }
             case 5 -> {
+                var current = find(game, "quest-" + standalone);
+                if (current != cssTarget) {
+                    cssTarget = current;
+                    cssTarget.extraCss(
+                            ".quest-button:selected { background-color: #e8f2ff; color: #19202d; }");
+                    return false;
+                }
                 try (var image = net.minecraft.client.Screenshot.takeScreenshot(game.getMainRenderTarget())) {
                     assertBackground(game, image, find(game, "quest-" + standalone), 0xE8F2FF);
                 }
@@ -144,8 +156,10 @@ public final class SelectionRegression {
     }
 
     private static void assertBackground(Minecraft game, NativeImage image, StyledButton button, int rgb) {
-        require(colorAt(game, image, button.getX() + 18, button.getY() + 3) == rgb,
-                "Unexpected selected background on " + button.styleId());
+        int actual = colorAt(game, image, button.getX() + 18, button.getY() + 3);
+        require(actual == rgb,
+                "Unexpected selected background on " + button.styleId()
+                        + ": expected=" + Integer.toHexString(rgb) + ", actual=" + Integer.toHexString(actual));
     }
 
     private static void assertBorder(Minecraft game, NativeImage image, StyledButton button, int rgb) {

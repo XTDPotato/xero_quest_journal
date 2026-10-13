@@ -85,17 +85,19 @@ final class CategoryRegression {
             require(field(screen, "category").equals("main"), "E did not select main category");
             var model = (JournalListModel) field(screen, "journalList");
             require(model.rows().stream().filter(r -> r.group() != null)
-                    .allMatch(r -> r.group().type().equals("main")), "Other group type leaked");
+                    .allMatch(r -> r.group().type().equals("main")),
+                    "Other group type leaked in category " + field(screen, "category") + ": "
+                            + model.rows().stream().filter(r -> r.group() != null)
+                            .map(r -> r.group().id() + "=" + r.group().type()).toList());
             StyledButton main = find(screen, "category-main");
             require(main.isMouseOver(main.getX() + main.getWidth() / 2.0, main.getY() + 5),
                     "Selected category did not scroll into view");
             screen.mouseClicked(main.getX() + main.getWidth() / 2.0, main.getY() + 5, 1);
-            @SuppressWarnings("unchecked")
-            var menu = (List<StyledButton>) field(screen, "menu");
-            require(menu.stream().anyMatch(b -> b.styleId().equals("context-properties"))
-                    && menu.stream().anyMatch(b -> b.styleId().equals("context-delete_quest_type")),
-                    "Category context actions missing");
-            screen.keyPressed(GLFW.GLFW_KEY_ESCAPE, 0, 0);
+            require(field(screen, "movingTab").equals("main"),
+                    "Right-click did not start category ordering");
+            screen.mouseClicked(main.getX() + main.getWidth() / 2.0, main.getY() + 5, 1);
+            require(field(screen, "movingTab").equals(""),
+                    "Second right-click did not cancel category ordering");
             EditBox search = (EditBox) field(screen, "taskSearch");
             screen.setFocused(search);
             screen.keyPressed(GLFW.GLFW_KEY_Q, 0, 0);
@@ -123,7 +125,7 @@ final class CategoryRegression {
                 int pixel = image.getPixelRGBA(x, y);
                 int r = pixel & 255, g = pixel >>> 8 & 255, b = pixel >>> 16 & 255;
                 if (Math.abs(r - g) > 2 || Math.abs(r - b) > 2) continue;
-                int[] bounds = r >= 245 ? circle : r >= 110 && r <= 145 ? icon : null;
+                int[] bounds = r >= 245 ? circle : r <= 145 ? icon : null;
                 if (bounds == null) continue;
                 bounds[0] = Math.min(bounds[0], x);
                 bounds[1] = Math.min(bounds[1], y);

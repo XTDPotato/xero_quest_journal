@@ -82,8 +82,8 @@ final class MailReferenceRegression {
             case 2 -> {
                 if (ClientMailbox.messages().size() < 29) return false;
                 if (rows(inbox).isEmpty()) return false;
-                require(((List<?>) call(inbox, "visibleMessages")).size() == ClientMailbox.messages().size() - 2,
-                        "Archived mail remains in inbox");
+                require(((List<?>) call(inbox, "visibleMessages")).size() == ClientMailbox.messages().size(),
+                        "Keepsake mail disappeared from the inbox");
                 require(ClientMailbox.messages().stream().filter(MailboxRuntime.View::treasureUnseen).count() == 2, "Missing arrival marks");
                 capture(game, "mail-reference-inbox.png");
                 Object motion = field(inbox, "rowMotion");

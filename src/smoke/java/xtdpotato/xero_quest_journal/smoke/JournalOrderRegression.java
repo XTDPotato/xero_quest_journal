@@ -68,7 +68,11 @@ final class JournalOrderRegression {
             }
             case 2 -> {
                 if (!settled()) return false;
-                require(groupTasks("order_group_main").equals(List.of(B, A, C)), "Task did not move down");
+                require(groupTasks("order_group_main").equals(List.of(B, A, C)),
+                        "Task did not move down: rows=" + groupTasks("order_group_main")
+                                + ", saved=" + QuestRepository.journalOrder().tasks()
+                                + ", catalog=" + ClientQuestProgress.catalogRevision()
+                                + ", screen=" + field(screen, "revision"));
                 require(field(screen, "selectedId").equals(A), "Move lost task selection");
                 require(field(screen, "movingTask").equals(A), "Task mode cleared after one move");
                 require(button("order-previous").active && button("order-next").active, "Move controls not refreshed");
@@ -380,11 +384,18 @@ final class JournalOrderRegression {
         screen = QuestScreen.task(null, A);
         game.setScreen(screen);
         set(screen, "editMode", true);
+        set(screen, "category", "active");
         set(screen, "searchQuery", "order_");
         screen.init(game, screen.width, screen.height);
     }
 
     private static boolean settled() throws Exception {
+        if (ClientQuestProgress.catalogRevision() != QuestRepository.revision()) return false;
+        if ((long) field(screen, "revision") != ClientQuestDefinitions.revision()) {
+            screen.init(Minecraft.getInstance(), screen.width, screen.height);
+            wait = 3;
+            return false;
+        }
         boolean hadRequest = field(screen, "orderPending") != null;
         screen.tick();
         if (hadRequest && field(screen, "orderPending") == null) {

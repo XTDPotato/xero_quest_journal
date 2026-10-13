@@ -6,7 +6,7 @@ NeoForge 和 Fabric 的运行时代码塞进同一个安装包。
 
 | Minecraft | NeoForge | Fabric | 备注 |
 | --- | --- | --- | --- |
-| 1.20.1 | 不提供官方 NeoForge 目标 | Fabric 未迁移；**Forge 共享功能迁移已完成构建与客户端启动验证** | Forge 47.3.0。服务端命令测试仍待接受 EULA，payload 联机往返和逐屏交互回归未完成。 |
+| 1.20.1 | 不提供官方 NeoForge 目标 | Fabric 未迁移；**Forge 共享功能已迁移并通过 33 项客户端/集成服务器回归** | Forge 47.3.0。TaCZ 专项跳过；专用/远端服务器未测试，详见[报告](forge-1.20.1-verification.md)。 |
 | 1.21.1 | **完整基线构建通过** | **独立骨架构建通过** | NeoForge 是完整功能基线；Fabric 目前验证 Loom、入口和平台服务，尚未接入完整任务事件/网络/UI。 |
 | 26.1 | 占位目录 | 占位目录 | 尚未接入构建工程；目标使用 Java 25 和新版本映射。 |
 | 26.2 | 占位目录 | 占位目录 | 尚未接入构建工程；需独立配置该版本 API 和插件。 |
@@ -56,8 +56,8 @@ Forge 1.20.1 使用 Java 17；NeoForge 1.21.1 和 Fabric 1.21.1 使用 Java 21�
 - `src/main/java`：共享任务模型、运行时、网络载荷和 UI 逻辑。
 - `platforms/neoforge/1.21.1`：当前 NeoForge 平台实现。
 - `platforms/fabric/1.21.1`：可构建的 Fabric 入口骨架，尚未补齐事件、网络注册和客户端 UI。
-- `platforms/forge/1.20.1`：共享服务端和客户端源码已完成 Forge API 转换及构建；客户端启动通过，
-  还需 EULA 许可后的服务器命令测试、网络往返和交互回归。
+- `platforms/forge/1.20.1`：共享服务端和客户端源码已完成 Forge API 转换；真实客户端与集成服务器
+  验证了网络往返、任务、奖励、邮件、编辑器和结构场景。专用/远端服务器与可选集成仍需独立验证。
 - `platforms/{neoforge,fabric}/26.x`：26.1、26.2、26.3 分版本适配目录。
 - `gradle/versions/*.properties`：版本线的 Java/加载器依赖声明，不代表该组合已经通过编译。
 

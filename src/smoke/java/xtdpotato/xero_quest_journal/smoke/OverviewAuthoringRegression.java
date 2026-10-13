@@ -166,7 +166,7 @@ final class OverviewAuthoringRegression {
             case 12 -> {
                 ClientPreferences.get().reducedMotion = false;
                 groupPlus();
-                wait = 4;
+                wait = 1;
             }
             case 13 -> {
                 require(screen.menuAnimationPosition("context") > 0 && screen.menuAnimationPosition("context") < 1,
@@ -178,7 +178,7 @@ final class OverviewAuthoringRegression {
                 require(!screen.inputBlocked(), "Opened menu did not release transition input");
                 screen.mouseClicked(screen.width - 2, screen.height - 2, 0);
                 require(menuIds().isEmpty(), "Outside click did not clear menu");
-                wait = 3;
+                wait = 1;
             }
             case 15 -> {
                 require(screen.menuAnimationPosition("context") > 0 && screen.menuAnimationPosition("context") < 1,

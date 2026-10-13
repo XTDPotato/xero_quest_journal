@@ -8,6 +8,19 @@ group = project.maven_group
 def includeSharedSources = project.hasProperty("includeShared")
 def includeSharedServer = !project.hasProperty("bootstrapOnly")
 def includeSharedClient = !project.hasProperty("bootstrapOnly")
+def forgeSmokeModes = [
+        "smokeTest", "mailboxTest", "mailReferenceTest", "popupAnimationTest",
+        "mailBodyEditorTest", "mailAdminTest", "hotEventsTest", "spotlightUiTest",
+        "journeyTest", "journeyEditingTest", "overviewTest", "overviewAuthoringTest",
+        "journalFocusTest", "journalOrderTest", "generateTasksTest", "tacticalCompatibilityTest",
+        "generatedDeletionTest", "trackingHudTest", "lootTableTest", "canvasEditorTest",
+        "locationItemTest", "mediaTest", "controlGraphTest", "unlockGraphTest",
+        "rewardPopupTest", "claimReceiptTest", "rewardQualityTest", "creationTest",
+        "animationTest", "runtimeTest", "structureSceneTest", "buttonImageTest",
+        "rewardsTest", "templateTest"
+]
+def requestedForgeSmokeModes = forgeSmokeModes.findAll { project.hasProperty("forge${it.capitalize()}") }
+def includeForgeSmoke = !requestedForgeSmokeModes.isEmpty()
 
 base {
     archivesName = project.archives_base_name
@@ -21,6 +34,12 @@ minecraft {
     runs {
         client {
             workingDirectory project.file("run")
+            if (includeForgeSmoke) {
+                def mode = requestedForgeSmokeModes.first()
+                property "xero.${mode}", "true"
+                property "xero.forge1201Test", "true"
+                workingDirectory project.file(project.findProperty("forgeSmokeRunDir") ?: "run-${mode}")
+            }
             property "forge.logging.markers", "REGISTRIES"
             property "forge.logging.console.level", "debug"
             mods {
@@ -60,18 +79,24 @@ sourceSets {
         java.srcDirs = includeSharedSources || includeSharedServer
                 ? ["java", layout.buildDirectory.dir("generated/forge/java")]
                 : ["java"]
-        resources.srcDirs = ["resources", "../../../src/main/resources"]
+        resources.srcDirs = includeForgeSmoke
+                ? ["resources", "../../../src/main/resources", "../../../src/smoke/resources"]
+                : ["resources", "../../../src/main/resources"]
     }
 }
 
 def forgeGeneratedSources = layout.buildDirectory.dir("generated/forge/java")
 tasks.register("prepareForgeSources") {
+    inputs.property("includeForgeSmoke", includeForgeSmoke)
     inputs.files(fileTree("../../../src/main/java"))
+    if (includeForgeSmoke) inputs.files(fileTree("../../../src/smoke/java"))
     outputs.dir(forgeGeneratedSources)
     doLast {
         def outputRoot = forgeGeneratedSources.get().asFile
         project.delete(outputRoot)
-        def sourceRoot = file("../../../src/main/java")
+        def sourceRoots = [file("../../../src/main/java")]
+        if (includeForgeSmoke) sourceRoots << file("../../../src/smoke/java")
+        sourceRoots.each { sourceRoot ->
         fileTree(sourceRoot).matching { include "**/*.java" }.files.each { source ->
             def relative = sourceRoot.toPath().relativize(source.toPath()).toString().replace("\\", "/")
             if ((includeSharedServer && ((relative.startsWith("xtdpotato/xero_quest_journal/client/")
@@ -116,6 +141,9 @@ tasks.register("prepareForgeSources") {
                     .replace("ItemStack.isSameItemSameComponents", "ItemStack.isSameItemSameTags")
                     .replace("Math.clamp(", "xtdpotato.xero_quest_journal.forgecompat.ForgeCompat.clamp(")
                     .replaceAll("\\.getFirst\\(\\)", ".get(0)")
+            text = text.replaceAll(/(void \w+\((?:ServerTickEvent|PlayerTickEvent|LevelTickEvent) (\w+)\) \{)/) { all, declaration, event ->
+                "${declaration}\n        if (${event}.phase != net.minecraftforge.event.TickEvent.Phase.END) return;"
+            }
             text = text.replaceAll(/([A-Za-z_][A-Za-z0-9_]*)\.getLast\(\)/) { all, variable ->
                 "xtdpotato.xero_quest_journal.forgecompat.ForgeCompat.last(${variable})"
             }
@@ -249,6 +277,8 @@ tasks.register("prepareForgeSources") {
                                 "values.forEach(holder -> result.add(holder.value()))")
                         .replace("holder.id(), unsupported", "holder.getResultItem().getItem(), unsupported")
                         .replace("ResourceLocation.withDefaultNamespace(", "new ResourceLocation(\"minecraft\", ");
+                text = text.replace('"loot_table"', '"loot_tables"')
+                        .replace('"loot_table/"', '"loot_tables/"')
             }
             if (relative.endsWith("QuestStructureEvents.java")) {
                 text = text.replace("ItemEntityPickupEvent", "EntityItemPickupEvent")
@@ -269,6 +299,9 @@ tasks.register("prepareForgeSources") {
                         .replace("net.minecraftforge.client.event.ClientTickEvent",
                                 "net.minecraftforge.event.TickEvent.ClientTickEvent")
                         .replace("ClientTickEvent.Post", "ClientTickEvent")
+                text = text.replaceAll(/(void \w+\(ClientTickEvent (\w+)\) \{)/) { all, declaration, event ->
+                    "${declaration}\n        if (${event}.phase != net.minecraftforge.event.TickEvent.Phase.END) return;"
+                }
                 text = text.replaceAll(/((?:[A-Za-z_$][A-Za-z0-9_$]*)(?:\.[A-Za-z_$][A-Za-z0-9_$]*(?:\([^()]*\))?)*)\.getRight\(\)/) { all, receiver ->
                     "xtdpotato.xero_quest_journal.forgecompat.ForgeCompat.right(${receiver})"
                 }.replaceAll(/((?:[A-Za-z_$][A-Za-z0-9_$]*)(?:\.[A-Za-z_$][A-Za-z0-9_$]*(?:\([^()]*\))?)*)\.getBottom\(\)/) { all, receiver ->
@@ -285,12 +318,21 @@ tasks.register("prepareForgeSources") {
                 } else {
                     text = text.replace("@Override\n    public boolean mouseScrolled", "public boolean mouseScrolled")
                 }
+                if (!relative.endsWith("AnimatedQuestScreen.java")) {
+                    text = text.replaceAll(/super\.mouseScrolled\((\w+),\s*(\w+),\s*(\w+)\)/,
+                            "super.mouseScrolled(\$1, \$2, 0, \$3)")
+                }
                 text = text.replaceAll(/(?:@Override\s*)?(public|protected) void renderBackground\(GuiGraphics (\w+),\s*int (\w+),\s*int (\w+),\s*float (\w+)\) \{/) { all, visibility, graphics, mouseX, mouseY, delta ->
                     "@Override ${visibility} void renderBackground(GuiGraphics ${graphics}) { renderBackground(${graphics}, 0, 0, 0); }\n    ${visibility} void renderBackground(GuiGraphics ${graphics}, int ${mouseX}, int ${mouseY}, float ${delta}) {"
                 }.replaceAll(/super\.renderBackground\((\w+),\s*\w+,\s*\w+,\s*\w+\)/,
-                        "super.renderBackground(\$1)")
+                        "renderForgeParentBackground(\$1)")
                         .replace("Checkbox.builder(",
                                 "xtdpotato.xero_quest_journal.forgecompat.ForgeCompat.checkbox(")
+                if (relative.endsWith("AnimatedQuestScreen.java")) {
+                    text = text.replace("    public void renderBackground(GuiGraphics graphics, int x, int y, float delta) {",
+                            "    protected final void renderForgeParentBackground(GuiGraphics graphics) { super.renderBackground(graphics); }\n\n" +
+                                    "    public void renderBackground(GuiGraphics graphics, int x, int y, float delta) {")
+                }
                 if (relative.endsWith("UiCompositor.java") || relative.endsWith("CategoryIconRenderer.java")) {
                     text = text.replace("Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR)",
                             "Tesselator.getInstance().getBuilder(); buffer.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR)")
@@ -380,9 +422,127 @@ tasks.register("prepareForgeSources") {
                 text = text.replace("net.minecraft.world.level.chunk.status.ChunkStatus",
                         "net.minecraft.world.level.chunk.ChunkStatus")
             }
+            if (includeForgeSmoke && relative.startsWith("xtdpotato/xero_quest_journal/smoke/")) {
+                text = text.replace("net.neoforged.neoforge.client.event.RenderFrameEvent.Post",
+                        "net.minecraftforge.client.event.RenderGuiEvent.Post")
+                        .replace("net.neoforged.neoforge.client.gui.IConfigScreenFactory.getForMod",
+                                "net.minecraftforge.client.ConfigScreenHandler.getScreenFactoryFor")
+                        .replace("net.neoforged.neoforge.client.event.",
+                                "net.minecraftforge.client.event.")
+                        .replace("net.minecraftforge.client.event.ClientTickEvent",
+                                "net.minecraftforge.event.TickEvent.ClientTickEvent")
+                        .replace("net.neoforged.neoforge.client.gui.IConfigScreenFactory",
+                                "net.minecraftforge.client.ConfigScreenHandler")
+                        .replace("NeoForge.EVENT_BUS", "MinecraftForge.EVENT_BUS")
+                        .replace("import net.minecraft.server.level.ClientInformation;\n", "")
+                        .replaceAll(/,\s*ClientInformation\.createDefault\(\)/, "")
+                        .replace("ClientTickEvent.Post", "ClientTickEvent")
+                        .replace("net.minecraftforge.event.tick.LevelTickEvent",
+                                "net.minecraftforge.event.TickEvent.LevelTickEvent")
+                        .replace("new net.minecraftforge.event.TickEvent.LevelTickEvent(() -> true, level)",
+                                "new net.minecraftforge.event.TickEvent.LevelTickEvent(net.minecraftforge.fml.LogicalSide.SERVER, net.minecraftforge.event.TickEvent.Phase.END, level, () -> true)")
+                        .replace("net.minecraft.core.component.DataComponents.CUSTOM_NAME", "ForgeSmokeData.CUSTOM_NAME")
+                        .replace("net.minecraft.core.component.DataComponents.CUSTOM_DATA", "ForgeSmokeData.CUSTOM_DATA")
+                        .replace("net.minecraft.core.component.DataComponents.LORE", "ForgeSmokeData.LORE")
+                        .replace("DataComponents.CUSTOM_NAME", "ForgeSmokeData.CUSTOM_NAME")
+                        .replace("DataComponents.CUSTOM_DATA", "ForgeSmokeData.CUSTOM_DATA")
+                        .replace("DataComponents.LORE", "ForgeSmokeData.LORE")
+                        .replace("import net.minecraft.core.component.DataComponents;\n", "")
+                        .replace("import net.minecraft.world.item.component.CustomData;\n", "")
+                        .replace("import net.minecraft.server.level.ClientInformation;\n", "")
+                text = text.replaceAll(/(void \w+\(ClientTickEvent (\w+)\) \{)/) { all, declaration, event ->
+                    "${declaration}\n        if (${event}.phase != net.minecraftforge.event.TickEvent.Phase.END) return;"
+                }
+                text = text.replaceAll(/(\w+)\.set\(ForgeSmokeData\.CUSTOM_NAME,\s*/,
+                        "\$1.setHoverName(")
+                        .replaceAll(/(\w+)\.has\(ForgeSmokeData\.CUSTOM_NAME\)/,
+                                "\$1.hasCustomHoverName()")
+                        .replaceAll(/(\w+)\.set\(ForgeSmokeData\.CUSTOM_DATA,\s*CustomData\.of\((\w+)\)\)/,
+                                "\$1.getOrCreateTag().merge(\$2)")
+                        .replaceAll(/(\w+)\.set\(ForgeSmokeData\.CUSTOM_DATA,\s*net\.minecraft\.world\.item\.component\.CustomData\.of\((\w+)\)\)/,
+                                "\$1.getOrCreateTag().merge(\$2)")
+                        .replace("((List<TriggerGraph.Node>) field(editor, \"nodes\")).getLast()",
+                                "xtdpotato.xero_quest_journal.forgecompat.ForgeCompat.last((List<TriggerGraph.Node>) field(editor, \"nodes\"))")
+                        .replace("((List<TriggerGraph.Node>) field(editor, \"nodes\"))\n                            .getLast()",
+                                "xtdpotato.xero_quest_journal.forgecompat.ForgeCompat.last((List<TriggerGraph.Node>) field(editor, \"nodes\"))")
+                        .replace("((List<TriggerGraph.Node>) field(editor, \"nodes\"))\n                        .getLast()",
+                                "xtdpotato.xero_quest_journal.forgecompat.ForgeCompat.last((List<TriggerGraph.Node>) field(editor, \"nodes\"))")
+                        .replace("stack.set(ForgeSmokeData.LORE,\n                        new net.minecraft.world.item.component.ItemLore(java.util.List.of(\n                                Component.literal(\"Tooltip remains visible even when recipe sources exist\"),\n                                Component.literal(\"Second tooltip line\"))));",
+                                "var lore = new net.minecraft.nbt.ListTag();\n" +
+                                "                lore.add(net.minecraft.nbt.StringTag.valueOf(\"{\\\"text\\\":\\\"Tooltip remains visible even when recipe sources exist\\\"}\"));\n" +
+                                "                lore.add(net.minecraft.nbt.StringTag.valueOf(\"{\\\"text\\\":\\\"Second tooltip line\\\"}\"));\n" +
+                                "                stack.getOrCreateTagElement(\"display\").put(\"Lore\", lore);")
+                        .replaceAll(/((?:[A-Za-z_$][A-Za-z0-9_$]*(?:\([^()]*\))?)(?:\.[A-Za-z_$][A-Za-z0-9_$]*(?:\([^()]*\))?)*)\.getRight\(\)/) { all, receiver ->
+                            "xtdpotato.xero_quest_journal.forgecompat.ForgeCompat.right(${receiver})"
+                        }.replaceAll(/((?:[A-Za-z_$][A-Za-z0-9_$]*(?:\([^()]*\))?)(?:\.[A-Za-z_$][A-Za-z0-9_$]*(?:\([^()]*\))?)*)\.getBottom\(\)/) { all, receiver ->
+                            "xtdpotato.xero_quest_journal.forgecompat.ForgeCompat.bottom(${receiver})"
+                        }.replaceAll(/(?<![A-Za-z0-9_$.])getRight\(\)/,
+                                "xtdpotato.xero_quest_journal.forgecompat.ForgeCompat.right(this)")
+                        .replaceAll(/(?<![A-Za-z0-9_$.])getBottom\(\)/,
+                                "xtdpotato.xero_quest_journal.forgecompat.ForgeCompat.bottom(this)")
+                        .replaceAll(/((?:[A-Za-z_$][A-Za-z0-9_$]*(?:\([^()]*\))?)(?:\.[A-Za-z_$][A-Za-z0-9_$]*(?:\([^()]*\))?)*)\.getLast\(\)/) { all, receiver ->
+                            "xtdpotato.xero_quest_journal.forgecompat.ForgeCompat.last(${receiver})"
+                        }
+                text = text.replaceAll(/(game\.screen)\.mouseScrolled\(([^,\n]+),\s*([^,\n]+),\s*[^,\n]+,\s*([^)\n]+)\)/,
+                        "\$1.mouseScrolled(\$2, \$3, \$4)")
+                        .replaceAll(/screen\.mouseScrolled\(([^,\n]+),\s*([^,\n]+),\s*[^,\n]+,\s*([^) \n]+)\)/,
+                                "screen.mouseScrolled(\$1, \$2, \$3)")
+                        .replaceAll(/controls\.mouseScrolled\(([^,\n]+),\s*([^,\n]+),\s*[^,\n]+,\s*([^) \n]+)\)/,
+                                "controls.mouseScrolled(\$1, \$2, \$3)")
+                if (relative.endsWith("ClientSmokeTest.java")) {
+                    text = text.replace("IConfigScreenFactory.getForMod",
+                            "net.minecraftforge.client.ConfigScreenHandler.getScreenFactoryFor")
+                            .replace(",\n                                    new TitleScreen());", ");")
+                            .replace(",\n                            new TitleScreen());", ");")
+                            .replace("\"hud-toggle\"", "\"config-hud\"")
+                }
+                text = text.replaceAll(/,\s*new TitleScreen\(\)\);/, ");")
+                        .replaceAll(/game\.options\.menuBackgroundBlurriness\(\)\.set\(originalBlur\);/,
+                                "/* Forge 1.20.1 has no menu blur option */")
+                text = text.replace("game.player.registryAccess()", "game.level.registryAccess()")
+                        .replace("minecraft.player.registryAccess()", "minecraft.level.registryAccess()")
+                        .replace("player.registryAccess()", "player.getServer().registryAccess()")
+                        .replace("p.registryAccess()", "p.getServer().registryAccess()")
+                        .replace("game.player.getServer().registryAccess()", "game.level.registryAccess()")
+                        .replace("minecraft.player.getServer().registryAccess()", "minecraft.level.registryAccess()")
+                        .replace("new net.minecraft.core.component.DataComponents.CUSTOM_NAME", "ForgeSmokeData.CUSTOM_NAME")
+                text = text.replaceAll(/(\.save\((?:new )?(?:net\.minecraft\.nbt\.)?CompoundTag\(\)),\s*(?:player\.getServer\(\)|server)\.registryAccess\(\)\)/,
+                        "\$1)")
+                        .replaceAll(/((?:QuestProgressData|MailboxData)\.load\([^;]*),\s*(?:player\.getServer\(\)|server)\.registryAccess\(\)\)/,
+                                "\$1)")
+                        .replace("NbtIo.writeCompressed(data, root.resolve(\"test.nbt\"))",
+                                "NbtIo.writeCompressed(data, root.resolve(\"test.nbt\").toFile())")
+                        .replace("NbtIo.writeCompressed(data, root.resolve(\"oversize.nbt\"))",
+                                "NbtIo.writeCompressed(data, root.resolve(\"oversize.nbt\").toFile())")
+                        .replace("NbtIo.writeCompressed(template, structureRoot.resolve(reference))",
+                                "NbtIo.writeCompressed(template, structureRoot.resolve(reference).toFile())")
+                        .replace("NbtIo.writeCompressed(data, QuestStructures.path(FILE))",
+                                "NbtIo.writeCompressed(data, QuestStructures.path(FILE).toFile())")
+                        .replace("setRotation(yaw, pitch, roll)", "setRotation(yaw, pitch)")
+                        .replace("originalBlur = game.options.menuBackgroundBlurriness().get();", "originalBlur = 0;")
+                        .replace("game.options.menuBackgroundBlurriness().set(0);", "/* no blur option in 1.20.1 */")
+                        .replace("game.options.menuBackgroundBlurriness().set(10);", "/* no blur option in 1.20.1 */")
+                        .replace("copyWithCount(1).save(registries)",
+                                "copyWithCount(1).save(new net.minecraft.nbt.CompoundTag())")
+                        .replaceAll(/net\.minecraft\.resources\.new ResourceLocation\(/,
+                                "new net.minecraft.resources.ResourceLocation(")
+                if (relative.endsWith("JourneyScreen.java")) {
+                    text = text.replace("remaining.removeFirst()", "remaining.remove(0)")
+                }
+                if (relative.endsWith("QuestProgressData.java")) {
+                    text = text.replace("isolated.save(new net.minecraft.nbt.CompoundTag(),\n                                server.registryAccess())",
+                            "isolated.save(new net.minecraft.nbt.CompoundTag())")
+                            .replace("data.save(new net.minecraft.nbt.CompoundTag(), server.registryAccess())",
+                                    "data.save(new net.minecraft.nbt.CompoundTag())")
+                }
+                if (relative.endsWith("RewardPopupRegression.java")) {
+                    text = text.replace("import net.minecraft.world.item.component.ItemLore;\n", "")
+                }
+            }
             def destination = new File(outputRoot, relative)
             destination.parentFile.mkdirs()
             destination.setText(text, "UTF-8")
+        }
         }
     }
 }
@@ -390,7 +550,14 @@ tasks.named("compileJava").configure { dependsOn("prepareForgeSources") }
 
 processResources {
     inputs.property "version", project.version
+    inputs.property "forgeResourceLayout", "1.20.1-plural-directories-v1"
     exclude "META-INF/neoforge.mods.toml"
+    eachFile {
+        if (path.startsWith("data/")) {
+            path = path.replace("/loot_table/", "/loot_tables/")
+                    .replace("/function/", "/functions/")
+        }
+    }
     filesMatching("META-INF/mods.toml") {
         expand "version": project.version
     }
@@ -418,5 +585,22 @@ jar {
     }
     from(rootProject.file("../../../LICENSE")) {
         rename { "${it}_${project.archives_base_name}" }
+    }
+}
+
+if (includeForgeSmoke) {
+    tasks.configureEach {
+        if (name == "runClient") {
+            doFirst {
+                delete(layout.buildDirectory.file("verification/result.txt"))
+            }
+            doLast {
+                def result = layout.buildDirectory.file("verification/result.txt").get().asFile
+                if (!result.exists() || !result.text.startsWith("PASS:")) {
+                    throw new GradleException(result.exists()
+                            ? result.text : "Forge client smoke test did not produce a result")
+                }
+            }
+        }
     }
 }

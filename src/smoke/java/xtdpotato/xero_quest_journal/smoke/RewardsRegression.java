@@ -94,13 +94,13 @@ final class RewardsRegression {
                 context((int) field(journal, "detailsLeft") + 20, 120, control);
                 click(game, menu().stream().filter(b -> b.styleId().equals("context-rewards.edit")).findFirst().orElseThrow());
                 require(game.screen instanceof QuestRewardsScreen, "Reward editor not opened");
-                require(fields(game).size() == 4, "Editor did not load both rewards");
+                require(fields(game).size() == 6, "Editor did not load both rewards and their background fields");
                 fields(game).get(1).setValue("7");
                 click(game, find(game, "rewards-add"));
                 click(game, find(game, "rewards-remove-1"));
                 require(((List<?>) field(game.screen, "rewards")).size() == 2, "Delete left a reward draft behind");
-                fields(game).get(2).setValue("minecraft:gold_ingot");
-                fields(game).get(3).setValue("4");
+                fields(game).get(3).setValue("minecraft:gold_ingot");
+                fields(game).get(4).setValue("4");
             }
             case 4 -> {
                 capture(game, "rewards-editor");

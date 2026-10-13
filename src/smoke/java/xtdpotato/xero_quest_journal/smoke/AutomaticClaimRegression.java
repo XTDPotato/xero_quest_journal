@@ -34,6 +34,16 @@ final class AutomaticClaimRegression {
                     require(QuestAuthoring.create(player, new QuestAuthoring.Request(QuestAuthoring.Kind.TASK,
                             ID, "Silent automatic reward", "", "", "", "guide", "", 1, "", "",
                             "minecraft:diamond", 2, "automatic")).successful(), "Cannot create automatic task");
+                    try {
+                        String source = QuestRepository.source(ID);
+                        String silent = xtdpotato.xero_quest_journal.core.io.QuestDocuments.completionPolicy(source,
+                                new xtdpotato.xero_quest_journal.core.model.CompletionPolicy(
+                                        false, false, false, false, false));
+                        require(QuestAuthoring.editSource(player, ID, QuestRepository.fingerprint(source), silent)
+                                .successful(), "Cannot disable automatic reward popup");
+                    } catch (java.io.IOException failure) {
+                        throw new IllegalStateException(failure);
+                    }
                     require(QuestRuntime.activate(player, ID).equals("completed"), "Automatic task did not complete");
                     require(QuestProgressData.get(player.getServer()).entry(player.getUUID(),
                             QuestRepository.find(ID)).claimed(), "Automatic task did not claim on server");

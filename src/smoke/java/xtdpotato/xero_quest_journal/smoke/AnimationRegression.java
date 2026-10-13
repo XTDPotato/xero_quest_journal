@@ -45,7 +45,6 @@ final class AnimationRegression {
                 wait = 6;
             }
             case 1 -> {
-                verifyListOverscrollRelease();
                 require(journal.animationPosition() > 0 && journal.animationPosition() < 1, "No visible entry frames");
                 var click = new ScreenEvent.MouseButtonPressed.Pre(journal, 30, 30, 0);
                 NeoForge.EVENT_BUS.post(click);
@@ -63,6 +62,7 @@ final class AnimationRegression {
             }
             case 3 -> {
                 require(!journal.isClosing() && journal.animationPosition() == 1, "Reopen never settled");
+                verifyListOverscrollRelease();
                 capture(game, "animation-open");
                 var click = new ScreenEvent.MouseButtonPressed.Pre(journal, 30, 30, 0);
                 NeoForge.EVENT_BUS.post(click);
@@ -215,12 +215,16 @@ final class AnimationRegression {
                 QuestTemplate value = QuestTemplateStore.all().stream().filter(t -> t.id().equals(ID)).findFirst().orElseThrow();
                 editor = new QuestTemplateEditorScreen(journal, value);
                 game.setScreen(editor);
+                org.lwjgl.glfw.GLFW.glfwSetWindowSize(game.getWindow().getWindow(), 854, 480);
+                game.resizeDisplay();
                 wait = 8;
             }
             case 19 -> {
-                int barX = Math.min(480, editor.width - 32);
-                barX += (editor.width - barX) / 2 + 7;
-                require(editor.mouseClicked(barX, editor.height - 70, 0), "Template scrollbar track did not respond");
+                int barX = (int) invoke(editor, "scrollbarX") + 1;
+                require(!editor.inputBlocked(), "Template entry animation has not settled");
+                require(editor.mouseClicked(barX, (int) invoke(editor, "bottom") - 2, 0),
+                        "Template scrollbar track did not respond: x=" + barX + ", max="
+                                + invoke(editor, "maxScroll") + ", height=" + editor.height);
                 require((int) field(editor, "scroll") > 0, "Template scrollbar did not move content");
                 editor.mouseDragged(barX, 32, 0, 0, -100);
                 editor.mouseReleased(barX, 32, 0);
@@ -231,7 +235,7 @@ final class AnimationRegression {
                 choice(game, "template-type").onPress();
                 require(choice(game, "template-type").isOpen() && values.get("type").equals("commission"),
                         "Template type selector still cycles on button press");
-                wait = 2;
+                wait = 8;
             }
             case 20 -> {
                 capture(game, "animation-choice-menu");
@@ -241,11 +245,14 @@ final class AnimationRegression {
                 find(game, "template-controls").onPress();
                 find(game, "template-element.add").onPress();
                 choice(game, "template-element-kind").select("image");
-                require(find(game, "template-element-image").visible, "Image kind did not expose picker");
+                require(find(game, "template-element-image") != null, "Image kind did not expose picker");
                 wait = 8;
             }
             case 21 -> {
                 capture(game, "animation-template-image-control");
+                for (int i = 0; i < 20 && !find(game, "template-element-image").visible; i++) {
+                    game.screen.mouseScrolled(game.screen.width - 60, 100, 0, -1);
+                }
                 find(game, "template-element-image").onPress();
                 wait = 8;
             }
@@ -281,7 +288,9 @@ final class AnimationRegression {
 
     private static void verifyListOverscrollRelease() throws Exception {
         Object originalList = field(journal, "journalList");
+        Object originalSlides = field(journal, "groupSlides");
         set(journal, "journalList", new JournalListModel(List.of(), 2_000));
+        ((Map<?, ?>) originalSlides).clear();
         try {
             double maximum = (double) invoke(journal, "maxListScroll");
             require(maximum > 0, "Journal list fixture is not scrollable");
@@ -314,7 +323,9 @@ final class AnimationRegression {
         }
         double settled = (double) field(journal, "listScroll");
         double edge = Math.clamp(position, 0, maximum);
-        require(Math.abs(settled - edge) < 0.02, "List overscroll did not spring back to its edge");
+        require(Math.abs(settled - edge) < 0.02,
+                "List overscroll did not spring back to its edge: position=" + position
+                        + ", settled=" + settled + ", edge=" + edge);
     }
 
     private static Object invoke(Object target, String name, Object... args) throws Exception {
@@ -365,6 +376,9 @@ final class AnimationRegression {
         double y = (int) popupY.invoke(choice) + index * row - Math.round(scroll) + row / 2.0;
         require(game.screen.mouseClicked(x, y, 0), "Choice list item did not handle click");
         game.screen.mouseReleased(x, y, 0);
+        require(choice.value().equals(value),
+                "Choice release missed value " + value + "; selected=" + choice.value()
+                        + ", point=" + x + "," + y + ", open=" + choice.isOpen());
     }
 
     private static Object field(Object target, String name) throws Exception {

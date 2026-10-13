@@ -514,6 +514,7 @@ final class ControlGraphRegression {
                 capture(game, "variable-menu-small");
                 var action = button(editor, "graph-variable.add_task");
                 editor.mouseClicked(action.getX() + 5, action.getY() + 5, 0);
+                editor.mouseReleased(action.getX() + 5, action.getY() + 5, 0);
                 require(game.screen.getClass().getSimpleName().equals("QuestVariableEditScreen"),
                         "Variable menu click leaked through to the inspector");
                 button(game.screen, "variable-cancel").onPress();
@@ -538,7 +539,8 @@ final class ControlGraphRegression {
                             .startsWith("screen."), "Missing node entry translation: " + entry.labelKey());
                 }
                 require(TriggerNodeLibrary.paletteEntries("mail").stream().map(TriggerNodeLibrary.Entry::type)
-                        .toList().equals(List.of("mail_send", "mail_check", "mail_delete", "mail_set_property")),
+                        .toList().equals(List.of("mail_send", "mail_check", "mail_delete", "mail_set_property",
+                                "mail_lock_task", "mail_unlock_task")),
                         "Mail actions were not grouped in the palette");
                 var visibleTypes = TriggerNodeLibrary.PALETTE_CATEGORIES.stream()
                         .flatMap(group -> TriggerNodeLibrary.paletteEntries(group).stream())

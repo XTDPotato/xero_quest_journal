@@ -109,6 +109,8 @@ final class TrackingHudRegression {
                 if (!ClientQuestProgress.isTracked(fixture.id())
                         || ClientQuestProgress.trackedIds().size() != 1
                         || ClientQuestProgress.view(fixture.id()) == null) return false;
+                xtdpotato.xero_quest_journal.client.QuestUnlockToast.clear();
+                xtdpotato.xero_quest_journal.client.QuestCompletionToast.clear();
                 game.setScreen(null);
             }
             case 5 -> {

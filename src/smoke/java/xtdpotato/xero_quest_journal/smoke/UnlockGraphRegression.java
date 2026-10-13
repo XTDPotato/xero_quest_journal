@@ -48,6 +48,12 @@ final class UnlockGraphRegression {
                             Files.writeString(QuestRepository.root().resolve(id + ".html"),
                                     "<quest id=\"" + id + "\" name=\"" + id
                                             + "\" type=\"normal\" unlocked=\"" + id.equals(A) + "\"/>");
+                        for (int i = 0; i < 32; i++) {
+                            String id = PREFIX + "_scroll_" + i;
+                            Files.writeString(QuestRepository.root().resolve(id + ".html"),
+                                    "<quest id=\"" + id + "\" name=\"Scroll fixture " + i
+                                            + "\" type=\"normal\" unlocked=\"false\"/>");
+                        }
                         QuestRepository.reload();
                         require(QuestRepository.errors().isEmpty(), "Invalid test definitions");
                     } catch (Exception error) { throw new RuntimeException(error); }
@@ -253,7 +259,7 @@ final class UnlockGraphRegression {
                 require(motion.settled() && motion.position() == 0, "Drawer close animation failed to settle");
                 xtdpotato.xero_quest_journal.core.QuestConfig.defaults().uiAnimationMillis = 600;
                 field(editor, "propertiesTask").set(editor, A);
-                waitTicks = 5;
+                waitTicks = 1;
             }
             case 13 -> {
                 if (--waitTicks > 0) return false;
@@ -269,7 +275,7 @@ final class UnlockGraphRegression {
                         "Task properties entry did not settle");
                 editor.keyPressed(GLFW.GLFW_KEY_ESCAPE, 0, 0);
                 require(field(editor, "propertiesTask").get(editor).equals(""), "Escape did not close properties");
-                waitTicks = 4;
+                waitTicks = 1;
             }
             case 15 -> {
                 if (--waitTicks > 0) return false;
@@ -286,7 +292,7 @@ final class UnlockGraphRegression {
                 method(editor, "removeLink", links(editor).iterator().next().getClass())
                         .invoke(editor, links(editor).iterator().next());
                 editor.onClose();
-                waitTicks = 5;
+                waitTicks = 1;
             }
             case 17 -> {
                 if (--waitTicks > 0) return false;
@@ -303,7 +309,7 @@ final class UnlockGraphRegression {
                 editor.mouseClicked(cancel.getX() + 10, cancel.getY() + 10, 0);
                 editor.mouseReleased(cancel.getX() + 10, cancel.getY() + 10, 0);
                 require(!field(editor, "confirmExit").getBoolean(editor), "Cancel did not dismiss confirmation");
-                waitTicks = 4;
+                waitTicks = 1;
             }
             case 19 -> {
                 if (--waitTicks > 0) return false;

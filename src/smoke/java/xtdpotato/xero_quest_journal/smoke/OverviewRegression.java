@@ -214,9 +214,11 @@ final class OverviewRegression {
             double sx = image.getWidth() / (double) game.screen.width;
             double sy = image.getHeight() / (double) game.screen.height;
             int pixels = 0;
+            int knob = Math.max(8, Math.min(14, last.getHeight() - 10));
+            int chevronX = last.getRight() - knob - 8 + knob / 2 - 1;
             for (int y = (int) ((last.getY() + last.getHeight() / 2.0 - 4) * sy);
                  y < (last.getY() + last.getHeight() / 2.0 + 4) * sy; y++)
-                for (int x = (int) ((last.getRight() - 12) * sx); x < (last.getRight() - 4) * sx; x++) {
+                for (int x = (int) ((chevronX - 1) * sx); x < (chevronX + 5) * sx; x++) {
                     int pixel = image.getPixelRGBA(x, y);
                     if ((pixel & 255) > 210 && (pixel >>> 8 & 255) > 170 && (pixel >>> 16 & 255) > 120)
                         pixels++;

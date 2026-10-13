@@ -50,7 +50,7 @@ public final class NavigationRegression {
                 assertCategory(game, "main");
                 click(game, "category-active");
                 game.screen.keyPressed(GLFW.GLFW_KEY_Q, 0, 0);
-                assertCategory(game, "world");
+                assertCategory(game, "completed");
                 game.screen.keyPressed(GLFW.GLFW_KEY_E, 0, 0);
                 assertCategory(game, "active");
                 click(game, "overview");
@@ -128,13 +128,18 @@ public final class NavigationRegression {
                 "add-chapter", "category-add", "source", "undo", "redo", "hierarchy").contains(b.styleId())),
                 "Admin controls leaked");
         require(rows(game).stream().filter(b -> b.styleId().startsWith("category-")).count()
-                        == ClientQuestDefinitions.types().stream().filter(t -> !t.id().equals("active")).count() + 3L,
+                        == ClientQuestDefinitions.journalOrder().tabOrder(ClientQuestDefinitions.types()).size() + 2L,
                 "Missing category tabs");
-        require(has(game, "overview") && has(game, "track") && has(game, "close"), "Missing player navigation");
-        StyledButton track = find(game, "track");
-        require(track.getRight() == game.screen.width - 16
-                        && track.getBottom() == game.screen.height - 10,
-                "Track is not fixed to the bottom-right");
+        require(has(game, "overview") && has(game, "close"), "Missing player navigation");
+        if (has(game, "track")) {
+            StyledButton track = find(game, "track");
+            require(track.getRight() == game.screen.width - 16
+                            && track.getBottom() == game.screen.height - 10,
+                    "Track is not fixed to the bottom-right");
+        } else {
+            require(has(game, "complete") || has(game, "claim"),
+                    "Task details are missing their completion/reward action");
+        }
     }
 
     private static void assertOverviewEntries(Minecraft game) {

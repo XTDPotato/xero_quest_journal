@@ -7,7 +7,7 @@ modId="xero_quest_journal"
 version="${version}"
 displayName="Xero Quest Journal"
 authors="xtdpotato"
-description="A configurable quest journal with a Forge 1.20.1 platform bootstrap."
+description="A configurable quest journal, visual editor, rewards and mailbox for Forge 1.20.1."
 
 [[dependencies.xero_quest_journal]]
 modId="forge"

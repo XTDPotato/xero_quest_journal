@@ -119,7 +119,8 @@ final class TemplateRegression {
                     var top = QuestScreen.class.getDeclaredMethod("canvasTop");
                     top.setAccessible(true);
                     journal.mouseScrolled((int) field(journal, "detailsLeft") + 10, (int) top.invoke(journal) + 10, -100, 0);
-                    require((double) field(journal, "canvasPanX") < 0, "Wide template cannot pan to its hidden content");
+                    require((double) field(journal, "canvasTargetPanX") < 0,
+                            "Wide template cannot pan to its hidden content");
                     set(journal, "canvasPanX", 0.);
                 }
                 game.setScreen(new QuestTemplateEditorScreen(journal, template));

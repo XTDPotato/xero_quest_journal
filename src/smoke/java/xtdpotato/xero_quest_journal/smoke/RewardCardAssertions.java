@@ -18,7 +18,7 @@ final class RewardCardAssertions {
                 "textures/gui/navigation/mail_check.png");
         int size = Math.max(1, Math.round(21 * scale));
         float x = cardX + (Math.max(1, Math.round(34 * scale)) - size) / 2F;
-        float y = cardY + Math.max(1, Math.round(1 * scale))
+        float y = cardY + Math.max(1, Math.round(2 * scale))
                 + (Math.max(1, Math.round(24 * scale)) - size) / 2F;
         int checked = 0;
         try (var input = game.getResourceManager().getResourceOrThrow(texture).open();

@@ -699,10 +699,11 @@ final class MailboxRegression {
                 var hit = MailboxScreen.class.getDeclaredMethod("attachmentAt", double.class, double.class);
                 hit.setAccessible(true);
                 require((int) hit.invoke(mailbox, rewardX + 33.0, rewardY + 33.0) == 0
-                                && (int) hit.invoke(mailbox, rewardX + 12.0, rewardY + 34.0) == -1
+                                && (int) hit.invoke(mailbox, rewardX + 12.0, rewardY + 37.0) == 0
+                                && (int) hit.invoke(mailbox, rewardX + 12.0, rewardY + 38.0) == -1
                                 && (int) hit.invoke(mailbox, rewardX + 34.0, rewardY + 12.0) == -1
                                 && (int) hit.invoke(mailbox, rewardX + 38.0, rewardY + 12.0) == 1,
-                        "Square reward card bounds or spacing are incorrect");
+                        "34x38 reward card bounds or spacing are incorrect");
                 require((double) call(mailbox, "maxAttachmentScroll") > 0,
                         "Reward strip does not overflow horizontally");
                 var detailMotion = field(mailbox, "detailMotion");

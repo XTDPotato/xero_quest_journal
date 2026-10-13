@@ -58,7 +58,7 @@ public final class QuestBatchAuthoring {
                         source = QuestPresentationDocuments.write(source, definition.presentation().remapTasks(ids));
                     writes.put(safe(group.directory().resolve("quest_" + ids.get(task.id()) + task.extension())), source);
                 }
-                if (chapter != null) {
+                if (chapter != null && (!chapter.quests().isEmpty() || chapter.timeline().explicitTasks())) {
                     JsonObject object = JsonParser.parseString(QuestRepository.source(chapter.id())).getAsJsonObject();
                     JsonArray refs = object.has("quests") ? object.getAsJsonArray("quests") : new JsonArray();
                     ids.values().forEach(refs::add);

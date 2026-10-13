@@ -107,6 +107,8 @@ final class RuntimeRegression {
                 pending.join();
                 var view = ClientQuestProgress.view(GUI);
                 if (view == null || !view.status().equals("complete")) return false;
+                if (ClientQuestProgress.completionNotices().stream()
+                        .anyMatch(notice -> notice.questId().equals(GUI))) return false;
                 game.setScreen(QuestScreen.task(null, GUI));
             }
             case 9 -> button(game, "claim").onPress();
@@ -219,7 +221,8 @@ final class RuntimeRegression {
         require(player.totalExperience == xp + 10 && player.experienceLevel >= levels + 2, "Experience rewards");
         require(player.getTags().containsAll(Set.of("xero_reward_command", "xero_frozen_script",
                         "xero_function_reward", "xero_function_execute"))
-                && !player.getTags().contains("xero_modified_script"), "Command or frozen script not executed");
+                && !player.getTags().contains("xero_modified_script"),
+                "Command or frozen script not executed; tags=" + player.getTags());
         require(player.hasEffect(net.minecraft.world.effect.MobEffects.MOVEMENT_SPEED), "Effect reward missing");
         var data = QuestProgressData.get(player.getServer());
         require(data.unlocked(player.getUUID(), QuestRepository.find(unlock)), "Unlock reward missing");

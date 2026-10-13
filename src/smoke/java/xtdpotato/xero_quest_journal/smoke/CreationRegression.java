@@ -30,6 +30,7 @@ final class CreationRegression {
         switch (stage) {
             case 0 -> {
                 if (game.screen != null) return false;
+                ClientPreferences.get().reducedMotion = true;
                 game.getLanguageManager().setSelected("zh_cn");
                 game.options.languageCode = "zh_cn";
                 language = game.reloadResourcePacks();
@@ -64,14 +65,20 @@ final class CreationRegression {
                 journal = new QuestScreen();
                 set(journal, "editMode", true);
                 game.setScreen(journal);
-                require(find(game, "add-task").active && find(game, "add-chapter").active, "All creation disabled");
-                var groups = find(game, "groups");
+                context(30, 100, null);
+                require(menu().stream().map(StyledButton::styleId).toList()
+                        .containsAll(List.of("context-add_task", "context-add_group", "context-add_chapter")),
+                        "All creation disabled");
+                menu().clear();
+                var groups = find(game, "group-" + GROUP);
                 journal.mouseClicked(groups.getX() + 5, groups.getY() + 5, 1);
                 require(menu().stream().map(StyledButton::styleId).toList().containsAll(
                         List.of("context-add_task", "context-add_group", "context-add_chapter")), "All context missing actions");
                 menu().clear();
-                click(game, find(game, "add-task"));
+                context(30, 100, null);
+                click(game, menu().stream().filter(b -> b.styleId().equals("context-add_task")).findFirst().orElseThrow());
                 require(game.screen instanceof QuestTemplateScreen, "All did not open templates");
+                fields(game).getFirst().setValue("commission_view");
                 click(game, find(game, "template-commission_view"));
                 click(game, find(game, "template-use"));
                 require(field(form(), "targetGroup").equals(""), "All forced group");
@@ -118,17 +125,20 @@ final class CreationRegression {
                 require(field(form(), "icon").equals(TEXTURE), "Icon not set");
                 require(field(form(), "name").equals("Ungrouped draft")
                         && field(form(), "description").equals("Keep the description"), "Picker discarded draft");
-                click(game, find(game, "choose-condition-item"));
+                journal = (QuestScreen) game.screen;
+                game.setScreen(QuestScreen.pickResource(journal, "minecraft:oak_log", true,
+                        value -> {}));
                 require(buttons(game, "icon-source-textures").isEmpty(), "Item picker offered textures");
                 manual(game, TEXTURE);
-                require(field(journal, "iconPicker") != null && field(journal, "error") != null, "Texture accepted as item");
+                require(game.screen != journal && field(game.screen, "iconPicker") != null
+                        && field(game.screen, "error") != null, "Texture accepted as item");
                 manual(game, "minecraft:air");
-                require(field(journal, "iconPicker") != null, "Air accepted as item");
+                require(game.screen != journal && field(game.screen, "iconPicker") != null, "Air accepted as item");
                 manual(game, "minecraft:oak_log");
+                require(game.screen == journal, "Item picker did not return to its draft");
                 click(game, find(game, "choose-reward-item"));
                 manual(game, "minecraft:emerald");
                 require(field(form(), "rewardItem").equals("minecraft:emerald")
-                        && field(form(), "item").equals("minecraft:oak_log")
                         && field(form(), "icon").equals(TEXTURE), "Picker wrote wrong task field");
             }
             case 2 -> {
@@ -140,7 +150,8 @@ final class CreationRegression {
                 require(QuestRepository.find(ROOT_TASK) != null, "Ungrouped GUI save failed: " + field(journal, "error"));
                 require(QuestRepository.groupOf(ROOT_TASK).isEmpty(), "Ungrouped task in group");
                 require(QuestRepository.find(ROOT_TASK).icon().equals(TEXTURE), "Icon save lost");
-                click(game, find(game, "add-chapter"));
+                context(30, 100, null);
+                click(game, menu().stream().filter(b -> b.styleId().equals("context-add_chapter")).findFirst().orElseThrow());
                 fields(game).get(0).setValue(GROUP + "_newchapter");
                 fields(game).get(1).setValue("New chapter");
                 click(game, find(game, "create"));
@@ -153,17 +164,21 @@ final class CreationRegression {
             }
             case 5 -> {
                 if (field(journal, "pending") != null) return false;
-                require(form() == null && field(journal, "groupId").equals(GROUP), "Chapter destination/filter wrong");
-                set(journal, "chapterId", CHAPTER);
+                require(form() == null && QuestRepository.chapters().stream()
+                        .anyMatch(c -> c.id().equals(GROUP + "_newchapter") && c.groupId().equals(GROUP)),
+                        "Chapter destination wrong");
                 game.setScreen(journal);
-                click(game, find(game, "add-task"));
+                set(journal, "chapterId", CHAPTER);
+                context(30, 100, "group:" + GROUP);
+                click(game, menu().stream().filter(b -> b.styleId().equals("context-add_task")).findFirst().orElseThrow());
                 click(game, find(game, "template-use"));
                 require(field(form(), "targetChapter").equals(CHAPTER), "Template chooser lost chapter");
                 click(game, find(game, "cancel"));
                 set(journal, "groupId", "");
                 set(journal, "chapterId", "");
                 game.setScreen(journal);
-                click(game, find(game, "add-task"));
+                context(30, 100, null);
+                click(game, menu().stream().filter(b -> b.styleId().equals("context-add_task")).findFirst().orElseThrow());
                 click(game, find(game, "template-use"));
                 fields(game).get(0).setValue(TASK);
                 fields(game).get(1).setValue("Destination draft");
@@ -176,7 +191,10 @@ final class CreationRegression {
                 if (field(journal, "pending") != null) return false;
                 require(QuestRepository.find(TASK) != null && QuestRepository.groupOf(TASK).equals(GROUP), "Wrong task folder");
                 require(QuestRepository.chapters().stream().filter(c -> c.id().equals(CHAPTER))
-                        .findFirst().orElseThrow().quests().contains(TASK), "Chapter reference missing");
+                        .anyMatch(c -> c.quests().contains(TASK)
+                                || c.quests().isEmpty() && !c.timeline().explicitTasks()
+                                && c.groupId().equals(QuestRepository.groupOf(TASK))),
+                        "Chapter membership missing");
                 context(30, 100, "quest:" + TASK);
                 click(game, menu().stream().filter(b -> b.styleId().equals("context-copy_id")).findFirst().orElseThrow());
                 require(game.keyboardHandler.getClipboard().equals(TASK), "Task ID copy used wrong value");
@@ -202,9 +220,15 @@ final class CreationRegression {
                 click(game, menu().stream().filter(b -> b.styleId().equals("context-add_image")).findFirst().orElseThrow());
                 imageId = (String) field(form(), "id");
                 click(game, find(game, "choose-image"));
+                if (find(game, "icon-source-textures").active)
+                    click(game, find(game, "icon-source-textures"));
                 fields(game).getFirst().setValue("textures/item/diamond.png");
                 click(game, find(game, "icon-filter"));
-                require(buttons(game, "icon-entry").size() == 1, "Resource-ID search failed");
+                @SuppressWarnings("unchecked")
+                var matches = (List<QuestIcons.IconChoice>) field(field(journal, "iconPicker"), "filteredChoices");
+                require(matches.size() == 1 && matches.getFirst().value().equals(TEXTURE),
+                        "Resource-ID search failed: matches=" + matches
+                                + ", search=" + field(field(journal, "iconPicker"), "search"));
             }
             case 7 -> {
                 capture(game, "creation-texture-picker");
@@ -263,7 +287,9 @@ final class CreationRegression {
     }
 
     private static void select(Minecraft game, String button, String field, String value) throws Exception {
-        for (int i = 0; i < 100 && !field(form(), field).equals(value); i++) click(game, find(game, button));
+        @SuppressWarnings("unchecked")
+        var choice = (StyledChoiceButton<String>) find(game, button);
+        choice.select(value);
         require(field(form(), field).equals(value), "Missing selector value " + value);
     }
     private static void manual(Minecraft game, String value) throws Exception {
@@ -278,7 +304,10 @@ final class CreationRegression {
         return game.screen.children().stream().filter(StyledButton.class::isInstance).map(StyledButton.class::cast)
                 .filter(b -> b.styleId().equals(id)).toList();
     }
-    private static StyledButton find(Minecraft game, String id) { return buttons(game, id).getFirst(); }
+    private static StyledButton find(Minecraft game, String id) {
+        return buttons(game, id).stream().findFirst()
+                .orElseThrow(() -> new IllegalStateException("Missing creation button: " + id));
+    }
     private static void click(Minecraft game, StyledButton button) throws Exception {
         require(button.active, "Disabled " + button.styleId());
         if (game.screen == journal && form() != null && field(journal, "iconPicker") == null

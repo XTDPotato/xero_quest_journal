@@ -189,7 +189,10 @@ final class TemplateInteractionRegression {
                         "Task left/top snapping was overridden by center guides");
                 var scale = QuestScreen.class.getDeclaredMethod("canvasContentScale");
                 scale.setAccessible(true);
-                require((double) scale.invoke(journal) >= 1.5,
+                double expected = Math.max(0.75, Math.min(
+                        (int) call(journal, "canvasWidth") / 395.0,
+                        (int) call(journal, "canvasHeight") / 275.0));
+                require(Math.abs((double) scale.invoke(journal) - expected) < 0.001,
                         "Full-size desktop task canvas did not scale to its available area");
                 capture(game, "task-layout-fullscreen-desktop");
                 Files.writeString(OUTPUT.resolve("template-interaction-result.txt"),

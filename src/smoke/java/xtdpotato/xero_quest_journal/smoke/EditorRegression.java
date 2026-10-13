@@ -24,6 +24,7 @@ public final class EditorRegression {
     private static String guideId;
     private static double initialScroll;
     private static String clipboard;
+    private static boolean selectionReadyForCopy;
     private static String standaloneId;
     private static String groupedId;
     private static int movedTitleX;
@@ -60,7 +61,10 @@ public final class EditorRegression {
         require(!QuestRepository.find(parentCopy).uid().equals(definition.uid()), "Copied UID was reused");
         require(QuestRepository.find(childCopy).parents().equals(List.of(parentCopy)), "Copied parents not remapped");
         require(QuestRepository.find(parentCopy).title().endsWith(" Copy"), "Copy name missing suffix");
-        require(QuestRepository.chapters().stream().anyMatch(c -> c.id().equals(chapter) && c.quests().contains(childCopy)),
+        require(QuestRepository.chapters().stream().anyMatch(c -> c.id().equals(chapter)
+                        && (c.quests().contains(childCopy)
+                        || c.quests().isEmpty() && !c.timeline().explicitTasks()
+                        && c.groupId().equals(QuestRepository.groupOf(childCopy)))),
                 "Copy chapter membership missing");
 
         String source = QuestRepository.source(parentCopy);
@@ -141,6 +145,7 @@ public final class EditorRegression {
         ticks = 0;
         switch (phase) {
             case 0 -> {
+                if (!selectionReadyForCopy) {
                 if (ClientQuestProgress.catalogRevision() != QuestRepository.revision()) return false;
                 guideId = guide;
                 clipboard = game.keyboardHandler.getClipboard();
@@ -172,16 +177,24 @@ public final class EditorRegression {
                 game.screen.keyPressed(GLFW.GLFW_KEY_V, 0, GLFW.GLFW_MOD_CONTROL);
                 require(search.getValue().equals("search-paste-probe"),
                         "Ctrl+V did not paste into the focused search field");
+                search.setValue("");
+                game.screen.init(game, game.screen.width, game.screen.height);
+                search = (EditBox) field(game.screen, "taskSearch");
+                search.setFocused(true);
+                game.screen.setFocused(search);
+                rows = visibleRows(game);
                 click(game, rows.get(0), 0);
                 require(!search.isFocused() && game.screen.getFocused() != search,
                         "Task-list click did not release search focus");
                 game.keyboardHandler.setClipboard("task-paste-probe");
                 game.screen.keyPressed(GLFW.GLFW_KEY_V, 0, GLFW.GLFW_MOD_CONTROL);
-                require(search.getValue().equals("search-paste-probe"),
+                require(search.getValue().isEmpty(),
                         "Task Ctrl+V pasted into the search field");
                 require("create.error.clipboard".equals(field(game.screen, "error")),
                         "Ctrl+V without search focus was not handled as task paste");
                 set(game.screen, "error", null);
+                active = (String) field(game.screen, "selectedId");
+                ((Set<?>) field(game.screen, "selectedTaskIds")).clear();
                 game.screen.keyPressed(GLFW.GLFW_KEY_LEFT_CONTROL, 0, GLFW.GLFW_MOD_CONTROL);
                 click(game, rows.get(0), 0);
                 click(game, rows.get(1), 0);
@@ -189,6 +202,19 @@ public final class EditorRegression {
                 require(((Set<?>) field(game.screen, "selectedTaskIds")).size() >= 2, "Ctrl click did not multi-select");
                 require(field(game.screen, "selectedId").equals(active), "Ctrl click activated task");
                 game.screen.keyPressed(GLFW.GLFW_KEY_C, 0, GLFW.GLFW_MOD_CONTROL);
+                selectionReadyForCopy = true;
+                return false;
+                }
+                try {
+                    if (QuestClipboard.decode(game.keyboardHandler.getClipboard()).size() < 2) {
+                        game.screen.keyPressed(GLFW.GLFW_KEY_C, 0, GLFW.GLFW_MOD_CONTROL);
+                        return false;
+                    }
+                } catch (RuntimeException unavailableClipboard) {
+                    game.screen.keyPressed(GLFW.GLFW_KEY_C, 0, GLFW.GLFW_MOD_CONTROL);
+                    return false;
+                }
+                var rows = visibleRows(game);
                 require(QuestClipboard.decode(game.keyboardHandler.getClipboard()).size() >= 2,
                         "Ctrl+C did not copy the selected tasks");
                 click(game, rows.get(0), 1);
@@ -245,10 +271,13 @@ public final class EditorRegression {
             }
             case 4 -> {
                 require((double) field(game.screen, "listScroll") > initialScroll, "Smooth animation did not advance");
-                int right = 16 + (int) field(game.screen, "listWidth");
-                game.screen.mouseClicked(right - 2, 108, 0);
-                game.screen.mouseDragged(right - 2, game.screen.height - 62, 0, 0, game.screen.height - 170);
-                game.screen.mouseReleased(right - 2, game.screen.height - 62, 0);
+                int right = metric(game, "listRight");
+                int bottom = metric(game, "listBottom");
+                int startY = metric(game, "thumbTop") + metric(game, "thumbHeight") / 2;
+                int endY = bottom - 2;
+                game.screen.mouseClicked(right - 2, startY, 0);
+                game.screen.mouseDragged(right - 2, endY, 0, 0, endY - startY);
+                game.screen.mouseReleased(right - 2, endY, 0);
                 require((double) field(game.screen, "listScroll") > 100, "Scrollbar drag failed");
                 String selected = (String) field(game.screen, "selectedId");
                 StyledButton swipeRow = visibleRows(game).getFirst();
@@ -294,7 +323,6 @@ public final class EditorRegression {
                 context(game, 20, 80, "system:add-group");
                 require(menuEntries(game).stream().anyMatch(b -> b.styleId().equals("context-paste_tasks")),
                         "Add context menu lacks paste");
-                game.screen.keyPressed(GLFW.GLFW_KEY_ESCAPE, 0, 0);
             }
             case 8 -> {
                 capture(game, "21-group-menu");
@@ -545,6 +573,11 @@ public final class EditorRegression {
                 return;
             }
         }
+    }
+    private static int metric(Minecraft game, String name) throws Exception {
+        var method = game.screen.getClass().getDeclaredMethod(name);
+        method.setAccessible(true);
+        return (int) method.invoke(game.screen);
     }
     private static Object field(Object object, String name) throws Exception {
         var field = object.getClass().getDeclaredField(name);

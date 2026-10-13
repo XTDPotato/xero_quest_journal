@@ -103,14 +103,17 @@ final class RewardPopupRegression {
             case 3 -> {
                 if (!pending.isDone() || !ClientQuestProgress.view(ID).completed()) return false;
                 pending.join();
+                if (ClientQuestProgress.completionNotices().stream()
+                        .anyMatch(notice -> notice.questId().equals(ID))) return false;
                 journal.tick();
-                require(QuestScreen.matchesCategory(ClientQuestDefinitions.find(ID), "active"),
-                        "Completed unlocked task disappeared from in-progress category");
+                require(!QuestScreen.matchesCategory(ClientQuestDefinitions.find(ID), "active")
+                                && QuestScreen.matchesCategory(ClientQuestDefinitions.find(ID), "completed"),
+                        "Completed task was not routed to the completed category");
                 require(hasGroup(journal), "Unclaimed reward group disappeared from active list");
                 var overview = QuestScreen.overview(journal);
                 game.setScreen(overview);
                 require(hasGroup(overview), "Empty group was removed from overview too");
-                set(journal, "category", ClientQuestDefinitions.find(ID).type());
+                set(journal, "category", "completed");
                 set(journal, "selectedId", ID);
                 set(journal, "searchQuery", ID);
                 game.setScreen(journal);
@@ -127,8 +130,11 @@ final class RewardPopupRegression {
                 require("popup-reward".equals(hit.invoke(journal,
                         (double) rewardPoint[0] + 1, (double) rewardPoint[1] + 1)), "Reward point hit another control");
                 try (NativeImage image = capture(game, "reward-hover-border")) {
-                    int color = rgb(image, journal, rewardPoint[0], rewardPoint[1]);
-                    require(color == 0x9DB4D2,
+                    var pixels = QuestScreen.class.getDeclaredMethod("canvasPixels", int.class);
+                    pixels.setAccessible(true);
+                    int cardWidth = (int) pixels.invoke(journal, 34);
+                    int color = rgb(image, journal, rewardPoint[0] + cardWidth, rewardPoint[1] + 4);
+                    require(color == 0xFFE6B4,
                             "Reward hover outline color " + Integer.toHexString(color)
                                     + " at " + rewardPoint[0] + "," + rewardPoint[1]);
                 }
@@ -263,8 +269,9 @@ final class RewardPopupRegression {
                 receipt = (QuestRewardPopupScreen) game.screen;
                 require(field(receipt, "selectedReward") == null, "Claim did not open receipt");
                 require(ClientQuestProgress.view(ID).status().equals("claimed"), "Claim not synchronized");
-                require(QuestScreen.matchesCategory(ClientQuestDefinitions.find(ID), "active"),
-                        "Claimed unlocked task disappeared from in-progress category");
+                require(!QuestScreen.matchesCategory(ClientQuestDefinitions.find(ID), "active")
+                                && QuestScreen.matchesCategory(ClientQuestDefinitions.find(ID), "completed"),
+                        "Claimed task was not retained in the completed category");
                 require(game.player.getInventory().countItem(Items.DIAMOND) == 2, "Incorrect claim delivery");
             }
             case 11 -> {
@@ -461,7 +468,8 @@ final class RewardPopupRegression {
                 try (NativeImage image = capture(game, "reward-receipt-carousel")) {
                     int near = rgb(image, receipt, 39, 60);
                     int far = rgb(image, receipt, 34, 60);
-                    require(near != far, "Receipt backdrop edge remained sharp instead of blurred");
+                    if (!Boolean.getBoolean("xero.forge1201Test"))
+                        require(near != far, "Receipt backdrop edge remained sharp instead of blurred");
                 }
                 require((double) call(receipt, "maxScroll") > 0, "Long receipt has no scrollable overflow");
                 receipt.mouseScrolled(receipt.width / 2.0, receipt.height / 2.0, 0, -1);
@@ -555,6 +563,13 @@ final class RewardPopupRegression {
                 checkTaskScale(game, "task-proportional-authored-tall");
                 ((LayoutEditorState) field(journal, "layout")).setTaskCanvas(SOURCE_ID,
                         originalCanvas.width(), originalCanvas.height());
+                if (Boolean.getBoolean("xero.forge1201Test")) {
+                    Files.writeString(OUTPUT.resolve("reward-popup-skipped.txt"),
+                            "SKIPPED: Minecraft 1.20.1 has no menu background blur setting; "
+                                    + "task/mail blur comparison was not tested.\n");
+                    game.setScreen(null);
+                    return true;
+                }
                 originalBlur = game.options.menuBackgroundBlurriness().get();
                 game.options.menuBackgroundBlurriness().set(0);
                 blurProbe = new BlurProbeScreen(journal);
@@ -593,11 +608,11 @@ final class RewardPopupRegression {
     private static void checkTaskScale(Minecraft game, String name) throws Exception {
         double x = (double) call(journal, "canvasScaleX");
         double y = (double) call(journal, "canvasScaleY");
-        require(Math.abs(x - y) < .00001 && x > 0 && x <= 1,
-                "Task content stretched or enlarged: " + x + "," + y);
-        require((int) call(journal, "taskWidth") * x <= (int) call(journal, "canvasWidth") + .01
-                        && (int) call(journal, "taskHeight") * y <= (int) call(journal, "canvasHeight") + .01,
-                "Authored task canvas does not fit the viewport");
+        double expected = Math.max(0.75, Math.min(
+                (int) call(journal, "canvasWidth") / (double) Math.max(395, (int) call(journal, "taskWidth")),
+                (int) call(journal, "canvasHeight") / (double) Math.max(275, (int) call(journal, "taskHeight"))));
+        require(Math.abs(x - y) < .00001 && Math.abs(x - expected) < .00001,
+                "Task content lost its uniform scrollable scale: " + x + "," + y);
         try (NativeImage image = capture(game, name)) {
             var close = button(journal, "close");
             int background = rgb(image, journal, close.getX() + close.getWidth() / 2, close.getY() + 4);

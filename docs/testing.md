@@ -52,6 +52,28 @@ Linux/macOS 可把 `.\gradlew.bat` 换为 `./gradlew`。不同系统的 GUI、�
 
 这些测试会启动真实游戏窗口、创建测试世界并操作界面。不要与日常游戏共用目录，也不要把没有运行完的客户端结果解释为 PASS。
 
+### Forge 1.20.1 回归
+
+Forge 使用根目录 wrapper 调用独立子工程：
+
+```powershell
+.\gradlew.bat -p platforms/forge/1.20.1 runClient -PforgeSmokeTest `
+  -PforgeSmokeRunDir=run-smokeTest-fresh
+.\tools\test-forge-functions.ps1
+.\tools\test-forge-functions.ps1 -Modes @("runtimeTest", "structureSceneTest")
+```
+
+需要 Java 17。每个专项使用新的 `run-<suite>-<timestamp>` 目录，任务定义和客户端配置也随之隔离。
+脚本保存各专项的日志、当次截图和 `result.txt`，并在根目录
+`build/verification/forge-functions-<timestamp>/` 生成 CSV/JSON 汇总。
+不要在测试运行期间执行根目录 `clean`，它会清除汇总报告。
+
+`-PforgeSmokeTest` 等参数仅用于开发测试，普通 Forge 构建不包含 smoke 源码和资源。
+TaCZ 专项默认跳过；提供 `-TacticalModJar <兼容的本地 JAR>` 才会在隔离客户端加载它。
+KubeJS、JEI/REI/EMI 等未安装的可选集成不能视为通过实际联调。
+Minecraft 1.20.1 没有 1.21 的菜单背景模糊设置，该像素专项需单独标记跳过。
+专用服务器 EULA 保持 `false`，集成服务器测试不等于远端多人服务器验证。
+
 ## 3. 输出与截图
 
 ```text
@@ -79,7 +101,10 @@ build/verification/         PASS/FAIL 文本与客户端截图
 
 每项是当时执行的开发快照结果。初始 GitHub 上传会再次检查当前源码构建；没有重新跑过的所有历史专项不自动变成当前提交的通过证明。
 
-## 5. 已知未通过的旧回归
+## 5. 历史未通过的旧回归
+
+下表是早期开发记录，不能替代当前版本结果。Forge 1.20.1 的本轮结果与限制见
+[Forge 功能回归报告](forge-1.20.1-verification.md)。
 
 | 专项 | 本次会话记录的失败 | 不能据此声称 |
 | --- | --- | --- |

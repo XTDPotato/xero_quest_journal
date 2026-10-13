@@ -170,7 +170,7 @@ final class CanvasEditorRegression {
                 int left = (int) invoke(journal, "canvasLeft", new Class<?>[0]);
                 int top = (int) invoke(journal, "canvasTop", new Class<?>[0]);
                 journal.mouseScrolled(left + 10, top + 10, -2, 0);
-                require((double) field(journal, "canvasPanX") < 0, "Wide preview cannot pan");
+                require((double) field(journal, "canvasTargetPanX") < 0, "Wide preview cannot pan");
                 source = new QuestSourceScreen(journal, ID);
                 game.setScreen(source);
                 editor().setValue(MARKUP);
@@ -419,10 +419,11 @@ final class CanvasEditorRegression {
                 journal.resize(game, size[0], size[1]);
                 double x = (double) invoke(journal, "canvasScaleX", new Class<?>[0]);
                 double y = (double) invoke(journal, "canvasScaleY", new Class<?>[0]);
-                require(near(x, y) && x > 0 && x <= 1, "Task canvas must fit uniformly without enlargement");
-                require(x * 395 <= (int) invoke(journal, "canvasWidth", new Class<?>[0]) + 1
-                                && y * 275 <= (int) invoke(journal, "canvasHeight", new Class<?>[0]) + 1,
-                        "Default task canvas exceeds its viewport");
+                double expected = Math.max(0.75, Math.min(
+                        (int) invoke(journal, "canvasWidth", new Class<?>[0]) / 395.0,
+                        (int) invoke(journal, "canvasHeight", new Class<?>[0]) / 275.0));
+                require(near(x, y) && near(x, expected),
+                        "Editor canvas did not retain its uniform scrollable workspace scale");
             }
         } finally {
             journal.resize(game, oldWidth, oldHeight);

@@ -141,7 +141,7 @@ public final class ClientSmokeTest {
                                     + "recipient/icon pickers, multiple mixed rewards, component attachments, bundle commands,\n"
                                     + "independent star/keepsake state, expiry/quick-delete protection, metadata codecs,\n"
                                     + "keepsake search, draggable smooth scrolling, help and confirmation dialogs,\n"
-                                    + "15-entry reward editing, item source popup, 34x34 square claim cards,\n"
+                                    + "15-entry reward editing, item source popup, 34x38 claim cards,\n"
                                     + "opaque help/delete dialogs and a circular confirmation icon,\n"
                                     + "white favorite surface, legacy palette migration with custom colors preserved,\n"
                                     + "staggered mailbox/keepsake entrance, stable refresh, reduced motion and unchanged read state,\n"
@@ -562,7 +562,7 @@ public final class ClientSmokeTest {
                     Files.writeString(OUTPUT.resolve("reward-popup-result.txt"),
                             "PASS: empty groups hidden outside editor, half-size Q/E, source inspection without claiming,\n"
                                     + "receipt/source navigation, inside/outside modal clicks, centered fade/scale,\n"
-                                    + "claimed-icon repeat clicks, deferred/exactly-once receipts, blurred backdrop,\n"
+                                    + "claimed-icon repeat clicks, deferred/exactly-once receipts,\n"
                                     + "centered single reward, smooth carousel, drag/scrollbar, partial bulk and overflow claims,\n"
                                     + "item depth isolation, consistent borders and reward hover outline,\n"
                                     + "adaptive source bounds, full component tooltip, scrolling, optional recipe viewer: "
@@ -570,7 +570,10 @@ public final class ClientSmokeTest {
                                     + "create/edit condition drafts, atomic save, cancel, reopen and clear-all;\n"
                                     + "silent automatic delivery after reset, silent action-only manual claims,\n"
                                     + "mixed receipts containing only visible rewards, circular close controls,\n"
-                                    + "proportional custom canvases and task/mail background blur pixel checks.\n");
+                                    + "proportional custom canvases;\n"
+                                    + (Boolean.getBoolean("xero.forge1201Test")
+                                    ? "SKIPPED: task/mail/receipt background blur is unavailable in Minecraft 1.20.1.\n"
+                                    : "task/mail background blur pixel checks.\n"));
                     Files.copy(OUTPUT.resolve("reward-popup-result.txt"), OUTPUT.resolve("result.txt"),
                             java.nio.file.StandardCopyOption.REPLACE_EXISTING);
                     finished = true;
@@ -905,7 +908,10 @@ public final class ClientSmokeTest {
                     require(QuestRepository.find(PREFIX + "_task").title().equals("Smoke task <>&"), "HTML roundtrip");
                     require(QuestRepository.find(PREFIX + "_task").description().equals("Description <>&"), "Content roundtrip");
                     require(QuestRepository.chapters().stream().anyMatch(chapter -> chapter.id().equals(PREFIX + "_chapter")
-                            && chapter.quests().contains(PREFIX + "_task")), "Chapter reference missing");
+                            && (chapter.quests().contains(PREFIX + "_task")
+                            || chapter.quests().isEmpty() && !chapter.timeline().explicitTasks()
+                            && chapter.groupId().equals(QuestRepository.groupOf(PREFIX + "_task")))),
+                            "Chapter membership missing");
                     capture(game, "09-created-hierarchy");
                     context(game, 20, 80, "group:" + PREFIX + "_group");
                     EditorRegression.menu(game, "add_task");
@@ -1112,6 +1118,9 @@ public final class ClientSmokeTest {
                     if (parent == null || !parent.status().equals("complete") || child == null
                             || !child.status().equals("active")) return;
                     require(!ClientQuestProgress.isTracked(PREFIX + "_guide"), "Completed guide remained tracked");
+                    var setCategory = QuestScreen.class.getDeclaredMethod("setCategory", String.class);
+                    setCategory.setAccessible(true);
+                    setCategory.invoke(game.screen, "completed");
                     TrackingIndicatorRegression.check(game, PREFIX + "_guide", false);
                     require(ClientQuestProgress.completionNotices().stream()
                             .anyMatch(notice -> notice.questId().equals(PREFIX + "_guide")),
@@ -1141,8 +1150,25 @@ public final class ClientSmokeTest {
                     require(runtimeCheck.join().equals("items_added"), "Runtime item setup failed");
                     var child = ClientQuestProgress.view(PREFIX + "_item");
                     if (child == null || !child.status().equals("complete")) return;
-                    clickId(game, "category-commission");
-                    clickId(game, "quest-" + PREFIX + "_item");
+                    if (ClientQuestProgress.completionNotices().stream()
+                            .anyMatch(notice -> notice.questId().equals(PREFIX + "_item"))) return;
+                    var setCategory = QuestScreen.class.getDeclaredMethod("setCategory", String.class);
+                    setCategory.setAccessible(true);
+                    setCategory.invoke(game.screen, "completed");
+                    var model = (xtdpotato.xero_quest_journal.client.JournalListModel)
+                            field(game.screen, "journalList");
+                    require(xtdpotato.xero_quest_journal.client.ClientQuestDefinitions.find(PREFIX + "_item") != null
+                                    && model.rows().stream().anyMatch(row -> row.key().equals("quest:" + PREFIX + "_item")),
+                            "Completed item missing from client list; type="
+                                    + QuestRepository.find(PREFIX + "_item").type()
+                                    + ", category=" + field(game.screen, "category")
+                                    + ", rows=" + model.rows().stream().map(row -> row.key()).toList());
+                    clickButton(game, findId(game, "quest-" + PREFIX + "_item"));
+                    require(game.screen instanceof QuestScreen
+                                    && field(game.screen, "selectedId").equals(PREFIX + "_item"),
+                            "Item selection did not reach details; screen=" + game.screen.getClass().getSimpleName()
+                                    + ", category=" + field(game.screen, "category")
+                                    + ", selected=" + field(game.screen, "selectedId"));
                     clickId(game, "claim");
                 }
                 case 24 -> {
@@ -1224,7 +1250,7 @@ public final class ClientSmokeTest {
                                     + "no vanilla buttons on journal/forms/settings, disabled button rejection, Chinese resources,\n"
                                     + "script/title-key preservation, prerequisite lock/unlock, confirmation completion,\n"
                                     + "automatic item completion, persistent world records, manual rewards and duplicate-claim rejection,\n"
-                                    + "serialized NeoForge progress/actions/catalog, network duplicate-claim rejection,\n"
+                                    + "serialized progress/actions/catalog, network duplicate-claim rejection,\n"
                                     + "track-only player persistence, three-entry tracking NBT round-trip and player/world isolation,\n"
                                     + "clipboard snapshots, batch IDs/UIDs/prerequisites, rollback, task/group deletion and backups,\n"
                                     + "Ctrl selection, middle duplicate, deletion confirmation, smooth wheel/scrollbar/swipe,\n"
