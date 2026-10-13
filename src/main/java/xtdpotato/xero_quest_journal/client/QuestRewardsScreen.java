@@ -14,10 +14,8 @@ import xtdpotato.xero_quest_journal.core.io.AtomicFiles;
 import xtdpotato.xero_quest_journal.core.io.QuestRepository;
 import xtdpotato.xero_quest_journal.core.model.QuestDefinition;
 import xtdpotato.xero_quest_journal.core.model.QuestRewardQuality;
-import xtdpotato.xero_quest_journal.core.QuestConfig;
 import xtdpotato.xero_quest_journal.core.runtime.QuestRewards;
 import xtdpotato.xero_quest_journal.core.runtime.RewardEffect;
-import xtdpotato.xero_quest_journal.core.runtime.QuestScripts;
 import xtdpotato.xero_quest_journal.core.mailbox.MailboxRuntime;
 
 import java.nio.file.Files;
@@ -316,28 +314,14 @@ public final class QuestRewardsScreen extends AnimatedQuestScreen {
                 return;
             }
             if (draft.type.equals("script")) {
-                Path root = QuestConfig.root().resolve("scripts").toAbsolutePath().normalize();
-                Path file = root.resolve(draft.item).normalize();
-                if (!file.startsWith(root) || !draft.item.endsWith(".js")) {
-                    error = "create.error.reward";
-                    return;
-                }
-                String source = QuestScripts.source(draft.item);
                 var server = minecraft.getSingleplayerServer();
                 var player = minecraft.player;
                 if (server == null || player == null) {
                     error = "create.error.permission";
                     return;
                 }
-                String reference = draft.item;
-                String expected = QuestRepository.fingerprint(source);
-                var uuid = player.getUUID();
-                minecraft.setScreen(new QuestRewardTextEditorScreen(this,
-                        text("reward_type.script"), source, file,
-                        value -> CompletableFuture.supplyAsync(() ->
-                                QuestScripts.editSource(server.getPlayerList().getPlayer(uuid),
-                                        reference, expected, value), server),
-                        value -> init()));
+                minecraft.setScreen(new QuestScriptFileScreen(this, draft.item,
+                        xtdpotato.xero_quest_journal.core.model.QuestScriptReference.Kind.REWARD_FILE));
                 return;
             }
             ResourceLocation id = ResourceLocation.tryParse(draft.item);

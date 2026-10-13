@@ -34,6 +34,27 @@ public final class QuestScripts {
     private QuestScripts() {}
     private static final class ScriptLimit extends Error {}
 
+    /** Compiles without executing or exposing player/server bindings. */
+    public static String syntaxError(String source) {
+        if (source == null || source.length() > MAX_SOURCE) return "Script exceeds 64 KiB";
+        int encoded = 0;
+        for (int i = 0; i < source.length(); i++) {
+            char c = source.charAt(i);
+            encoded += c >= 1 && c <= 127 ? 1 : c <= 2047 ? 2 : 3;
+            if (encoded > 65535) return "Script exceeds NBT string limit";
+        }
+        try {
+            FACTORY.call(cx -> { cx.compileString(source, "quest-script", 1, null); return null; });
+            return "";
+        } catch (RhinoException invalid) {
+            return invalid.lineNumber() + ":" + Math.max(1, invalid.columnNumber()) + " " + invalid.details();
+        } catch (StackOverflowError tooDeep) {
+            return "Script nesting is too deep";
+        } catch (RuntimeException invalid) {
+            return invalid.getMessage() == null ? "Invalid JavaScript" : invalid.getMessage();
+        }
+    }
+
     public static String source(String reference) throws Exception {
         Path root = QuestConfig.root().resolve("scripts").toAbsolutePath().normalize();
         Path path = root.resolve(reference).normalize();

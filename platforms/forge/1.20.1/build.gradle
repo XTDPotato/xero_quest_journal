@@ -17,7 +17,7 @@ def forgeSmokeModes = [
         "locationItemTest", "mediaTest", "controlGraphTest", "unlockGraphTest",
         "rewardPopupTest", "claimReceiptTest", "rewardQualityTest", "creationTest",
         "animationTest", "runtimeTest", "structureSceneTest", "buttonImageTest",
-        "rewardsTest", "templateTest"
+        "rewardsTest", "templateTest", "authoringDocsTest"
 ]
 def requestedForgeSmokeModes = forgeSmokeModes.findAll { project.hasProperty("forge${it.capitalize()}") }
 def includeForgeSmoke = !requestedForgeSmokeModes.isEmpty()

@@ -163,7 +163,8 @@ public final class SelectionRegression {
     }
 
     private static void assertBorder(Minecraft game, NativeImage image, StyledButton button, int rgb) {
-        require(colorAt(game, image, button.getX(), button.getY() + 4) == rgb, "Active group border not highlighted");
+        // The hover outline occupies the outer pixel; selection retains its inner border.
+        require(colorAt(game, image, button.getX() + 1, button.getY() + 4) == rgb, "Active group border not highlighted");
     }
 
     private static void assertThinGroupBorder(Minecraft game, NativeImage image, StyledButton button) {

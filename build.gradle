@@ -119,7 +119,7 @@ def clientRegression = [
         'unlockGraphTest', 'journeyTest', 'overviewTest', 'journalFocusTest', 'mailReferenceTest',
         'lootTableTest', 'trackingHudTest', 'mailBodyEditorTest', 'mailAdminTest', 'journeyEditingTest', 'journalOrderTest',
         'overviewAuthoringTest', 'generateTasksTest', 'tacticalCompatibilityTest', 'generatedDeletionTest',
-        'claimReceiptTest', 'spotlightUiTest', 'rewardQualityTest'
+        'claimReceiptTest', 'spotlightUiTest', 'rewardQualityTest', 'authoringDocsTest'
 ].any { project.hasProperty(it) }
 
 neoForge {
@@ -128,6 +128,10 @@ neoForge {
     runs {
         client {
             client()
+            if (project.hasProperty('authoringDocsTest')) {
+                systemProperty 'xero.authoringDocsTest', 'true'
+                gameDirectory = file('run-authoring-docs')
+            }
             if (project.hasProperty('smokeTest')) {
                 systemProperty 'xero.smokeTest', 'true'
                 gameDirectory = file('run-smoke')
@@ -274,6 +278,9 @@ neoForge {
             if (project.hasProperty('buttonImageTest')) {
                 systemProperty 'xero.buttonImageTest', 'true'
                 gameDirectory = file('run-button-images')
+            }
+            if (clientRegression && project.hasProperty('neoSmokeRunDir')) {
+                gameDirectory = file(project.property('neoSmokeRunDir'))
             }
         }
     }

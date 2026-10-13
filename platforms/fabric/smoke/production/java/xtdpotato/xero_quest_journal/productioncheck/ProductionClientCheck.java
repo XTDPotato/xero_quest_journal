@@ -19,8 +19,8 @@ public final class ProductionClientCheck implements ClientModInitializer {
     private int stableTicks;
     private int tabIndex;
     private boolean scrolled;
-    private static final String[] TABS = {"general", "motion", "appearance", "advanced"};
-    private static final String[] LAST = {"keys", "popup-animation-preview-hint", "reload", "folder"};
+    private boolean languageRequested;
+    private static final String[] TABS = {"general", "motion", "notifications", "appearance", "tasks", "tools"};
 
     @Override public void onInitializeClient() {
         ClientTickEvents.END_CLIENT_TICK.register(game -> {
@@ -28,6 +28,15 @@ public final class ProductionClientCheck implements ClientModInitializer {
             Path output = Path.of(System.getProperty("xero.productionCheckDir"));
             try {
                 if (game.getOverlay() != null) return;
+                if (!languageRequested) {
+                    game.options.guiScale().set(2);
+                    game.resizeDisplay();
+                    game.getLanguageManager().setSelected("zh_cn");
+                    game.options.languageCode = "zh_cn";
+                    game.reloadResourcePacks();
+                    languageRequested = true;
+                    return;
+                }
                 if (!opened) {
                     // A fresh instance can display accessibility onboarding before the title.
                     if (game.screen == null) return;
@@ -36,7 +45,7 @@ public final class ProductionClientCheck implements ClientModInitializer {
                         stableTicks = 0;
                     }
                     if (++stableTicks < 40) return;
-                    ClientEditMode.set(true);
+                    ClientEditMode.set(false);
                     game.setScreen(new QuestConfigScreen(game.screen));
                     if (!(game.screen instanceof QuestConfigScreen))
                         throw new AssertionError("Settings fixture did not open");
@@ -50,13 +59,15 @@ public final class ProductionClientCheck implements ClientModInitializer {
                 var rail = game.screen.children().stream().filter(AbstractWidget.class::isInstance)
                         .map(AbstractWidget.class::cast)
                         .filter(widget -> widget.getClass().getSimpleName().equals("ScrollRail")).findFirst().orElse(null);
-                if (game.screen.height < 300 && tabIndex < 3 && rail == null)
-                    throw new AssertionError("Compact settings have no scroll rail");
                 if (rail != null && rail.getY() + rail.getHeight() >= doneButton.getY())
                     throw new AssertionError("Settings body overlaps footer");
                 if (game.screen.getChildAt(doneButton.getX() + 5, doneButton.getY() + 5).orElse(null) != doneButton)
                     throw new AssertionError("Settings body intercepted footer input");
                 try (var image = Screenshot.takeScreenshot(game.getMainRenderTarget())) {
+                    if (image.getWidth() != 1920 || image.getHeight() != 1080)
+                        throw new AssertionError("Production screenshot is not 1920x1080");
+                    if (!game.getLanguageManager().getSelected().equals("zh_cn"))
+                        throw new AssertionError("Production language is not Chinese");
                     String name = tabIndex == 0 && !scrolled ? "production-settings"
                             : "production-settings-" + TABS[tabIndex] + (scrolled ? "-scrolled" : "");
                     image.writeToFile(output.resolve(name + ".png"));
@@ -68,12 +79,23 @@ public final class ProductionClientCheck implements ClientModInitializer {
                     frames = 0;
                     return;
                 }
-                var last = button(game.screen, LAST[tabIndex]);
-                if (last.getY() < (rail == null ? 0 : rail.getY()) ||
-                        last.getY() + last.getHeight() >= doneButton.getY())
-                    throw new AssertionError("Last settings row is not reachable above the footer");
-                if (game.screen.getChildAt(last.getX() + 5, last.getY() + 5).orElse(null) != last)
-                    throw new AssertionError("Last settings row cannot receive pointer input");
+                var field = QuestConfigScreen.class.getDeclaredField("bodyWidgets");
+                field.setAccessible(true);
+                var body = (java.util.List<?>) field.get(game.screen);
+                var topMethod = QuestConfigScreen.class.getDeclaredMethod("bodyTop");
+                var bottomMethod = QuestConfigScreen.class.getDeclaredMethod("bodyBottom");
+                topMethod.setAccessible(true);
+                bottomMethod.setAccessible(true);
+                int bodyTop = (int) topMethod.invoke(game.screen), bodyBottom = (int) bottomMethod.invoke(game.screen);
+                for (var value : body) if (value instanceof AbstractWidget widget) {
+                    if (widget.getY() + widget.getHeight() <= bodyTop || widget.getY() >= bodyBottom) continue;
+                    if (widget.getY() + widget.getHeight() >= doneButton.getY())
+                        throw new AssertionError("Settings body overlaps its footer");
+                    int probeY = Math.max(bodyTop, widget.getY()) + 5;
+                    if (widget.active && game.screen.getChildAt(widget.getX() + 5, probeY).orElse(null) != widget)
+                        throw new AssertionError("Settings row cannot receive pointer input: "
+                                + TABS[tabIndex] + "/" + (widget instanceof StyledButton button ? button.styleId() : widget.getClass().getName()));
+                }
                 if (++tabIndex < TABS.length) {
                     button(game.screen, "config-tab-" + TABS[tabIndex]).onPress();
                     frames = 0;
@@ -82,8 +104,8 @@ public final class ProductionClientCheck implements ClientModInitializer {
                 }
                 Files.writeString(output.resolve("result.txt"),
                         "PASS: production release JAR client startup, native client mixins, shader registration, "
-                                + "embedded dependencies; all four compact settings tabs, clipped body, scroll rail, "
-                                + "reachable final rows, footer pointer isolation and rendered screenshots. "
+                                + "embedded dependencies; all six full-screen settings tabs, personal access without author mode, "
+                                + "footer pointer isolation and Chinese 1920x1080 screenshots. "
                                 + "Full world workflows are covered separately by the development regressions.");
                 done = true;
                 game.stop();

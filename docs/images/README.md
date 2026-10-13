@@ -4,7 +4,35 @@
 
 这里保存从本项目开发客户端挑选的截图，使用 Minecraft 测试世界和演示任务。图片不是其他游戏的 UI 设计参考，不包含完整测试存档。
 
-部分截图来自不同日期的开发版本，标题和数量使用测试数据。较早的图片可能展示旧版布局或卡片颜色；最新品质示例以 `reward-detail.png`、`reward-receipt.png` 为准。
+部分截图来自不同日期的开发版本，标题和数量使用测试数据。下面先列出 2026-10-13
+作者工具专项生成的中文截图，**每张原始分辨率均为 1920×1080**，未将小图放大。
+截图测试通过后由 `tools/update-authoring-documentation.ps1` 同步。
+
+## 当前中文全高清截图
+
+| 文件 | 场景 |
+| --- | --- |
+| [settings-general-zh-1920.png](settings-general-zh-1920.png) | 常规：视图、入口、HUD 与偏移 |
+| [settings-motion-zh-1920.png](settings-motion-zh-1920.png) | 动画：减弱动态、弹出时长、编辑入口 |
+| [settings-notifications-zh-1920.png](settings-notifications-zh-1920.png) | 通知：整体与图标大小、预览 |
+| [settings-appearance-zh-1920.png](settings-appearance-zh-1920.png) | 外观：主题、背景与重置 |
+| [settings-tasks-zh-1920.png](settings-tasks-zh-1920.png) | 任务：服务端分页与奖励来源 |
+| [settings-tools-zh-1920.png](settings-tools-zh-1920.png) | 工具：按键、文件夹、折叠组重置 |
+| [task-js-example-zh-1920.png](task-js-example-zh-1920.png) | JS 教学演示任务 |
+| [js-predicate-graph-zh-1920.png](js-predicate-graph-zh-1920.png) | JavaScript 模式、真/假端口、独立代码入口 |
+| [visual-predicate-graph-zh-1920.png](visual-predicate-graph-zh-1920.png) | 可视化判断：字段、比较符与值 |
+| [js-editor-reference-zh-1920.png](js-editor-reference-zh-1920.png) | 代码、行号和字段参考 |
+| [js-editor-examples-zh-1920.png](js-editor-examples-zh-1920.png) | 示例选择与追加 |
+| [js-editor-syntax-error-zh-1920.png](js-editor-syntax-error-zh-1920.png) | 无效顶层 return 的诊断 |
+| [js-condition-file-zh-1920.png](js-condition-file-zh-1920.png) | 文件条件及对应字段类型 |
+| [js-reward-file-zh-1920.png](js-reward-file-zh-1920.png) | 奖励源码及动作 API 参考 |
+| [mailbox-authoring-zh-1920.png](mailbox-authoring-zh-1920.png) | 当前邮箱界面 |
+| [overview-authoring-zh-1920.png](overview-authoring-zh-1920.png) | 当前总览界面 |
+
+## 历史功能截图
+
+较早的图片可能展示旧版布局或卡片颜色；品质示例以 `reward-detail.png`、
+`reward-receipt.png` 为准。下表用于展示其他功能，不作为本轮设置或脚本布局的依据。
 
 | 文件 | 场景 | 原始测试截图 |
 | --- | --- | --- |

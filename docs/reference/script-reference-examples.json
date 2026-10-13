@@ -1,0 +1,77 @@
+[
+  {
+    "kind": "GRAPH_PREDICATE",
+    "id": "click",
+    "source": "eventType === \"click\";"
+  },
+  {
+    "kind": "GRAPH_PREDICATE",
+    "id": "level_graph",
+    "source": "Number(experienceLevel) >= 10;"
+  },
+  {
+    "kind": "GRAPH_PREDICATE",
+    "id": "region_graph",
+    "source": "dimension === \"minecraft:overworld\" && Number(y) >= 64;"
+  },
+  {
+    "kind": "GRAPH_PREDICATE",
+    "id": "sneaking",
+    "source": "sneaking === \"true\" && Number(health) < Number(maxHealth);"
+  },
+  {
+    "kind": "GRAPH_PREDICATE",
+    "id": "function_graph",
+    "source": "(function () {\n    const level = Number(experienceLevel);\n    return eventType === \"click\" && level >= 10;\n})();"
+  },
+  {
+    "kind": "GRAPH_PREDICATE",
+    "id": "pointer",
+    "source": "eventType === \"hold\" && mouseInside === \"true\";"
+  },
+  {
+    "kind": "GRAPH_PREDICATE",
+    "id": "located",
+    "source": "locationFound === \"true\" && locatedDimension === dimension;"
+  },
+  {
+    "kind": "CONDITION_FILE",
+    "id": "level",
+    "source": "experienceLevel >= 10;"
+  },
+  {
+    "kind": "CONDITION_FILE",
+    "id": "dimension",
+    "source": "dimension === \"minecraft:overworld\";"
+  },
+  {
+    "kind": "CONDITION_FILE",
+    "id": "region",
+    "source": "dimension === \"minecraft:overworld\" && x >= 0 && x <= 100 && z >= 0 && z <= 100;"
+  },
+  {
+    "kind": "CONDITION_FILE",
+    "id": "function",
+    "source": "(function () {\n    const correctWorld = dimension === \"minecraft:overworld\";\n    return correctWorld && experienceLevel >= 10;\n})();"
+  },
+  {
+    "kind": "REWARD_FILE",
+    "id": "message",
+    "source": "message(\"Congratulations, \" + playerName + \"!\");"
+  },
+  {
+    "kind": "REWARD_FILE",
+    "id": "command",
+    "source": "if (!command(\"say Quest reward claimed\")) {\n    throw new Error(\"Reward command failed\");\n}"
+  },
+  {
+    "kind": "REWARD_FILE",
+    "id": "reward_branch",
+    "source": "if (experienceLevel >= 10) {\n    message(\"Level requirement met\");\n} else {\n    message(\"Reward received\");\n}"
+  },
+  {
+    "kind": "KUBEJS",
+    "id": "kubejs",
+    "source": "if (typeof global.onXeroQuestAction !== \"function\") {\n    throw new Error(\"Define global.onXeroQuestAction in kubejs/server_scripts first\");\n}\nglobal.onXeroQuestAction(event);"
+  }
+]

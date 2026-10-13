@@ -23,7 +23,7 @@ try {
         "net.fabricmc.loader.impl.launch.knot.KnotClient" `
         "--username" "Dev" "--version" $Minecraft "--accessToken" "0" `
         "--gameDir" $runDir "--assetsDir" $runtime.assets "--assetIndex" $runtime.assetIndex `
-        "--width" "1280" "--height" "720" *> (Join-Path $reportRoot "client.log")
+        "--width" "1920" "--height" "1080" *> (Join-Path $reportRoot "client.log")
     $exitCode = $LASTEXITCODE
 } finally { Pop-Location }
 $resultFile = Join-Path $reportRoot "result.txt"

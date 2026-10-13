@@ -113,6 +113,8 @@ public record TriggerGraph(List<Node> nodes, List<Edge> edges) {
             for (String key : List.of("xField", "yField", "zField", "dimensionField"))
                 if (!data.getOrDefault(key, "").isBlank() && !FIELDS.contains(data.get(key))
                         && !data.get(key).startsWith("var:")) throw new IllegalArgumentException("Unknown coordinate source");
+            if (type.equals("js") && !List.of("script", "visual").contains(data.getOrDefault("mode", "script")))
+                throw new IllegalArgumentException("Invalid predicate mode");
             if (type.equals("js") && data.getOrDefault("mode", "script").equals("visual")
                     && (!(FIELDS.contains(data.getOrDefault("field", "eventType"))
                     || data.getOrDefault("field", "").startsWith("var:"))

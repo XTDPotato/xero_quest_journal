@@ -85,6 +85,7 @@ public final class ClientSmokeTest {
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void tick(ClientTickEvent.Post event) {
         if ((!Boolean.getBoolean("xero.smokeTest") && !Boolean.getBoolean("xero.mailboxTest") && !Boolean.getBoolean("xero.mailReferenceTest")
+                && !Boolean.getBoolean("xero.authoringDocsTest")
                 && !Boolean.getBoolean("xero.popupAnimationTest")
                 && !Boolean.getBoolean("xero.mailBodyEditorTest")
                 && !Boolean.getBoolean("xero.mailAdminTest")
@@ -219,6 +220,19 @@ public final class ClientSmokeTest {
                         java.nio.file.StandardCopyOption.REPLACE_EXISTING);
                 finished = true;
                 game.stop();
+                return;
+            }
+            if (Boolean.getBoolean("xero.authoringDocsTest") && stage >= 2) {
+                if (game.player == null || game.level == null) return;
+                if (AuthoringDocumentationRegression.tick(game)) {
+                    Files.createDirectories(OUTPUT);
+                    Files.writeString(OUTPUT.resolve("result.txt"),
+                            "PASS: real script examples and predicate result types, graph true/false/once/error behavior, "
+                                    + "syntax-only editor validation, draft retention, JS inspector bounds, complete command export, "
+                                    + "six full-screen settings tabs and 100ms tab timing, Chinese 1920x1080 screenshots.\n");
+                    finished = true;
+                    game.stop();
+                }
                 return;
             }
             if (Boolean.getBoolean("xero.popupAnimationTest") && stage >= 2) {
@@ -962,13 +976,13 @@ public final class ClientSmokeTest {
                     requireModernButtons(game);
                     var prefs = xtdpotato.xero_quest_journal.client.ClientPreferences.get();
                     boolean previous = prefs.trackingHud;
-                    clickId(game, "hud-toggle");
-                    var hudToggle = choiceId(game, "hud-toggle");
+                    clickId(game, "config-hud");
+                    var hudToggle = choiceId(game, "config-hud");
                     require(hudToggle.isOpen(), "Styled toggle list did not open");
                     require(prefs.trackingHud == previous, "Styled toggle changed before choosing a list item");
                     selectChoice(game, hudToggle, !previous);
                     require(prefs.trackingHud != previous, "Styled toggle list selection failed");
-                    clickId(game, "hud-toggle");
+                    clickId(game, "config-hud");
                     selectChoice(game, hudToggle, previous);
                     require(prefs.trackingHud == previous, "Styled toggle did not restore its original value");
                     clickId(game, "done");

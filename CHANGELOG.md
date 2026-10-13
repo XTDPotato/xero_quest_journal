@@ -4,11 +4,17 @@
 
 ## Unreleased
 
-- Added an explicit Minecraft/loader matrix for 1.20.1, 1.21.1, and 26.1-26.3.
-- Added shared `PlatformServices` boundaries for config paths and optional-mod detection.
-- Added a standalone Fabric 1.21.1 Loom build and entrypoint skeleton without claiming feature parity.
-- Added a standalone Forge 1.20.1 ForgeGradle build with a minimal status command.
-- Kept NeoForge 1.21.1 as the verified build baseline.
+## 0.1.0 多版本预览 4 · 2026-10-13
+
+- 发布目标为 Forge 1.20.1、Fabric 1.20.1、NeoForge 1.21.1、Fabric 1.21.1，统一共享功能。
+- 设置改为全屏顶部六标签：常规、动画、通知、外观、任务、工具，标签切换为 100ms。
+- 合并重复设置入口，个人偏好无需作者模式，服务端配置保留权限校验。
+- 统一事件图、条件文件、奖励文件 JS 编辑器，加入字段参考、15 个用途示例、行号和语法诊断。
+- 修正 JS 判断标签被模式控件遮挡的问题，调整窗口大小保留草稿，追加示例超限时保留原稿。
+- 明确严格布尔结果、图字段字符串类型、文件数字类型、真假与异常区别、两种一次执行语义。
+- 补齐三个命令根的 64 条共享执行路径、Forge 额外状态命令与权限，增加中文 1920×1080 截图系列。
+- 本轮具体构建与复验见 [作者工具验证报告](docs/authoring-verification.md)。
+- 26.1–26.3 保留工程与已验证存档适配层；完整迁移尚未完成，不发布安装包。
 
 ## 0.1.0 开发快照 · 2026-10-09
 

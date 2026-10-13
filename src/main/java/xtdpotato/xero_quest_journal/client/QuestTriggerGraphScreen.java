@@ -334,7 +334,8 @@ public final class QuestTriggerGraphScreen extends AnimatedQuestScreen {
         init();
         if (nodeType.equals("kubejs_script"))
             minecraft.setScreen(new QuestScriptEditorScreen(this, nodeTitle(nodes.getLast()),
-                    data.getOrDefault("script", ""), value -> update("script", value)));
+                    data.getOrDefault("script", ""), value -> update("script", value),
+                    xtdpotato.xero_quest_journal.core.model.QuestScriptReference.Kind.KUBEJS));
     }
     static Component nodeTitle(TriggerGraph.Node node) {
         if (node.type().equals("event") && !node.get("category", "").isBlank())
@@ -995,15 +996,15 @@ public final class QuestTriggerGraphScreen extends AnimatedQuestScreen {
                             () -> { visualSecond = !visualSecond; init(); });
                 }
             } else {
-                labels.add(new Label(text("node.js"), x, y + 6));
+                labels.add(new Label(text("node.js"), x, y + 27));
                 labels.add(new Label(Component.literal(font.plainSubstrByWidth(
-                        node.get("script", "false").replace('\n', ' '), w)), x, y + 23));
-                button(x, y + 40, w, null, "edit_script", () ->
+                        node.get("script", "false").replace('\n', ' '), w)), x, y + 42));
+                button(x, y + 60, w, null, "edit_script", () ->
                         minecraft.setScreen(new QuestScriptEditorScreen(this, node.get("script", "false"),
                                 value -> update("script", value))));
             }
             addRenderableWidget(new StyledChoiceButton<>(x, y + (node.get("mode", "script").equals("visual")
-                    ? 182 : 78), w, 20, text("once"),
+                    ? 182 : 98), w, 20, text("once"),
                     List.of(false, true), Boolean.parseBoolean(node.get("once", "false")),
                     value -> text(value ? "once" : "repeat"), value -> update("once", value.toString()),
                     styles, "graph-js-once"));
@@ -1244,7 +1245,8 @@ public final class QuestTriggerGraphScreen extends AnimatedQuestScreen {
             } else {
                 button(x, y, w, null, "edit_script", () -> {
                     if (enabled) minecraft.setScreen(new QuestScriptEditorScreen(this, nodeTitle(node),
-                            node.get("script", ""), value -> update("script", value)));
+                            node.get("script", ""), value -> update("script", value),
+                            xtdpotato.xero_quest_journal.core.model.QuestScriptReference.Kind.KUBEJS));
                 });
                 var edit = (AbstractWidget) children().getLast();
                 edit.active = enabled;

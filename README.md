@@ -11,11 +11,14 @@ Minecraft 1.21.1 NeoForge。Forge 1.20.1、Fabric 1.20.1 和 Fabric 1.21.1
 每个游戏版本/加载器使用独立 JAR。详见 [版本矩阵](docs/porting-matrix.md)
 和 [Fabric 验证报告](docs/fabric-verification.md)。
 
+2026-10-13 作者工具更新：全屏六标签设置、固定 100ms 标签切换、带参考和示例的 JS 编辑器，
+以及完整命令树。详见 [本轮验证](docs/authoring-verification.md)。
+
 Xero Quest Journal 面向整合包作者、地图作者与喜欢任务引导的玩家，把任务列表、章节历程、世界目标、奖励和邮箱放在一套原生游戏界面中。作者可以在本地世界内编辑任务，也可以用 JSON、HTML 或 XML 配置任务文件。
 
 核心模组保持轻量，媒体解码使用可选后端；任务完成、奖励领取和玩家进度由服务端处理。
 
-> 当前为 **0.1.0 开发版本**，不是已完成全部规划的稳定发行版。下方截图均来自本项目的 Minecraft 开发客户端，使用测试任务；部分截图采自较早的开发构建，不代表所有细节与当前版本完全一致。功能边界和未通过的测试见 [测试与验证](docs/testing.md)。
+> 当前为 **0.1.0 开发版本**。标有“2026-10-13”的新截图均为中文界面、原生 1920×1080；其余历史截图保留作功能参考。功能边界见 [测试与验证](docs/testing.md) 和 [本轮验证](docs/authoring-verification.md)。
 
 ![任务详情、新任务与奖励展示](docs/images/task-details.png)
 
@@ -23,6 +26,9 @@ Xero Quest Journal 面向整合包作者、地图作者与喜欢任务引导的�
 
 - [功能一览](#功能一览)
 - [界面与截图](#界面与截图)
+- [全部命令](docs/commands.md)
+- [JavaScript 编写参考与示例](docs/javascript.md)
+- [判断节点详解](docs/trigger-conditions.md)
 - [安装和开始使用](#安装和开始使用)
 - [任务文件示例](#任务文件示例)
 - [标签与物品数据](#标签与物品数据)
@@ -45,6 +51,8 @@ Xero Quest Journal 面向整合包作者、地图作者与喜欢任务引导的�
 | 任务规则 | 持有、累计获取、提交、击杀、方块交互、进度、地点、脚本与组合条件 |
 | 解锁关系 | 前置任务 DAG、可视化连线、节点移动、循环检查、撤销与重做 |
 | 事件节点 | 任务控件事件图、条件与动作节点、连线、属性编辑 |
+| 脚本编辑 | 分用途参考、可追加示例、行号、语法检查、文件冲突保护 |
+| 模组设置 | 全屏常规/动画/通知/外观/任务/工具标签，100ms 内容切换 |
 | 奖励 | 物品、经验、命令、函数、脚本、效果、战利品等；手动或自动发放 |
 | 品质卡片 | 灰、绿、蓝、紫、金、红六档品质，可选背景色覆盖 |
 | 邮箱 | 未读、收藏、附件、单封与批量领取、保护性删除、邮件编辑 |
@@ -60,7 +68,29 @@ Xero Quest Journal 面向整合包作者、地图作者与喜欢任务引导的�
 
 推荐任务与分类入口集中展示，支持作者设置背景。总览负责导航，完整任务操作仍在任务详情内完成。
 
-![任务总览](docs/images/overview.png)
+![中文 1920×1080 任务总览，2026-10-13](docs/images/overview-authoring-zh-1920.png)
+
+### 全屏设置与脚本参考
+
+设置使用顶部六个标签，下面展示对应选项。个人偏好无需作者模式；
+服务器分页和作者主题仍需管理员权限。重复的按键、文件夹和动画编辑入口已合并。
+切换标签使用 100ms 动画；关闭动画或减弱动态时立即切换。
+
+![中文全屏设置：常规，2026-10-13](docs/images/settings-general-zh-1920.png)
+
+![中文全屏设置：动画，2026-10-13](docs/images/settings-motion-zh-1920.png)
+
+事件图中选择“JavaScript”后打开代码编辑器，可以同时阅读字段参考和用途对应的示例。
+代码区、参考区、底部错误信息独立裁剪。保存先检查语法；追加示例保留现有草稿。
+
+![JS 判断模式与独立编辑入口，2026-10-13](docs/images/js-predicate-graph-zh-1920.png)
+
+![游戏内 JavaScript 参考，2026-10-13](docs/images/js-editor-reference-zh-1920.png)
+
+内置判断最后必须得到布尔 `true`；不能直接写顶层 `return true`。
+事件图字段都是字符串，例如 `Number(experienceLevel) >= 10;`。
+文件条件中的等级和坐标是数值。完整语法、真假分支、一次执行、错误行为和奖励动作见
+[JavaScript 参考](docs/javascript.md) 与 [判断节点详解](docs/trigger-conditions.md)。
 
 ### 旅行历程
 
@@ -98,7 +128,7 @@ Xero Quest Journal 面向整合包作者、地图作者与喜欢任务引导的�
 
 邮箱提供独立的邮件列表和详情；物品选择器可列出运行时加载的原版、模组和数据包物品标签。
 
-![邮箱列表和邮件详情](docs/images/mailbox.png)
+![中文 1920×1080 邮箱列表和邮件详情，2026-10-13](docs/images/mailbox-authoring-zh-1920.png)
 
 ![运行时物品标签选择器](docs/images/item-tags.png)
 
@@ -108,19 +138,20 @@ Xero Quest Journal 面向整合包作者、地图作者与喜欢任务引导的�
 
 | 项目 | 要求 |
 | --- | --- |
-| Minecraft | Java 版 1.21.1 |
-| 加载器 | NeoForge；开发构建使用 21.1.233 |
-| Java | JDK / Java 21 |
-| 核心文件 | `xero_quest_journal-0.1.0.jar` |
+| Minecraft / 加载器 | 1.20.1 Forge 47.3.0 或 Fabric；1.21.1 NeoForge 21.1.233 或 Fabric |
+| Java | 1.20.1 使用 Java 17；1.21.1 使用 Java 21 |
+| Fabric | 还需对应 Minecraft 版本的 Fabric API；精确测试版本见版本矩阵 |
+| 核心文件 | Release 中与 Minecraft/加载器完全匹配的单个 JAR |
 | 许可 | MIT，第三方依赖保留各自许可 |
 
-1. 在对应的 Minecraft 1.21.1 NeoForge 实例中安装核心 JAR。
+1. 从 [多版本预览 4 Release](https://github.com/XTDPotato/xero_quest_journal/releases/tag/v0.1.0-multiversion-preview.4) 选择与游戏版本、加载器相匹配的核心 JAR，放入实例的 `mods` 目录。
 2. 多人环境下，客户端与服务端应安装相互匹配的版本。当前网络协议为 **10**；相同的 `0.1.0` 显示版本不保证不同开发构建之间的协议兼容。
 3. 启动游戏并进入世界，默认按 `J` 打开任务日志，按 `F8` 打开邮箱、`F7` 打开新邮件。
 4. 任务目录默认位于 `config/xero_quest/groups/`，编辑后使用 `/xero_quest reload` 重载。
 5. 本地集成服务器中，拥有管理员权限的玩家可以开启编辑模式。远端客户端作者编辑仍有限制。
 
-当前仓库以源码与文档为主。安装包可从源码构建，**不需要**把开发目录里的 `run-*` 世界或 `build/verification` 复制到游戏实例。
+Release 同时提供四个独立安装包和按版本/加载器归类的合集 ZIP。
+每个实例只安装一个核心 JAR。不要将源码 ZIP、验证报告或测试世界放入 `mods`。
 
 ### 常用操作
 
@@ -370,7 +401,9 @@ tools/                     图标生成与独立检查工具
 
 ## 验证和已知限制
 
-截至 2026-10-09，本次工作中执行通过的专项包括：
+四个已完成目标和本轮作者工具复验见 [版本矩阵](docs/porting-matrix.md)、
+[Fabric 报告](docs/fabric-verification.md)、[Forge 报告](docs/forge-1.20.1-verification.md)
+及 [本轮验证](docs/authoring-verification.md)。以下保留 2026-10-09 的历史专项摘要：
 
 | 验证 | 范围 |
 | --- | --- |
@@ -383,7 +416,7 @@ tools/                     图标生成与独立检查工具
 
 仍有明确限制：
 
-- 不是全部历史回归都通过；旧运行时 UI、通用 smoke、解锁图/事件图的部分测试存在失败记录，详见 [测试说明](docs/testing.md)。
+- 历史失败与后续修复复验按日期记录，不能把旧截图或旧失败当作最新结果，详见各版本验证报告。
 - 未完成独立组队模组、远端协同编辑、完整资源分发和所有结构场景隔离需求。
 - 脚本运行有预算和接口限制，但不是可运行不可信作者代码的通用安全沙箱。
 - 奖励物品与玩家存档不是跨文件原子事务；异常断电等情况仍可能需要管理员核对。
@@ -395,6 +428,10 @@ tools/                     图标生成与独立检查工具
 | 文档 | 内容 |
 | --- | --- |
 | [使用指南](docs/guide.md) | 目录组织、日常操作、作者流程、备份与故障定位 |
+| [全部命令](docs/commands.md) | 三个根命令、64 条共享分支及 Forge 状态命令、参数、权限与示例 |
+| [JavaScript 参考](docs/javascript.md) | 文件与事件图类型、返回值、奖励 API、编辑器、15 个示例 |
+| [判断节点详解](docs/trigger-conditions.md) | 可视化与 JS 条件、连线、真假/异常、一次执行 |
+| [本轮验证](docs/authoring-verification.md) | 设置、脚本、四目标复验与发布边界 |
 | [奖励与完成条件](docs/奖励与条件配置.md) | 条件、物品数据、奖励品质、脚本及命令 |
 | [架构说明](docs/architecture.md) | 定义、玩家状态、网络、虚拟化和媒体拆分 |
 | [测试与验证](docs/testing.md) | 运行命令、已验证范围和残余风险 |
