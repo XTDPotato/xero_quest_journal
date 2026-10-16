@@ -147,7 +147,8 @@ public final class MailboxData extends SavedData {
                     CompoundTag item = items.getCompound(k);
                     attachments.add(new MailboxRuntime.Attachment(item.getString("type"),
                             item.getString("item"), item.getInt("count"), item.getBoolean("claimed"),
-                            item.getBoolean("hidden"), item.getBoolean("hidePopup")));
+                            item.getBoolean("hidden"), item.getBoolean("hidePopup"),
+                            item.getString("quality"), item.getString("background")));
                 }
                 MailboxRuntime.Mail loaded = new MailboxRuntime.Mail(
                         entry.getString("id"),
@@ -227,6 +228,8 @@ public final class MailboxData extends SavedData {
                     item.putBoolean("claimed", attachment.claimed());
                     item.putBoolean("hidden", attachment.hidden());
                     item.putBoolean("hidePopup", attachment.hidePopup());
+                    item.putString("quality", attachment.quality());
+                    item.putString("background", attachment.background());
                     attachments.add(item);
                 }
                 entry.put("attachments", attachments);

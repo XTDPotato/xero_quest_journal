@@ -40,7 +40,8 @@ public final class QuestSuggestions {
                             + " (" + holder.id() + ")")));
         } else if (key.equals("quest") || key.equals("unlock") || key.equals("complete")) {
             QuestRepository.all().forEach(quest -> result.add(
-                    new QuestValuePickerScreen.Option(quest.id(), quest.title() + " (" + quest.id() + ")")));
+                    new QuestValuePickerScreen.Option(quest.id(),
+                            QuestText.title(quest).getString() + " (" + quest.id() + ")")));
         } else if (key.equals("function") && server != null) {
             server.getFunctions().getFunctionNames().forEach(id -> add(result, id.toString()));
         } else if (key.equals("script")) {

@@ -135,12 +135,15 @@ public final class QuestValuePickerScreen extends AnimatedQuestScreen {
         addRenderableWidget(search);
         search.setFocused(true);
         newCandidate = new EditBox(font, x, height - 58, w - 58, 20, text("value_picker.add"));
+        if (!context.isBlank()) newCandidate.setWidth(Math.max(48, w - 90));
         newCandidate.setMaxLength(4096);
         newCandidate.setValue(candidate);
         newCandidate.setHint(text("value_picker.add"));
         newCandidate.setResponder(value -> candidate = value);
         addRenderableWidget(newCandidate);
-        var add = new StyledButton(x + w - 54, height - 58, 54, 20, text("value_picker.add"),
+        int addWidth = 54;
+        int addX = context.isBlank() ? x + w - addWidth : x + w - 84;
+        var add = new StyledButton(addX, height - 58, addWidth, 20, text("value_picker.add"),
                 ignored -> {
                     if (!QuestSuggestionOverrides.add(context, candidate)) {
                         error = text("value_picker.save_error").getString();
@@ -155,6 +158,12 @@ public final class QuestValuePickerScreen extends AnimatedQuestScreen {
                 }, styles, "candidate-add", "toolbar-button");
         add.active = !context.isBlank();
         addRenderableWidget(add);
+        if (!context.isBlank()) {
+            var trash = new EditorIconButton(x + w - 24, height - 60, text("value_picker.trash"),
+                    this::openTrash, styles, "value-picker-trash", "delete");
+            trash.setTooltip(Tooltip.create(text("value_picker.trash_hint")));
+            addRenderableWidget(trash);
+        }
         var close = new StyledButton(width - 32, 12, 20, 20, Component.literal("\u00d7"),
                 ignored -> closeTo(parent), styles, "value-picker-close");
         close.setTooltip(Tooltip.create(Component.translatable("gui.cancel")));
@@ -173,7 +182,6 @@ public final class QuestValuePickerScreen extends AnimatedQuestScreen {
         int offset = (int) Math.round((smoothScroll - first) * ROW_HEIGHT);
         graphics.drawCenteredString(font, caption, width / 2, 16, 0xFFFFFFFF);
         graphics.fill(x, top, right, bottom, 0xCC171B21);
-        boolean removeTooltip = false;
         graphics.enableScissor(x, top, right, bottom);
         for (int row = 0; row <= visibleRows() && row + first < filtered.size(); row++) {
             Option option = filtered.get(row + first);
@@ -195,17 +203,10 @@ public final class QuestValuePickerScreen extends AnimatedQuestScreen {
                 QuestIcons.render(graphics, option.value(), x + 6, y + 3, 16);
                 textX = x + 27;
             }
-            graphics.drawString(font, font.plainSubstrByWidth(option.label(), right - textX - 28),
+            graphics.drawString(font, font.plainSubstrByWidth(option.label(), right - textX - 8),
                     textX, y + 6, 0xFFE6E9ED, false);
-            if (!context.isBlank() && !option.value().isEmpty()) {
-                boolean removeHovered = hovered && mouseX >= right - 22;
-                graphics.drawCenteredString(font, "\u00d7", right - 11, y + 6,
-                        removeHovered ? 0xFFFF8888 : 0xFFB7C1CB);
-                removeTooltip |= removeHovered;
-            }
         }
         graphics.disableScissor();
-        if (removeTooltip) graphics.renderTooltip(font, text("value_picker.remove"), mouseX, mouseY);
         if (!error.isBlank()) graphics.drawString(font, error, x, height - 70, 0xFFFF8888);
         if (filtered.isEmpty()) {
             graphics.drawCenteredString(font, text("value_picker.empty"), width / 2, top + 12, 0xFFABB8C3);
@@ -214,6 +215,17 @@ public final class QuestValuePickerScreen extends AnimatedQuestScreen {
             graphics.fill(trackX(), (int) thumbY(), trackX() + 5,
                     (int) thumbY() + thumbHeight(), 0xFF9DB4D2);
         }
+    }
+
+    private void openTrash() {
+        if (context.isBlank()) return;
+        if (candidates == null) candidates = QuestSuggestionOverrides.apply(context, options.get());
+        List<String> values = candidates.stream().map(Option::value).filter(value -> !value.isBlank())
+                .distinct().toList();
+        minecraft.setScreen(new QuestSuggestionTrashScreen(this, caption, context, values, () -> {
+            candidates = null;
+            updateFilter();
+        }));
     }
 
     @Override
@@ -240,25 +252,15 @@ public final class QuestValuePickerScreen extends AnimatedQuestScreen {
                 && mouseY >= listTop() && mouseY < listBottom()) {
             int index = (int) Math.floor(smoothScroll + (mouseY - listTop()) / ROW_HEIGHT);
             if (index < filtered.size()) {
-                if (mouseX < left() + panelWidth() - 22 && maxScroll() > 0) {
+                if (maxScroll() > 0) {
                     draggingList = true;
                     dragStartY = mouseY;
                     dragStartScroll = targetScroll;
                     return true;
                 }
                 String value = filtered.get(index).value();
-                if (!context.isBlank() && !value.isEmpty() && mouseX >= left() + panelWidth() - 22) {
-                    if (!QuestSuggestionOverrides.remove(context, value))
-                        error = text("value_picker.save_error").getString();
-                    else {
-                        error = "";
-                        candidates = null;
-                        updateFilter();
-                    }
-                } else {
-                    selected.accept(value);
-                    closeTo(parent);
-                }
+                selected.accept(value);
+                closeTo(parent);
                 return true;
             }
         }

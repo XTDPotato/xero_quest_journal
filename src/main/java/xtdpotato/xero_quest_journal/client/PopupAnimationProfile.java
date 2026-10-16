@@ -43,7 +43,7 @@ public record PopupAnimationProfile(List<Keyframe> keyframes) {
 
     public static PopupAnimationProfile defaults() {
         return new PopupAnimationProfile(List.of(
-                new Keyframe(0, .88, 0, 8, -2, 0, "smooth"),
+                new Keyframe(0, .88, 0, 0, 0, 0, "smooth"),
                 new Keyframe(1, 1, 0, 0, 0, 1, "smooth")));
     }
 

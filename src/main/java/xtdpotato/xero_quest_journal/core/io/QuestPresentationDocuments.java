@@ -30,7 +30,8 @@ public final class QuestPresentationDocuments {
         List<QuestVariable> variables = new ArrayList<>();
         for (Element variable : visual.select("variables > variable"))
             variables.add(new QuestVariable(variable.attr("id"), variable.attr("initial"),
-                    variable.hasAttr("created") ? Long.parseLong(variable.attr("created")) : 0));
+                    variable.hasAttr("created") ? Long.parseLong(variable.attr("created")) : 0,
+                    variable.attr("type"), variable.attr("sharing")));
         return new QuestPresentation(!visual.attr("authored").equals("false"),
                 number(visual, "width", 320), number(visual, "height", 240),
                 controls, variables);
@@ -54,7 +55,8 @@ public final class QuestPresentationDocuments {
             Element variables = visual.appendElement("variables");
             for (QuestVariable variable : presentation.variables())
                 variables.appendElement("variable").attr("id", variable.id())
-                        .attr("initial", variable.initial()).attr("created", Long.toString(variable.created()));
+                        .attr("initial", variable.initial()).attr("created", Long.toString(variable.created()))
+                        .attr("type", variable.type()).attr("sharing", variable.sharing());
         }
         for (var control : presentation.controls()) {
             Element element = visual.appendElement("control").attr("id", control.id()).attr("kind", control.kind())

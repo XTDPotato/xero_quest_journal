@@ -780,7 +780,7 @@ public final class QuestAuthoring {
             for (JourneyBackdrop value : values) {
                 if (value == null || !positions.add(value.startX())) return false;
                 new JourneyBackdrop(value.startX(), value.source(), value.type(),
-                        value.scale(), value.offsetX(), value.offsetY(), value.music());
+                        value.scale(), value.offsetX(), value.offsetY(), value.music(), value.mode());
             }
         } catch (IllegalArgumentException invalid) {
             return false;
@@ -809,6 +809,9 @@ public final class QuestAuthoring {
                 json.add("quests", GSON.toJsonTree(draft.quests()));
                 json.add("journeyTimeline", GSON.toJsonTree(draft.timeline()));
                 json.add("journeyBackgrounds", GSON.toJsonTree(draft.backgrounds()));
+                if (draft.name() != null) json.addProperty("name", draft.name());
+                if (draft.icon() != null) json.addProperty("icon", draft.icon());
+                if (draft.appearance() != null) json.add("journeyAppearance", GSON.toJsonTree(draft.appearance()));
                 AtomicFiles.write(file, GSON.toJson(json), true);
                 QuestRepository.reload();
                 return "config_saved";

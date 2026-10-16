@@ -3,6 +3,8 @@
 [项目首页](../README.md) · [版本矩阵](porting-matrix.md) · [全部命令](commands.md) · [JavaScript](javascript.md)
 
 验证日期：2026-10-13。发布目标是多版本预览 4，显示版本仍为 `0.1.0`。
+这是历史专项记录。2026-10-16 的后续功能和多版本预览 5 结果见
+[本次发布验证](release-verification-2026-10-16.md)，不能把本页旧结果当作新功能全部复验。
 这份报告记录本次全屏设置、脚本编辑器、命令参考和截图的专项复验；
 上一轮完整迁移的 33 项回归详见 [Fabric 报告](fabric-verification.md) 和
 [Forge 报告](forge-1.20.1-verification.md)。
@@ -66,6 +68,9 @@ NeoForge 首轮综合测试复用了旧布局目录；隔离目录复验后通�
 
 # NeoForge 1.21.1，每次只指定一种模式
 .\tools\test-neoforge-functions.ps1
+
+# 可选 REI 收藏专项：把匹配游戏版本的 REI、Cloth Config、Architectury JAR 作为隔离 Mods 加入
+.\tools\test-neoforge-functions.ps1 -Modes authoringDocsTest -ExtraMods @(<REI JAR>, <Cloth Config JAR>, <Architectury JAR>)
 
 # 或单独调用某个模式
 .\gradlew.bat runClient -PauthoringDocsTest

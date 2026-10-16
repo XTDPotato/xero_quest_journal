@@ -23,19 +23,32 @@ public final class MailboxRuntime {
     }
 
     public record Attachment(String type, String item, int count, boolean claimed,
-                             boolean hidden, boolean hidePopup) {
+                             boolean hidden, boolean hidePopup, String quality, String background) {
         public Attachment(String type, String item, int count, boolean claimed) {
-            this(type, item, count, claimed, false, false);
+            this(type, item, count, claimed, false, false, "", "");
+        }
+
+        public Attachment(String type, String item, int count, boolean claimed,
+                          boolean hidden, boolean hidePopup) {
+            this(type, item, count, claimed, hidden, hidePopup, "", "");
         }
 
         public Attachment {
             type = type == null || type.isBlank() ? "item" : type;
             item = item == null ? "" : item;
             count = Math.max(0, count);
+            quality = type.equals("item")
+                    ? xtdpotato.xero_quest_journal.core.model.QuestRewardQuality.normalize(quality) : "";
+            background = type.equals("item")
+                    ? xtdpotato.xero_quest_journal.core.model.QuestRewardQuality.normalizeBackground(background) : "";
         }
 
         public Attachment asClaimed() {
-            return new Attachment(type, item, count, true, hidden, hidePopup);
+            return new Attachment(type, item, count, true, hidden, hidePopup, quality, background);
+        }
+
+        public QuestDefinition.Reward reward() {
+            return new QuestDefinition.Reward(type, item, Math.max(1, count), quality, background);
         }
 
         public boolean showsReceipt() {
@@ -324,7 +337,8 @@ public final class MailboxRuntime {
                 .filter(mail -> all || mail.id().equals(id))
                 .flatMap(mail -> mail.attachments().stream())
                 .filter(Attachment::showsReceipt)
-                .map(a -> new QuestDefinition.Reward("item", a.item(), a.count())).toList();
+                .map(a -> new QuestDefinition.Reward("item", a.item(), a.count(),
+                        a.quality(), a.background())).toList();
     }
 
     public static String claimAll(ServerPlayer player) {
@@ -367,14 +381,14 @@ public final class MailboxRuntime {
                 if (selected < 0 || selected >= candidates.size()) return new ClaimResult("invalid_choice");
                 var reward = candidates.get(selected);
                 attachments.set(index, new Attachment(reward.type(), reward.item(), reward.count(),
-                        false, attachment.hidden(), attachment.hidePopup()));
+                        false, attachment.hidden(), attachment.hidePopup(), reward.quality(), reward.background()));
             }
             if (!choiceIndices.equals(entry.selections().keySet())) return new ClaimResult("invalid_choice");
             resolved.add(mail.withAttachments(attachments));
         }
         var receipt = resolved.stream().flatMap(mail -> mail.attachments().stream())
                 .filter(Attachment::showsReceipt)
-                .map(a -> new QuestDefinition.Reward("item", a.item(), a.count())).toList();
+                .map(Attachment::reward).toList();
         String result = deliver(player, resolved, allowDrop);
         return new ClaimResult(result, result.equals("claimed") ? receipt : List.of());
     }
@@ -412,7 +426,8 @@ public final class MailboxRuntime {
                     "expiresIn", Long.toString(draft.expiresIn())));
             if (draft.subject().isBlank() || draft.body().isBlank()) return "invalid_mail";
             var oldRewards = mail.attachments().stream().map(a ->
-                    new Attachment(a.type(), a.item(), a.count(), false, a.hidden(), a.hidePopup())).toList();
+                    new Attachment(a.type(), a.item(), a.count(), false, a.hidden(), a.hidePopup(),
+                            a.quality(), a.background())).toList();
             List<Attachment> attachments = mail.attachments();
             if (!oldRewards.equals(draft.attachments())) {
                 if (!data.receipt(player.getUUID(), mail.id()).isEmpty()
@@ -591,7 +606,8 @@ public final class MailboxRuntime {
         if (source == null || !fingerprint(view(source, author)).equals(payload.expectedHash()))
             throw new IllegalArgumentException("Mail changed");
         var trusted = source.attachments().stream().map(a ->
-                new Attachment(a.type(), a.item(), a.count(), false, a.hidden(), a.hidePopup())).toList();
+                new Attachment(a.type(), a.item(), a.count(), false, a.hidden(), a.hidePopup(),
+                        a.quality(), a.background())).toList();
         var draft = payload.mail();
         if (draft.id().equals(source.id())) throw new IllegalArgumentException("Resend requires a new mail ID");
         return sendIfAbsent(target, draft.id(), draft.sender(), draft.subject(), draft.body(), draft.expiresIn(),
@@ -664,8 +680,9 @@ public final class MailboxRuntime {
         // Freeze each source separately so expanded loot retains its presentation settings.
         var frozen = attachments.stream().flatMap(a -> a.type().equals("script") && trusted.contains(a)
                 ? java.util.stream.Stream.of(a) : QuestRewards.freeze(player,
-                        List.of(new QuestDefinition.Reward(a.type(), a.item(), a.count()))).stream()
-                .map(r -> new Attachment(r.type(), r.item(), r.count(), false, a.hidden(), a.hidePopup()))).toList();
+                        List.of(a.reward())).stream()
+                .map(r -> new Attachment(r.type(), r.item(), r.count(), false, a.hidden(), a.hidePopup(),
+                        r.quality(), r.background()))).toList();
         if (frozen.size() > 128 || frozen.stream().anyMatch(reward -> reward.item().length() > 8192))
             throw new IllegalArgumentException("Invalid frozen mail rewards");
         return frozen;
@@ -679,7 +696,8 @@ public final class MailboxRuntime {
         }
         try {
             return QuestRewards.valid(new QuestDefinition.Reward(
-                    attachment.type(), attachment.item(), attachment.count()));
+                    attachment.type(), attachment.item(), attachment.count(),
+                    attachment.quality(), attachment.background()));
         } catch (IllegalArgumentException invalid) {
             return false;
         }

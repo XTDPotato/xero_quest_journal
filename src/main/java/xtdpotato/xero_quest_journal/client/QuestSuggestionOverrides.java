@@ -9,6 +9,7 @@ import xtdpotato.xero_quest_journal.core.io.AtomicFiles;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -47,11 +48,25 @@ final class QuestSuggestionOverrides {
     }
 
     static synchronized boolean remove(String context, String value) {
+        return removeAll(context, List.of(value));
+    }
+
+    static synchronized boolean removeAll(String context, Collection<String> values) {
         load();
-        if (context.isBlank() || value.isEmpty()) return false;
-        ADDED.computeIfAbsent(context, ignored -> new LinkedHashSet<>()).remove(value);
-        HIDDEN.computeIfAbsent(context, ignored -> new LinkedHashSet<>()).add(value);
-        return save();
+        if (context == null || context.isBlank() || values == null || values.isEmpty()) return false;
+        Set<String> previousAdded = new LinkedHashSet<>(ADDED.getOrDefault(context, Set.of()));
+        Set<String> previousHidden = new LinkedHashSet<>(HIDDEN.getOrDefault(context, Set.of()));
+        for (String value : values) {
+            if (value == null || value.isBlank()) continue;
+            ADDED.computeIfAbsent(context, ignored -> new LinkedHashSet<>()).remove(value);
+            HIDDEN.computeIfAbsent(context, ignored -> new LinkedHashSet<>()).add(value);
+        }
+        if (save()) return true;
+        if (previousAdded.isEmpty()) ADDED.remove(context);
+        else ADDED.put(context, previousAdded);
+        if (previousHidden.isEmpty()) HIDDEN.remove(context);
+        else HIDDEN.put(context, previousHidden);
+        return false;
     }
 
     private static void load() {

@@ -17,6 +17,7 @@ import net.neoforged.neoforge.client.event.InputEvent;
 import net.neoforged.neoforge.client.event.RenderGuiEvent;
 import net.neoforged.neoforge.client.event.ScreenEvent;
 import xtdpotato.xero_quest_journal.XeroQuestJournal;
+import xtdpotato.xero_quest_journal.platform.PlatformServices;
 import org.lwjgl.glfw.GLFW;
 
 @EventBusSubscriber(modid = XeroQuestJournal.MOD_ID, value = Dist.CLIENT)
@@ -30,6 +31,10 @@ public final class XeroQuestClient {
         QuestHudToastQueue.setHudActive(minecraft.player != null && minecraft.screen == null);
         if (minecraft.screen instanceof AnimatedQuestScreen animated) animated.advanceTransition();
         ClientQuestProgress.tick();
+        xtdpotato.xero_quest_journal.core.network.QuestNetwork.LocatedQuestPayload locatedQuest;
+        while ((locatedQuest = xtdpotato.xero_quest_journal.core.network.QuestClientInbox.takeLocatedQuest()) != null) {
+            QuestHudRenderer.acceptLocatedQuest(locatedQuest);
+        }
         XaeroWaypointBridge.tick();
         ClientControlState.tick();
         QuestPresentationClient.tickAll();
@@ -41,7 +46,7 @@ public final class XeroQuestClient {
         if (requestedScreen != null && minecraft.player != null) {
             switch (requestedScreen.screen()) {
                 case "structure_entered" -> minecraft.setScreen(null);
-                case "journal" -> minecraft.setScreen(new QuestScreen());
+                case "journal" -> minecraft.setScreen(QuestScreen.resume(null));
                 case "overview" -> minecraft.setScreen(QuestScreen.overview(null));
                 case "task" -> minecraft.setScreen(QuestScreen.task(null, requestedScreen.targetId()));
                 case "mailbox" -> {
@@ -102,7 +107,9 @@ public final class XeroQuestClient {
 
     @SubscribeEvent
     public static void renderHud(RenderGuiEvent.Post event) {
-        QuestHudRenderer.render(event.getGuiGraphics());
+        if (!(Minecraft.getInstance().screen instanceof AnimatedQuestScreen animated)
+                || !animated.showsTrackingHudBehind())
+            QuestHudRenderer.render(event.getGuiGraphics());
         if (Minecraft.getInstance().screen == null) {
             renderNotifications(event.getGuiGraphics());
         }
@@ -186,29 +193,35 @@ public final class XeroQuestClient {
     public static void addInventoryEntry(ScreenEvent.Init.Post event) {
         var screen = event.getScreen();
         var preferences = ClientPreferences.get();
-        if ((! (screen instanceof InventoryScreen) && !(screen instanceof CreativeModeInventoryScreen))
-                || !preferences.inventoryButton) {
+        if ((! (screen instanceof InventoryScreen) && !(screen instanceof CreativeModeInventoryScreen))) {
             return;
         }
+        String recipeViewer = RecipeViewerBridge.availableViewer();
+        if (PlatformServices.isModLoaded("roughlyenoughitems")) return;
         ButtonStyleSheet styles = ButtonStyleSheet.load();
-        int x = Math.max(0, Math.min(preferences.inventoryX, screen.width - 20));
-        int y = Math.max(0, Math.min(preferences.inventoryY, screen.height - 20));
+        boolean itemButtons = recipeViewer.isBlank();
+        int[] taskPosition = preferences.taskInventoryPosition.resolve(screen.width, screen.height);
+        int x = taskPosition[0], y = taskPosition[1];
         StyledButton button = new StyledButton(x, y, 20, 20,
                 Component.translatable("screen.xero_quest_journal.inventory_tooltip"),
                 ignored -> Minecraft.getInstance().setScreen(ClientPreferences.openDefault(screen)),
-                styles, "inventory-entry", "toolbar-button").icon(new ItemStack(Items.BOOK));
+                styles, "inventory-entry", "toolbar-button");
+        if (itemButtons) button.icon(new ItemStack(Items.BOOK));
+        else button.textureIcon("xero_quest_journal:textures/gui/navigation/task_shortcut.png");
         button.setTooltip(Tooltip.create(Component.translatable("screen.xero_quest_journal.inventory_tooltip")));
-        event.addListener(button);
-        int mailX = Math.max(0, Math.min(x + 24, screen.width - 20));
-        StyledButton mailbox = new StyledButton(mailX, y, 20, 20,
+        if (preferences.inventoryButton) event.addListener(button);
+        int[] mailPosition = preferences.mailInventoryPosition.resolve(screen.width, screen.height);
+        StyledButton mailbox = new StyledButton(mailPosition[0], mailPosition[1], 20, 20,
                 Component.translatable("screen.xero_quest_journal.mailbox.inventory_tooltip"),
                 ignored -> {
                     ClientMailbox.request();
                     Minecraft.getInstance().setScreen(new MailboxScreen(screen));
-                }, styles, "mailbox-inventory-entry", "toolbar-button").icon(new ItemStack(Items.PAPER));
+                }, styles, "mailbox-inventory-entry", "toolbar-button");
+        if (itemButtons) mailbox.icon(new ItemStack(Items.PAPER));
+        else mailbox.textureIcon("xero_quest_journal:textures/gui/navigation/mail_shortcut.png");
         mailbox.setTooltip(Tooltip.create(
                 Component.translatable("screen.xero_quest_journal.mailbox.inventory_tooltip")));
-        event.addListener(mailbox);
+        if (preferences.mailboxInventoryButton) event.addListener(mailbox);
     }
 
     private static boolean blocked(ScreenEvent event) {

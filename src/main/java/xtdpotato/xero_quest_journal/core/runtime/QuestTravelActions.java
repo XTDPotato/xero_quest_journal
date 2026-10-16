@@ -79,7 +79,7 @@ public final class QuestTravelActions {
             var result = level.findClosestBiome3d(holder -> holder.equals(biome.get()), player.blockPosition(), radius, 32, 64);
             found = result == null ? null : result.getFirst();
         } else {
-            if (radius < 1 || radius > 32) return false;
+            if (radius < 1 || radius > 100) return false;
             var structure = level.registryAccess().registryOrThrow(Registries.STRUCTURE)
                     .getHolder(ResourceKey.create(Registries.STRUCTURE, destinationId));
             if (structure.isEmpty()) return false;
@@ -95,8 +95,36 @@ public final class QuestTravelActions {
         QuestGraphContext.put("locatedZ", Double.toString(found.getZ() + .5));
         QuestGraphContext.put("locatedDimension", id.toString());
         QuestGraphContext.put("locationFound", "true");
+        var location = new QuestLocation("coords", id.toString(), "",
+                found.getX() + .5, found.getY(), found.getZ() + .5, 8, true);
+        String storeVariable = node.get("storeVariable", "");
+        if (!storeVariable.isBlank()) {
+            if (!QuestVisualPredicate.allowed(storeVariable, quest.id()))
+                throw new IllegalArgumentException("Locate result variable outside task scope");
+            var definition = xtdpotato.xero_quest_journal.core.io.QuestVariableStore.find(storeVariable);
+            if (definition == null || definition.numeric())
+                throw new IllegalArgumentException("Locate result needs a string variable");
+            String encoded = new com.google.gson.Gson().toJson(new StoredLocation(
+                    node.type().equals("locate_structure") ? "structure" : "biome",
+                    node.get("target", ""), id.toString(), found.getX() + .5, found.getY(), found.getZ() + .5));
+            QuestControlData.get(player).setVariable(player, storeVariable, encoded);
+            if (storeVariable.equals("globe.located_structure")) {
+                var state = QuestControlData.get(player);
+                state.setVariable(player, "globe.located_structure_x", Double.toString(found.getX() + .5));
+                state.setVariable(player, "globe.located_structure_y", Integer.toString(found.getY()));
+                state.setVariable(player, "globe.located_structure_z", Double.toString(found.getZ() + .5));
+                state.setVariable(player, "globe.located_structure_dimension", id.toString());
+                state.setVariable(player, "globe.located_structure_id", node.get("target", ""));
+            }
+            if (definition.teamShared()) xtdpotato.xero_quest_journal.core.network.QuestControlNetwork.sendTeam(player);
+            else xtdpotato.xero_quest_journal.core.network.QuestControlNetwork.sendVariables(player);
+        }
+        PacketDistributor.sendToPlayer(player,
+                new QuestNetwork.LocatedQuestPayload(quest.id(), location.encode()));
         return true;
     }
+
+    public record StoredLocation(String kind, String target, String dimension, double x, double y, double z) {}
 
     private static String value(ServerPlayer player, QuestDefinition quest, String control, TriggerGraph.Node node,
                                 String key, String event, String target) {

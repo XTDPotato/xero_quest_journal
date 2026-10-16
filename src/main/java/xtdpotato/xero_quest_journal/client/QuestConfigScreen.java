@@ -66,7 +66,10 @@ public final class QuestConfigScreen extends AnimatedQuestScreen {
         }
         int count = switch (tab) {
             case "general" -> 5;
-            case "motion", "notifications", "appearance", "tools" -> 3;
+            case "motion", "notifications" -> 3;
+            case "appearance" -> 4;
+            case "tools" -> QuestReiShortcuts.available() ? 4 : 3;
+            case "tasks" -> 3 + (ClientPreferences.get().fixedQuestContextMenuPosition ? 2 : 0);
             default -> 2;
         };
         scroll.limit(count * rowHeight() - Math.max(1, bodyBottom() - bodyTop()));
@@ -79,9 +82,10 @@ public final class QuestConfigScreen extends AnimatedQuestScreen {
                         List.of("journal", "overview"), config.defaultView, value -> text("view." + value),
                         value -> { config.defaultView = value; saveLocal(); }, styles, "default-view"));
                 toggle("inventory", config.inventoryButton, value -> config.inventoryButton = value);
+                toggle("mail_inventory", config.mailboxInventoryButton, value -> config.mailboxInventoryButton = value);
                 toggle("hud", config.trackingHud, value -> config.trackingHud = value);
-                number("inventory_x", config.inventoryX, 2, 0, 16384, value -> config.inventoryX = value, "inventory-x");
-                number("inventory_y", config.inventoryY, 2, 0, 16384, value -> config.inventoryY = value, "inventory-y");
+                action("inventory_placement", "inventory-placement", () ->
+                        minecraft.setScreen(new InventoryPlacementScreen(this)));
             }
             case "motion" -> {
                 toggle("reduced_motion", config.reducedMotion, value -> config.reducedMotion = value);
@@ -102,16 +106,24 @@ public final class QuestConfigScreen extends AnimatedQuestScreen {
                 preview.setMessage(text("preview"));
             }
             case "appearance" -> {
+                number("tracking_marker_scale", config.trackingMarkerScalePercent, 5, 25, 200,
+                        value -> config.trackingMarkerScalePercent = value, "tracking-marker-scale");
+                bodyWidgets.stream().filter(widget -> widget instanceof StyledButton button
+                                && button.styleId().equals("tracking-marker-scale-value"))
+                        .map(StyledButton.class::cast).findFirst()
+                        .ifPresent(button -> button.setTooltip(Tooltip.create(text("tracking_marker_scale_hint"))));
                 var theme = action("theme", "theme", () -> minecraft.setScreen(new QuestUiThemeScreen(this)));
                 theme.active = canAuthor();
                 theme.setTooltip(Tooltip.create(text("author_required")));
                 action("legendary_background", "legendary-background", () ->
-                        minecraft.setScreen(QuestScreen.pickResource(this, config.legendaryBackground, false, source -> {
-                            config.legendaryBackground = source;
-                            saveLocal();
-                        })));
+                        minecraft.setScreen(new LegendaryBackgroundScreen(this)));
                 action("legendary_background_reset", "legendary-background-reset", () -> {
                     config.legendaryBackground = "";
+                    config.legendaryBackgroundType = "image";
+                    config.legendaryBackgroundMode = "cover";
+                    config.legendaryBackgroundMusic = "";
+                    config.legendaryBackgroundScale = 1;
+                    config.legendaryBackgroundOffsetX = config.legendaryBackgroundOffsetY = 0;
                     saveLocal();
                 }).setMessage(text("reset"));
             }
@@ -128,6 +140,27 @@ public final class QuestConfigScreen extends AnimatedQuestScreen {
                 pagination.active = canAuthor() && configPending == null;
                 pagination.setTooltip(Tooltip.create(text("task_pagination_hint")));
                 toggle("quest_reward_sources", config.questRewardSources, value -> config.questRewardSources = value);
+                var menuArea = row("context_menu_position");
+                var menuPosition = body(new StyledChoiceButton<>(menuArea.x(), menuArea.y(), menuArea.width(), 24,
+                        text("context_menu_position"), List.of("cursor", "fixed"),
+                        config.fixedQuestContextMenuPosition ? "fixed" : "cursor",
+                        value -> text("context_menu_position." + value), value -> {
+                            config.fixedQuestContextMenuPosition = value.equals("fixed");
+                            saveLocal();
+                        }, styles, "quest-context-menu-position"));
+                menuPosition.setTooltip(Tooltip.create(text("context_menu_position_hint")));
+                if (config.fixedQuestContextMenuPosition) {
+                    number("context_menu_x", config.questContextMenuXPercent, 5, 0, 100,
+                            value -> config.questContextMenuXPercent = value, "quest-context-menu-x");
+                    number("context_menu_y", config.questContextMenuYPercent, 5, 0, 100,
+                            value -> config.questContextMenuYPercent = value, "quest-context-menu-y");
+                    bodyWidgets.stream().filter(widget -> widget instanceof StyledButton button
+                                    && (button.styleId().equals("quest-context-menu-x-value")
+                                    || button.styleId().equals("quest-context-menu-y-value")))
+                            .map(StyledButton.class::cast).forEach(button -> button.setTooltip(Tooltip.create(
+                                    text(button.styleId().endsWith("-x-value")
+                                            ? "context_menu_x_hint" : "context_menu_y_hint"))));
+                }
             }
             case "tools" -> {
                 action("keys", "keys", () -> minecraft.setScreen(new KeyBindsScreen(this, minecraft.options)));
@@ -136,6 +169,9 @@ public final class QuestConfigScreen extends AnimatedQuestScreen {
                     config.collapsedJournalGroups = List.of();
                     saveLocal();
                 }).setMessage(text("reset"));
+                if (QuestReiShortcuts.available())
+                    action("rei_shortcuts", "rei-shortcuts", () ->
+                            minecraft.setScreen(new QuestReiShortcutScreen(this)));
             }
             default -> throw new IllegalStateException("Unknown settings tab " + tab);
         }

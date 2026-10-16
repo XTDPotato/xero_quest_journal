@@ -9,6 +9,7 @@ public record HotEventCanvas(String backgroundImage, String startId,
                              List<Connection> connections, boolean customized,
                              Map<String, Position> positions, String backgroundType,
                              double backgroundScale, int backgroundOffsetX, int backgroundOffsetY,
+                             String backgroundMode, String backgroundMusic,
                              Set<String> knownCardIds) {
     public HotEventCanvas {
         backgroundImage = backgroundImage == null ? "" : backgroundImage;
@@ -17,12 +18,16 @@ public record HotEventCanvas(String backgroundImage, String startId,
         positions = positions == null ? Map.of() : Map.copyOf(positions);
         knownCardIds = knownCardIds == null ? Set.of() : Set.copyOf(knownCardIds);
         backgroundType = backgroundType == null ? "image" : backgroundType;
+        backgroundMode = backgroundMode == null || backgroundMode.isBlank() ? "cover" : backgroundMode;
+        backgroundMusic = backgroundMusic == null ? "" : backgroundMusic;
         backgroundScale = backgroundScale == 0 ? 1.0 : backgroundScale;
         if (backgroundImage.length() > 4096 || startId.length() > 256
                 || connections.size() > 2048 || positions.size() > 4096 || knownCardIds.size() > 4096
                 || !List.of("image", "video").contains(backgroundType)
+                || !List.of("cover", "contain", "stretch", "adaptive").contains(backgroundMode)
                 || !Double.isFinite(backgroundScale) || backgroundScale < 0.1 || backgroundScale > 10
-                || Math.abs((long) backgroundOffsetX) > 10000 || Math.abs((long) backgroundOffsetY) > 10000) {
+                || Math.abs((long) backgroundOffsetX) > 10000 || Math.abs((long) backgroundOffsetY) > 10000
+                || backgroundMusic.length() > 4096) {
             throw new IllegalArgumentException("Invalid hot-event canvas");
         }
     }
@@ -31,7 +36,15 @@ public record HotEventCanvas(String backgroundImage, String startId,
                           boolean customized, Map<String, Position> positions, String backgroundType,
                           double backgroundScale, int backgroundOffsetX, int backgroundOffsetY) {
         this(backgroundImage, startId, connections, customized, positions, backgroundType,
-                backgroundScale, backgroundOffsetX, backgroundOffsetY, Set.of());
+                backgroundScale, backgroundOffsetX, backgroundOffsetY, "cover", "", Set.of());
+    }
+
+    public HotEventCanvas(String backgroundImage, String startId, List<Connection> connections,
+                          boolean customized, Map<String, Position> positions, String backgroundType,
+                          double backgroundScale, int backgroundOffsetX, int backgroundOffsetY,
+                          String backgroundMode, String backgroundMusic) {
+        this(backgroundImage, startId, connections, customized, positions, backgroundType,
+                backgroundScale, backgroundOffsetX, backgroundOffsetY, backgroundMode, backgroundMusic, Set.of());
     }
 
     public HotEventCanvas(String backgroundImage, String startId,

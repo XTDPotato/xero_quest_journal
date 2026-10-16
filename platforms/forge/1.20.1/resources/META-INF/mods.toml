@@ -22,3 +22,10 @@ mandatory=true
 versionRange="[1.20.1,1.20.2)"
 ordering="NONE"
 side="BOTH"
+
+[[dependencies.xero_quest_journal]]
+modId="roughlyenoughitems"
+mandatory=false
+versionRange="[12,)"
+ordering="AFTER"
+side="CLIENT"

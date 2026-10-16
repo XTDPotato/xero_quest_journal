@@ -263,7 +263,8 @@ public final class ClientQuestProgress {
                 });
             }
             views = snapshot.views();
-            unreadTasks = views.values().stream().anyMatch(view -> view.newTask() && !view.hidden());
+            unreadTasks = views.values().stream().anyMatch(view -> !view.hidden()
+                    && !view.status().equals("claimed") && (view.newTask() || view.status().equals("complete")));
             tracked = snapshot.tracked();
             taskPagination = snapshot.taskPagination();
             focusGroup = snapshot.focusGroup();

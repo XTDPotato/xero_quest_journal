@@ -18,6 +18,14 @@ repositories {
     maven { name = "TencentCentral"; url = "https://mirrors.cloud.tencent.com/repository/maven-public" }
     maven { url = "https://maven.fabricmc.net/" }
     mavenCentral()
+    exclusiveContent {
+        forRepository { maven { name = "XeroReiApi"; url = "https://maven.shedaniel.me" } }
+        filter { includeGroup("me.shedaniel"); includeGroup("me.shedaniel.cloth") }
+    }
+    exclusiveContent {
+        forRepository { maven { name = "XeroArchitecturyApi"; url = "https://maven.architectury.dev" } }
+        filter { includeGroup("dev.architectury") }
+    }
 }
 
 sourceSets {
@@ -32,6 +40,11 @@ sourceSets {
 }
 
 dependencies {
+    if (!modernMinecraft) {
+        modCompileOnly("me.shedaniel:RoughlyEnoughItems-api-fabric:16.0.799") { transitive = false }
+        compileOnly("me.shedaniel.cloth:basic-math:0.6.1") { transitive = false }
+        modCompileOnly("dev.architectury:architectury-fabric:13.0.6") { transitive = false }
+    }
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
     if (!project.minecraft_version.startsWith("26.")) mappings loom.officialMojangMappings()
     if (project.minecraft_version.startsWith("26.")) {
@@ -149,6 +162,8 @@ tasks.register("prepareFabricSources") {
                             "new Factory<>(MailboxData::new, MailboxData::load, null)")
                     .replace('return data; }),', 'return data; }, null),')
                     .replace('return data; }), KEY', 'return data; }, null), KEY')
+                    .replaceAll(/return data;\s*\}\),\s*"xero_control_state"/,
+                            'return data; }, null), "xero_control_state"')
             if (relative.endsWith("QuestGenerator.java")) {
                 text = text.replace("container.getModInfo().getDisplayName()", "container.getMetadata().getName()")
             }
@@ -156,6 +171,8 @@ tasks.register("prepareFabricSources") {
                 text = text.replace("player.server.getServerResources().managers()",
                         "xtdpotato.xero_quest_journal.fabriccompat.FabricServerAccess.resources(player.server)")
             }
+            if (relative.endsWith("QuestReiPlugin.java"))
+                text = text.replace("@me.shedaniel.rei.forge.REIPluginClient", "")
             if (relative.startsWith("xtdpotato/xero_quest_journal/smoke/")) {
                 text = text.replace('Path.of("..", "build", "verification")',
                         'Path.of(System.getProperty("xero.verificationDir", "../build/verification"))')

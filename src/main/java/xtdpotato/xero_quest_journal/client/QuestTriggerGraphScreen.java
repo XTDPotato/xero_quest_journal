@@ -32,7 +32,9 @@ public final class QuestTriggerGraphScreen extends AnimatedQuestScreen {
     private final ButtonStyleSheet styles = ButtonStyleSheet.load();
     private final Deque<String> undo = new ArrayDeque<>(), redo = new ArrayDeque<>();
     private final List<Label> labels = new ArrayList<>();
+    private final List<InspectorHint> inspectorHints = new ArrayList<>();
     private record Label(Component text, int x, int y) {}
+    private record InspectorHint(Component title, Component detail, int x, int y, int width, boolean valid) {}
     private record GraphIssue(String nodeId, String property, Component detail) {}
     private record GraphDraft(List<TriggerGraph.Node> nodes, List<TriggerGraph.Edge> edges) {}
     private String selected = "", wireFrom = "", wirePort = "", message = "";
@@ -86,6 +88,16 @@ public final class QuestTriggerGraphScreen extends AnimatedQuestScreen {
     private String pendingWireFrom = "", pendingWirePort = "";
     private long lastCanvasClick;
     private double lastCanvasClickX, lastCanvasClickY;
+    private long lastValueClick;
+    private String lastValueNode = "", lastValueProperty = "";
+    private double lastValueX, lastValueY;
+    private record NodeOption(String key, String value, String suffix, boolean left) {}
+    private NodeOption pressedNodeOption;
+    private String pressedOptionNode = "";
+    private double optionPressX, optionPressY;
+    private long optionPressedAt;
+    private boolean optionMoved;
+    private StyledChoiceButton<String> inlineChoice;
     /** Floating node search (Ctrl+F): matches get gold brackets, the rest of the graph is dimmed. */
     private boolean searchOpen, helpOpen;
     private String searchQuery = "";
@@ -141,7 +153,9 @@ public final class QuestTriggerGraphScreen extends AnimatedQuestScreen {
         nodes.addAll(graph.nodes());
         edges.addAll(graph.edges());
     }
-    private static Component text(String key) { return Component.translatable("screen.xero_quest_journal.graph." + key); }
+    private static Component text(String key) {
+        return Component.translatable("screen.xero_quest_journal." + (key.startsWith("hot_events.") ? "" : "graph.") + key);
+    }
     private TriggerGraph graph() { return new TriggerGraph(nodes, edges); }
     private int side() { return Math.min(190, width / 2); }
     private int canvasRight() { return width - side() - 8; }
@@ -159,6 +173,7 @@ public final class QuestTriggerGraphScreen extends AnimatedQuestScreen {
         init();
     }
     private void load(TriggerGraph graph) {
+        pressedNodeOption = null;
         resizeOrigin = null;
         dragging = panning = wiring = marquee = minimapDragging = false;
         contextCanvas = false;
@@ -175,8 +190,10 @@ public final class QuestTriggerGraphScreen extends AnimatedQuestScreen {
     @Override protected void init() {
         String draft = source == null ? GSON.toJson(new GraphDraft(nodes, edges)) : source.getValue();
         clearWidgets();
+        inlineChoice = null;
         measuredNodes.clear();
         labels.clear();
+        inspectorHints.clear();
         inspectorWidgets.clear();
         nodeX = nodeY = nodeWidthField = nodeHeightField = null;
         source = null;
@@ -260,6 +277,8 @@ public final class QuestTriggerGraphScreen extends AnimatedQuestScreen {
                 case "first_clause", "second_clause" -> "clause";
                 case "custom_rewards", "mail.attachments" -> "gift";
                 case "mail.pick_player" -> "choose";
+                case "hot_events.background_music" -> "choose";
+                case "hot_events.visual_background" -> "visual";
                 case "variable.source" -> "variables";
                 case "variable.bind" -> "\u00d7".equals(glyph) ? "unlink" : "variables";
                 case "cancel" -> "close";
@@ -296,19 +315,34 @@ public final class QuestTriggerGraphScreen extends AnimatedQuestScreen {
         if (!QuestNodeLibraryScreen.available(entry.category())) return;
         String nodeType = entry.type();
         if (nodes.size() >= 128) { message = "invalid"; return; }
-        if (List.of("variable", "set_variable").contains(nodeType) && variables().isEmpty()) {
+        if (nodeType.equals("variable") && variables().isEmpty()) {
             message = "variable.missing"; return;
+        }
+        if (nodeType.equals("set_variable") && variables().stream().noneMatch(v -> !v.readOnly()))
+            nodeType = "set_context";
+        if (nodeType.equals("calculate_variable") && variables().stream()
+                .noneMatch(v -> v.numeric() && !v.readOnly())) {
+            message = "variable.numeric_missing"; return;
         }
         remember();
         String id;
         do { id = "node_" + ++serial; } while (contains(id));
         Map<String, String> data = new LinkedHashMap<>(entry.data());
         if (nodeType.equals("mail_send")) data.put("mailId", defaultMailId(id));
-        if (List.of("variable", "set_variable").contains(nodeType))
-            data.put("variable", variables().getFirst().id());
+        if (List.of("variable", "set_variable").contains(nodeType)) {
+            boolean readOnlyAllowed = nodeType.equals("variable");
+            data.put("variable", variables().stream().filter(v -> readOnlyAllowed || !v.readOnly())
+                    .findFirst().orElseThrow().id());
+        }
+        if (nodeType.equals("calculate_variable"))
+            data.put("variable", variables().stream().filter(v -> v.numeric() && !v.readOnly())
+                    .findFirst().orElseThrow().id());
         if (nodeType.equals("variable")) { data.put("operator", "eq"); data.put("expected", ""); }
         if (nodeType.equals("set_variable")) data.put("value", "");
-        if (nodeType.equals("set_context")) data.put("player", "@s");
+        if (nodeType.equals("set_context")) {
+            data.put("scope", "player"); data.put("field", "experienceLevel");
+            data.put("player", "@s"); data.put("value", "0");
+        }
         double placeX = pendingPlacement != null ? pendingPlacement[0] : (canvasRight() / 2.0 - panX) / zoom;
         double placeY = pendingPlacement != null ? pendingPlacement[1] : (height / 2.0 - 56 - panY) / zoom;
         pendingPlacement = null;
@@ -347,8 +381,12 @@ public final class QuestTriggerGraphScreen extends AnimatedQuestScreen {
     }
     private boolean contains(String id) { return nodes.stream().anyMatch(node -> node.id().equals(id)); }
     private List<QuestVariable> variables() {
-        return ClientQuestDefinitions.variables().stream().filter(v ->
-                v.scope().equals("globe") || v.scope().equals(taskId)).toList();
+        var result = new ArrayList<>(ClientQuestDefinitions.variables().stream().filter(v ->
+                v.scope().equals("globe") || v.scope().equals(taskId)).toList());
+        if (taskId.matches("[A-Za-z0-9_-][A-Za-z0-9_.-]{0,63}"))
+            for (String name : List.of("progress_current", "progress_required", "progress_ratio"))
+                result.add(new QuestVariable(taskId + "." + name, "0", 0, "number", "player"));
+        return result.stream().distinct().toList();
     }
     private void openVariables(Consumer<String> chosen) {
         minecraft.setScreen(new QuestVariableListScreen(this, taskId, chosen, this::renameVariable));
@@ -784,6 +822,9 @@ public final class QuestTriggerGraphScreen extends AnimatedQuestScreen {
         } catch (RuntimeException invalid) { message = "invalid"; }
     }
     private void field(String label, String key, String initial, int y) {
+        field(label, key, initial, y, 4096);
+    }
+    private void field(String label, String key, String initial, int y, int maxLength) {
         int x = canvasRight() + 16, w = side() - 24;
         labels.add(new Label(text(label), x, y));
         String context = key;
@@ -792,7 +833,7 @@ public final class QuestTriggerGraphScreen extends AnimatedQuestScreen {
         if (key.equals("target") && selected() != null && selected().type().startsWith("locate_"))
             context = selected().type().substring("locate_".length());
         var input = new SuggestedEditBox(this, font, x, y + 12, w, 18, text(label), context);
-        input.setMaxLength(4096);
+        input.setMaxLength(maxLength);
         input.setValue(initial);
         input.setResponder(value -> update(key, value));
         addRenderableWidget(input);
@@ -939,6 +980,10 @@ public final class QuestTriggerGraphScreen extends AnimatedQuestScreen {
         addRenderableWidget(nodeHeightField);
         button(x + w - 24, y + 9, 24, null, "auto_size", this::resetNodeSize);
         y += 42;
+        addRenderableWidget(Checkbox.builder(text("show_all"), font).pos(x, y)
+                .selected(Boolean.parseBoolean(node.get("showAll", "true")))
+                .onValueChange((box, value) -> { update("showAll", Boolean.toString(value)); init(); }).build());
+        y += 30;
         field("note", "note", node.get("note", ""), y);
         y += 42;
         if (node.type().equals("event")) {
@@ -972,10 +1017,16 @@ public final class QuestTriggerGraphScreen extends AnimatedQuestScreen {
                 }
             }
         } else if (node.type().equals("context")) {
-            labels.add(new Label(text("readonly_context"), x, y));
+            String valueField = node.get("field", "experienceLevel");
+            boolean mutable = TriggerGraph.SETTABLE_PLAYER_FIELDS.contains(valueField)
+                    || TriggerGraph.SETTABLE_WORLD_FIELDS.contains(valueField);
+            labels.add(new Label(text(mutable ? "context.mutable" : "readonly_context"), x, y));
             addRenderableWidget(new StyledChoiceButton<>(x, y + 18, w, 20, text("field"),
                     TriggerNodeLibrary.fields(node.get("category", "")), node.get("field", "eventType"),
                     key -> text("field." + key), key -> update("field", key), styles, "graph-context-field"));
+            if (TriggerNodeLibrary.PLAYER_VALUES.contains(valueField)
+                    && !List.of("eventType", "eventTarget").contains(valueField))
+                field("context.player", "player", node.get("player", "@s"), y + 48);
         } else if (node.type().equals("js")) {
             addRenderableWidget(new StyledChoiceButton<>(x, y, w, 20, text("mode"),
                     List.of("visual", "script"), node.get("mode", "script"),
@@ -1008,6 +1059,14 @@ public final class QuestTriggerGraphScreen extends AnimatedQuestScreen {
                     List.of(false, true), Boolean.parseBoolean(node.get("once", "false")),
                     value -> text(value ? "once" : "repeat"), value -> update("once", value.toString()),
                     styles, "graph-js-once"));
+            if (node.get("mode", "script").equals("visual")) {
+                String suffix = visualSecond && List.of("and", "or").contains(node.get("logic", "single")) ? "2" : "";
+                String left = node.get("field" + suffix, "eventType"), right = node.get("expectedField" + suffix, "");
+                if (TriggerNodeLibrary.PLAYER_VALUES.contains(left) && !List.of("eventType", "eventTarget").contains(left))
+                    field("context.read_player", "fieldPlayer" + suffix, node.get("fieldPlayer" + suffix, "@s"), y + 212);
+                if (TriggerNodeLibrary.PLAYER_VALUES.contains(right) && !List.of("eventType", "eventTarget").contains(right))
+                    field("context.expected_player", "expectedPlayer" + suffix, node.get("expectedPlayer" + suffix, "@s"), y + 254);
+            }
         } else if (List.of("complete", "advance_step", "activate", "unlock", "lock").contains(node.type())) {
             field("quest", "target", node.get("target", ""), y);
             button(x, y + 38, w, null, "choose", () -> minecraft.setScreen(new QuestTaskPickerScreen(this,
@@ -1040,7 +1099,8 @@ public final class QuestTriggerGraphScreen extends AnimatedQuestScreen {
                         .append(text("task_property.value." + defaultValue)), x, y + 120));
             }
         } else if (node.type().equals("variable") || node.type().equals("set_variable")) {
-            variableChoice(node, "variable", y);
+            variableChoice(node, "variable", y, node.type().equals("set_variable")
+                    ? variable -> !variable.readOnly() : variable -> true);
             if (node.type().equals("variable")) {
                 visualOperator(node, "operator", y + 28);
                 variableExpected(node, "", y + 55);
@@ -1058,6 +1118,59 @@ public final class QuestTriggerGraphScreen extends AnimatedQuestScreen {
                         value -> { update("sourceField", value); update("sourceVariable", ""); },
                         styles, "graph-source-field"));
             }
+        } else if (node.type().equals("calculate_variable")) {
+            variableChoice(node, "variable", y, variable -> variable.numeric() && !variable.readOnly());
+            var operations = xtdpotato.xero_quest_journal.core.runtime.QuestVariableMath.OPERATIONS;
+            addRenderableWidget(new StyledChoiceButton<>(x, y + 28, w, 20, text("math.operation"),
+                    operations, node.get("operation", "add"), value -> text("math." + value),
+                    value -> { update("operation", value); init(); }, styles, "graph-math-operation"));
+            String operation = node.get("operation", "add");
+            boolean unary = xtdpotato.xero_quest_journal.core.runtime.QuestVariableMath.unary(operation);
+            int previewY;
+            if (!unary) {
+                boolean variableMode = !node.get("operandVariable", "").isBlank();
+                int gap = 4, firstWidth = (w - gap) / 2;
+                var literal = new StyledButton(x, y + 56, firstWidth, 20, text("math.literal"),
+                        ignored -> {
+                            update("operandVariable", "");
+                            if (node.get("operand", "").isBlank()) update("operand", "1");
+                            init();
+                        }, styles, "graph-math-literal");
+                literal.setSelectionHighlighted(!variableMode);
+                addRenderableWidget(literal);
+                var variable = new StyledButton(x + firstWidth + gap, y + 56, w - firstWidth - gap, 20,
+                        text("math.variable"), ignored -> {
+                            String current = node.get("operandVariable", "");
+                            String first = variables().stream().filter(v -> v.numeric() && !v.readOnly())
+                                    .map(QuestVariable::id).findFirst().orElse("");
+                            if (current.isBlank() && !first.isBlank()) {
+                                update("operandVariable", first);
+                                update("operand", "");
+                            }
+                            init();
+                        }, styles, "graph-math-variable");
+                variable.setSelectionHighlighted(variableMode);
+                variable.active &= variableMode || variables().stream().anyMatch(v -> v.numeric() && !v.readOnly());
+                addRenderableWidget(variable);
+                if (variableMode) {
+                    var operands = new ArrayList<>(variables().stream().filter(v -> v.numeric())
+                            .map(QuestVariable::id).distinct().toList());
+                    if (!operands.contains(node.get("operandVariable", "")))
+                        operands.add(node.get("operandVariable", ""));
+                    if (operands.isEmpty()) operands.add("");
+                    addRenderableWidget(new StyledChoiceButton<>(x, y + 82, w, 20, text("math.operand_variable"),
+                            operands, node.get("operandVariable", operands.getFirst()),
+                            value -> value.isBlank() ? text("variable.missing") : Component.literal(value),
+                            value -> update("operandVariable", value),
+                            styles, "graph-math-operand"));
+                } else {
+                    field("math.operand", "operand", node.get("operand", "1"), y + 82, 256);
+                }
+                previewY = y + 108;
+            } else {
+                previewY = y + 56;
+            }
+            addCalculatorPreview(node, x, previewY, w);
         } else if (node.type().equals("delay")) {
             field("delay.ticks", "ticks", node.get("ticks", "20"), y);
             labels.add(new Label(text("delay.note"), x, y + 38));
@@ -1075,7 +1188,7 @@ public final class QuestTriggerGraphScreen extends AnimatedQuestScreen {
                     this::changeGameField, styles, "graph-context-field"));
             if (scope.equals("player")) field("context.player", "player", node.get("player", "@s"), y + 56);
             else field("context.dimension", "dimension", node.get("dimension", ""), y + 56);
-            if (List.of("raining", "thundering").contains(field)) {
+            if (List.of("raining", "thundering", "sneaking", "sprinting").contains(field)) {
                 labels.add(new Label(text("context.value"), x, y + 98));
                 addRenderableWidget(new StyledChoiceButton<>(x, y + 110, w, 20, text("context.value"),
                         List.of("false", "true"), node.get("value", "false"),
@@ -1098,6 +1211,19 @@ public final class QuestTriggerGraphScreen extends AnimatedQuestScreen {
                 field("travel." + node.type(), "target", node.get("target", ""), y);
                 field(node.type().equals("locate_biome") ? "travel.block_radius" : "travel.chunk_radius",
                         "radius", node.get("radius", node.type().equals("locate_biome") ? "256" : "16"), y + 42);
+                var sharedStrings = variables().stream()
+                        .filter(variable -> !variable.numeric() && variable.teamShared())
+                        .map(QuestVariable::id).collect(java.util.stream.Collectors.toCollection(ArrayList::new));
+                String stored = node.get("storeVariable", "");
+                if (!stored.isBlank() && !sharedStrings.contains(stored)) sharedStrings.add(stored);
+                if (sharedStrings.isEmpty()) sharedStrings.add("");
+                addRenderableWidget(new StyledChoiceButton<>(x, y + 82, w, 20,
+                        text("travel.store_result"), sharedStrings,
+                        stored.isBlank() ? sharedStrings.getFirst() : stored,
+                        value -> value.isBlank() ? text("variable.missing") : Component.literal(value),
+                        value -> update("storeVariable", value), styles, "graph-locate-store-variable"));
+                addInspectorHint(text("travel.store_result"),
+                        text("travel.store_result_hint"), x, y + 108, w, !stored.isBlank());
             } else {
                 for (String axis : List.of("x", "y", "z")) {
                     field("travel." + axis, axis, node.get(axis, ""), y);
@@ -1224,6 +1350,47 @@ public final class QuestTriggerGraphScreen extends AnimatedQuestScreen {
                     styles, "graph-overview-scope"));
             button(x, y + 94, w, null, "overview.reset", () -> { update("source", ""); init(); });
             actionOnce(node, x, y + 122, w);
+        } else if (node.type().equals("set_hot_event_background")) {
+            field("hot_events.background_source", "source", node.get("source", ""), y);
+            button(x, y + 38, w, null, "choose", () -> {
+                if (node.get("type", "image").equals("video")) QuestMediaPicker.choose(this, true,
+                        value -> { update("source", value); init(); });
+                else minecraft.setScreen(QuestScreen.pickResource(this, node.get("source", ""), false,
+                        value -> { update("source", value); init(); }));
+            });
+            addRenderableWidget(new StyledChoiceButton<>(x, y + 66, w, 20, text("hot_events.background_type"),
+                    List.of("image", "video"), node.get("type", "image"),
+                    value -> text("hot_events.background_type." + value), value -> { update("type", value); init(); },
+                    styles, "graph-hot-background-type"));
+            addRenderableWidget(new StyledChoiceButton<>(x, y + 94, w, 20, text("hot_events.background_mode"),
+                    List.of("cover", "contain", "stretch", "adaptive"), node.get("mode", "cover"),
+                    value -> text("hot_events.background_mode." + value), value -> { update("mode", value); init(); },
+                    styles, "graph-hot-background-mode"));
+            field("hot_events.background_scale", "scale", node.get("scale", "1"), y + 122);
+            field("hot_events.background_offset_x", "offsetX", node.get("offsetX", "0"), y + 150);
+            field("hot_events.background_offset_y", "offsetY", node.get("offsetY", "0"), y + 178);
+            field("hot_events.background_music", "music", node.get("music", ""), y + 206);
+            button(x, y + 244, w, null, "hot_events.background_music", () -> QuestMediaPicker.choose(
+                    this, false, value -> { update("music", value); init(); }));
+            actionOnce(node, x, y + 272, w);
+            button(x, y + 300, w, null, "hot_events.visual_background", () -> {
+                try {
+                    var draft = new xtdpotato.xero_quest_journal.core.model.HotEventCanvas(
+                            node.get("source", ""), "", List.of(), true, Map.of(), node.get("type", "image"),
+                            Double.parseDouble(node.get("scale", "1")), Integer.parseInt(node.get("offsetX", "0")),
+                            Integer.parseInt(node.get("offsetY", "0")), node.get("mode", "cover"), node.get("music", ""));
+                    minecraft.setScreen(new HotEventBackgroundScreen(this, draft, value -> {
+                        if (!node.id().equals(selected)) return;
+                        var data = new LinkedHashMap<>(selected().data());
+                        data.put("source", value.backgroundImage()); data.put("type", value.backgroundType());
+                        data.put("mode", value.backgroundMode()); data.put("scale", Double.toString(value.backgroundScale()));
+                        data.put("offsetX", Integer.toString(value.backgroundOffsetX()));
+                        data.put("offsetY", Integer.toString(value.backgroundOffsetY()));
+                        data.put("music", value.backgroundMusic());
+                        replaceData(selected(), "source", data);
+                    }));
+                } catch (IllegalArgumentException invalid) { message = "invalid"; }
+            });
         } else if (node.type().equals("set_theme")) {
             addRenderableWidget(new StyledChoiceButton<>(x, y, w, 20, text("theme.key"),
                     QuestUiTheme.KEYS, node.get("key", "accent"),
@@ -1281,7 +1448,9 @@ public final class QuestTriggerGraphScreen extends AnimatedQuestScreen {
                         all -> text(all ? "reset_all" : "reset_one"),
                         all -> update("all", all.toString()), styles, "graph-reset-scope"));
             } else {
-                field("value", "value", node.get("value", "visible"), y + 92);
+                if (node.get("valueVariable", "").isBlank())
+                    field("value", "value", node.get("value", "visible"), y + 92);
+                else labels.add(new Label(Component.literal(node.get("valueVariable", "")), x, y + 99));
                 button(x, y + 132, w, null, "expand_value", () -> {
                 String nodeId = node.id();
                 minecraft.setScreen(new QuestPropertyValueScreen(this, propertyName(property), node.get("value", ""),
@@ -1291,14 +1460,35 @@ public final class QuestTriggerGraphScreen extends AnimatedQuestScreen {
                             init();
                         }));
                 });
+                if (property.equals("displayText"))
+                    button(x, y + 168, w, node.get("valueVariable", "").isBlank() ? "V" : "\u00d7",
+                            "variable.bind", () -> {
+                                if (!node.get("valueVariable", "").isBlank()) {
+                                    update("valueVariable", "");
+                                    init();
+                                } else openVariables(chosenId -> {
+                                    update("valueVariable", chosenId);
+                                    update("value", "");
+                                    init();
+                                });
+                            });
+                if (property.equals("displayText"))
+                    addInspectorHint(text("property.displayText"),
+                            text("property.displayText_hint"), x, y + 194, w, true);
             }
         }
         var widgets = new ArrayList<>(children().subList(firstWidget, children().size()));
-        inspectorMaxScroll = widgets.stream().filter(AbstractWidget.class::isInstance)
+        int widgetBottom = widgets.stream().filter(AbstractWidget.class::isInstance)
                 .map(AbstractWidget.class::cast).mapToInt(widget -> widget.getBottom() + inspectorScroll)
-                .max().orElse(60) - (height - 42);
+                .max().orElse(60);
+        int labelBottom = labels.stream().mapToInt(label -> label.y() + font.lineHeight).max().orElse(60);
+        int hintBottom = inspectorHints.stream().mapToInt(hint -> hint.y() + 54).max().orElse(60);
+        inspectorMaxScroll = Math.max(widgetBottom, Math.max(labelBottom, hintBottom)) - (height - 42);
         inspectorMaxScroll = Math.max(0, inspectorMaxScroll);
-        for (var widget : widgets) if (widget instanceof AbstractWidget control) inspectorWidgets.add(control);
+        for (var widget : widgets) if (widget instanceof AbstractWidget control) {
+            inspectorWidgets.add(control);
+            if (control instanceof StyledChoiceButton<?> choice) choice.searchable();
+        }
         button(x, height - 32, w, null, "delete", this::deleteSelected);
     }
     private void changeGameScope(String scope) {
@@ -1319,16 +1509,20 @@ public final class QuestTriggerGraphScreen extends AnimatedQuestScreen {
         if (node == null) return;
         var data = new LinkedHashMap<>(node.data());
         data.put("field", field);
-        data.put("value", List.of("raining", "thundering").contains(field) ? "false" : "0");
+        data.put("value", defaultGameValue(field));
         replaceData(node, "context.field", data);
         init();
+    }
+    private static String defaultGameValue(String field) {
+        return List.of("raining", "thundering", "sneaking", "sprinting").contains(field) ? "false"
+                : field.equals("maxHealth") ? "20" : "0";
     }
     private static List<String> outputPorts(TriggerGraph.Node node) {
         if (TriggerGraph.branching(node.type())) return List.of("true", "false");
         return hasNextOutput(node.type()) ? List.of("next") : List.of();
     }
     private static boolean hasNextOutput(String type) {
-        return type.equals("event") || type.equals("delay");
+        return type.equals("event") || type.equals("delay") || type.equals("calculate_variable");
     }
     private void actionOnce(TriggerGraph.Node node, int x, int y, int w) {
         addRenderableWidget(new StyledChoiceButton<>(x, y, w, 20, text("once"),
@@ -1351,9 +1545,72 @@ public final class QuestTriggerGraphScreen extends AnimatedQuestScreen {
                 value -> update(axis + "Field", value), styles, "graph-" + axis + "-source"));
     }
     private void variableChoice(TriggerGraph.Node node, String key, int y) {
+        variableChoice(node, key, y, variable -> true);
+    }
+    private void addCalculatorPreview(TriggerGraph.Node node, int x, int y, int width) {
+        String id = node.get("variable", "");
+        QuestVariable target = variables().stream().filter(value -> value.id().equals(id)).findFirst().orElse(null);
+        if (target == null) {
+            addInspectorHint(text("math.preview"), text("math.target_missing"), x, y, width, false);
+            return;
+        }
+        String operation = node.get("operation", "add");
+        String left = previewVariableValue(target);
+        String right = "";
+        boolean unary = xtdpotato.xero_quest_journal.core.runtime.QuestVariableMath.unary(operation);
+        if (!unary) {
+            String operandVariable = node.get("operandVariable", "");
+            QuestVariable operand = variables().stream().filter(value -> value.id().equals(operandVariable))
+                    .findFirst().orElse(null);
+            right = operand == null ? node.get("operand", "1") : previewVariableValue(operand);
+        }
+        String expression = unary
+                ? Component.translatable("screen.xero_quest_journal.graph.math.expression_unary",
+                        text("math." + operation), left).getString()
+                : Component.translatable("screen.xero_quest_journal.graph.math.expression_binary",
+                        left, text("math." + operation), right).getString();
+        try {
+            String result = xtdpotato.xero_quest_journal.core.runtime.QuestVariableMath.evaluate(
+                    operation, left, right);
+            String sourceHint = operation.matches("sin|cos|tan|asin|acos|atan|atan2")
+                    ? text("math.radians").getString() : text("math.preview_source").getString();
+            addInspectorHint(text("math.preview"),
+                    Component.literal(expression + "\n")
+                            .append(Component.literal(text("math.result").getString() + ": " + result))
+                            .append("\n").append(sourceHint),
+                    x, y, width, true);
+        } catch (RuntimeException invalid) {
+            addInspectorHint(text("math.preview"),
+                    Component.literal(expression + "\n").append(text("math.invalid_result")),
+                    x, y, width, false);
+        }
+    }
+
+    private String previewVariableValue(QuestVariable variable) {
+        String live = ClientControlState.variable(variable.id());
+        if (live != null) return live;
+        if (variable.readOnly()) {
+            var progress = ClientQuestProgress.view(variable.scope());
+            if (progress != null) return switch (variable.name()) {
+                case "progress_current" -> Integer.toString(progress.current());
+                case "progress_required" -> Integer.toString(progress.required());
+                case "progress_ratio" -> progress.required() <= 0 ? "0"
+                        : Double.toString(progress.current() / (double) progress.required());
+                default -> variable.initial();
+            };
+        }
+        return variable.initial();
+    }
+
+    private void addInspectorHint(Component title, Component detail, int x, int y, int width, boolean valid) {
+        inspectorHints.add(new InspectorHint(title, detail, x, y, width, valid));
+    }
+
+    private void variableChoice(TriggerGraph.Node node, String key, int y,
+                                java.util.function.Predicate<QuestVariable> filter) {
         int x = canvasRight() + 16, w = side() - 24;
         var ids = new ArrayList<String>();
-        variables().forEach(v -> ids.add(v.id()));
+        variables().stream().filter(filter).forEach(v -> ids.add(v.id()));
         if (!ids.contains(node.get(key, ""))) ids.add(node.get(key, ""));
         if (ids.isEmpty()) ids.add("");
         addRenderableWidget(new StyledChoiceButton<>(x, y, w, 20, text("variable.target"),
@@ -1551,11 +1808,39 @@ public final class QuestTriggerGraphScreen extends AnimatedQuestScreen {
                 if (node.type().equals("kubejs_call") && !node.get("function", "")
                         .matches("global\\.[A-Za-z_$][A-Za-z0-9_$]*(\\.[A-Za-z_$][A-Za-z0-9_$]*)*"))
                     throw new IllegalArgumentException("Use global.functionName");
-                for (String key : List.of("variable", "sourceVariable", "expectedVar", "expectedVar2")) {
+                for (String key : List.of("variable", "sourceVariable", "expectedVar", "expectedVar2",
+                        "valueVariable", "operandVariable", "storeVariable")) {
                     validatingProperty = "variable.target";
                     String id = node.get(key, "");
                     if (!id.isBlank() && variables().stream().noneMatch(v -> v.id().equals(id)))
                         throw new IllegalArgumentException("Unknown variable");
+                }
+                validatingProperty = "variable.target";
+                if (node.type().equals("calculate_variable")) {
+                    var targetVariable = variables().stream().filter(v -> v.id().equals(node.get("variable", "")))
+                            .findFirst().orElseThrow();
+                    if (!targetVariable.numeric() || targetVariable.readOnly())
+                        throw new IllegalArgumentException("Calculator target must be numeric and writable");
+                    String operand = node.get("operandVariable", "");
+                    if (!operand.isBlank()) {
+                        var operandVariable = variables().stream().filter(v -> v.id().equals(operand))
+                                .findFirst().orElseThrow();
+                        if (!operandVariable.numeric())
+                            throw new IllegalArgumentException("Calculator operand must be numeric");
+                    }
+                }
+                if (node.type().equals("set_variable")) {
+                    var targetVariable = variables().stream().filter(v -> v.id().equals(node.get("variable", "")))
+                            .findFirst().orElseThrow();
+                    if (targetVariable.readOnly())
+                        throw new IllegalArgumentException("Read-only variable cannot be assigned");
+                }
+                if (List.of("locate_structure", "locate_biome").contains(node.type())
+                        && !node.get("storeVariable", "").isBlank()) {
+                    var destination = variables().stream()
+                            .filter(v -> v.id().equals(node.get("storeVariable", ""))).findFirst().orElseThrow();
+                    if (destination.numeric() || !destination.teamShared())
+                        throw new IllegalArgumentException("Locate result requires a team-shared string variable");
                 }
                 for (String key : List.of("field", "field2", "xField", "yField", "zField", "dimensionField")) {
                     validatingProperty = "field";
@@ -1723,7 +2008,8 @@ public final class QuestTriggerGraphScreen extends AnimatedQuestScreen {
                 g.pose().pushPose(); g.pose().translate(x, y, 0); g.pose().scale((float) zoom, (float) zoom, 1);
                 TriggerNodeStyle.glyph(g, node, 6, (layout.headerHeight() - TriggerNodeLayout.GLYPH_SIZE) / 2,
                         TriggerNodeLayout.GLYPH_SIZE);
-                layout.render(g, font);
+                layout.render(g, font, (int) Math.floor((56 - y) / zoom),
+                        (int) Math.ceil((canvasBottom - y) / zoom));
                 g.pose().popPose();
                 if (searching) {
                     if (matchIds.contains(node.id())) TriggerNodeStyle.ornaments(g, x, y, w, h, 0xFFFFE08A);
@@ -1817,6 +2103,7 @@ public final class QuestTriggerGraphScreen extends AnimatedQuestScreen {
                 g.drawString(font, font.plainSubstrByWidth(label.text.getString(), side() - 24),
                         label.x, label.y, invalid ? 0xFFFF6666 : 0xFFB9BDC7, false);
             });
+            inspectorHints.forEach(hint -> renderInspectorHint(g, hint));
             g.disableScissor();
             if (inspectorMaxScroll > 0) {
                 g.fill(width - 7, 56, width - 3, height - 42, 0xFF303037);
@@ -1873,6 +2160,21 @@ public final class QuestTriggerGraphScreen extends AnimatedQuestScreen {
             var lines = font.split(problem, Math.max(1, width - 16));
             for (int line = 0; line < Math.min(2, lines.size()); line++)
                 g.drawString(font, lines.get(line), 8, height - 36 + line * 12, 0xFFFF7777, false);
+        }
+    }
+    private void renderInspectorHint(GuiGraphics g, InspectorHint hint) {
+        int height = 54;
+        int background = hint.valid() ? 0xFF26362F : 0xFF3B2C30;
+        int border = hint.valid() ? 0xFF527F66 : 0xFF8D5658;
+        g.fill(hint.x(), hint.y(), hint.x() + hint.width(), hint.y() + height, background);
+        g.renderOutline(hint.x(), hint.y(), hint.width(), height, border);
+        g.drawString(font, font.plainSubstrByWidth(hint.title().getString(), hint.width() - 12),
+                hint.x() + 6, hint.y() + 5, hint.valid() ? 0xFF9ED8B1 : 0xFFFFA29A, false);
+        int lineY = hint.y() + 18;
+        for (var line : font.split(hint.detail(), Math.max(1, hint.width() - 12))) {
+            if (lineY + font.lineHeight > hint.y() + height - 3) break;
+            g.drawString(font, line, hint.x() + 6, lineY, 0xFFD7DEE5, false);
+            lineY += font.lineHeight + 1;
         }
     }
     private static final int CONTEXT_ROW = 20;
@@ -2198,6 +2500,16 @@ public final class QuestTriggerGraphScreen extends AnimatedQuestScreen {
                 var node = nodes.get(i);
                 if (x >= sx(node) && x < sx(node) + nodeWidth(node) * zoom
                         && y >= sy(node) && y < sy(node) + nodeHeight(node) * zoom) {
+                    var option = nodeOptionAt(node, x, y);
+                    if (option != null && !hasControlDown() && !hasShiftDown()) {
+                        selectedIds.clear();
+                        selectedIds.add(node.id());
+                        selected = node.id();
+                        selectedEdge = null;
+                        init();
+                        openNodeFieldPicker(node, option);
+                        return true;
+                    }
                     if (!selectedIds.contains(node.id())) {
                         selectedIds.clear(); selectedIds.add(node.id());
                         selected = node.id(); selectedEdge = null; init();
@@ -2270,6 +2582,40 @@ public final class QuestTriggerGraphScreen extends AnimatedQuestScreen {
                 return true;
             }
             if (x >= sx(node) && x < sx(node) + nodeWidth(node) * zoom && y >= sy(node) && y < sy(node) + nodeHeight(node) * zoom) {
+                var option = nodeOptionAt(node, x, y);
+                if (option != null && wireFrom.isEmpty() && !hasControlDown() && !hasShiftDown()) {
+                    selected = node.id();
+                    selectedIds.clear(); selectedIds.add(selected);
+                    selectedEdge = null;
+                    dragging = false;
+                    init();
+                    pressedNodeOption = option;
+                    pressedOptionNode = node.id();
+                    optionPressX = x; optionPressY = y;
+                    optionPressedAt = System.nanoTime();
+                    optionMoved = false;
+                    lastValueClick = 0;
+                    return true;
+                }
+                String property = editableAt(node, x, y);
+                if (!property.isEmpty() && !hasControlDown() && !hasShiftDown()) {
+                    long now = System.nanoTime();
+                    boolean twice = node.id().equals(lastValueNode) && property.equals(lastValueProperty)
+                            && now - lastValueClick < 350_000_000L
+                            && Math.abs(x - lastValueX) < 4 && Math.abs(y - lastValueY) < 4;
+                    lastValueClick = twice ? 0 : now;
+                    lastValueNode = node.id();
+                    lastValueProperty = property;
+                    lastValueX = x; lastValueY = y;
+                    if (twice) {
+                        selected = node.id();
+                        selectedIds.clear(); selectedIds.add(selected);
+                        dragging = false;
+                        init();
+                        openNodeValue(node, property);
+                        return true;
+                    }
+                } else lastValueClick = 0;
                 selectedEdge = null;
                 if (hasControlDown() || hasShiftDown()) {
                     if (!selectedIds.add(node.id())) selectedIds.remove(node.id());
@@ -2326,6 +2672,197 @@ public final class QuestTriggerGraphScreen extends AnimatedQuestScreen {
         return !List.of("event", "context").contains(node.type()) && Math.abs(x - sx(node)) < 8
                 && Math.abs(y - sy(node) - 32 * zoom) < 8;
     }
+    private String editableAt(TriggerGraph.Node node, double x, double y) {
+        double localX = (x - sx(node)) / zoom, localY = (y - sy(node)) / zoom;
+        for (var block : nodeLayout(node).texts()) {
+            if (block.property().isEmpty() || block.property().equals("logic") || block.property().startsWith("operator"))
+                continue;
+            if (localX >= block.x() - 3 && localX < block.x() + block.width() + 3
+                    && localY >= block.y() - 3 && localY < block.y() + block.height(font) + 3)
+                return block.property();
+        }
+        return "";
+    }
+    private NodeOption nodeOptionAt(TriggerGraph.Node node, double x, double y) {
+        double localX = (x - sx(node)) / zoom, localY = (y - sy(node)) / zoom;
+        for (var slot : nodeLayout(node).slots()) {
+            if (localX < slot.x() || localX >= slot.x() + slot.width()
+                    || localY < slot.y() || localY >= slot.y() + slot.height()) continue;
+            String value = slot.left() ? node.get("field" + slot.suffix(), "eventType")
+                    : !node.get("expectedVar" + slot.suffix(), "").isBlank()
+                    ? "var:" + node.get("expectedVar" + slot.suffix(), "")
+                    : node.get("expectedField" + slot.suffix(), "");
+            return new NodeOption(slot.left() ? "field" : "expected", value, slot.suffix(), slot.left());
+        }
+        for (var block : nodeLayout(node).texts()) {
+            String property = block.property();
+            if (!property.equals("logic") && !property.startsWith("operator")
+                    && !(node.type().equals("context") && property.equals("field"))) continue;
+            if (localX >= block.x() - 3 && localX < block.x() + block.width() + 3
+                    && localY >= block.y() - 3 && localY < block.y() + block.height(font) + 3)
+                return new NodeOption(property, node.get(property, ""), "", true);
+        }
+        return null;
+    }
+    private void openNodeOption(TriggerGraph.Node node, NodeOption option, double x, double y) {
+        var choices = new ArrayList<String>();
+        String initial = option.value();
+        if (option.key().equals("field")) {
+            choices.addAll(TriggerGraph.FIELDS);
+            if (!node.type().equals("context")) variables().forEach(value -> choices.add("var:" + value.id()));
+        } else if (option.key().equals("expected")) {
+            choices.add("");
+            TriggerGraph.FIELDS.forEach(value -> choices.add("field:" + value));
+            variables().forEach(value -> choices.add("var:" + value.id()));
+            if (!initial.isBlank() && !initial.startsWith("var:")) initial = "field:" + initial;
+        } else choices.addAll(option.key().equals("logic") ? TriggerGraph.LOGICS : TriggerGraph.OPERATORS);
+        if (!choices.contains(initial)) initial = choices.getFirst();
+        String key = option.key();
+        closeOpenNodeChoices();
+        inlineChoice = new StyledChoiceButton<>((int) x, (int) y, 140, 20, text(key),
+                choices, initial, value -> {
+                    if (value.isBlank()) return text("travel.literal");
+                    if (value.startsWith("var:")) return Component.literal(value.substring(4));
+                    String field = value.startsWith("field:") ? value.substring(6) : value;
+                    return text(TriggerGraph.FIELDS.contains(field) ? "field." + field
+                            : key.equals("logic") ? "logic." + field : "operator." + field);
+                }, value -> {
+                    var current = selected();
+                    if (current == null || !current.id().equals(node.id())) return;
+                    if (key.equals("expected") && value.isEmpty()) {
+                        openNodeValue(current, "expected" + option.suffix());
+                        return;
+                    }
+                    var data = new LinkedHashMap<>(current.data());
+                    if (key.equals("expected")) {
+                        data.remove("expectedVar" + option.suffix());
+                        data.remove("expectedField" + option.suffix());
+                        data.put((value.startsWith("var:") ? "expectedVar" : "expectedField") + option.suffix(),
+                                value.substring(value.indexOf(':') + 1));
+                    } else data.put(key + option.suffix(), value);
+                    replaceData(current, key, data);
+                    init();
+                }, styles, "graph-inline-choice").searchable();
+        addWidget(inlineChoice);
+        setFocused(inlineChoice);
+        inlineChoice.onPress();
+        inlineChoice.restoreSearchFocus();
+    }
+    private void closeOpenNodeChoices() {
+        children().stream().filter(StyledChoiceButton.class::isInstance)
+                .map(StyledChoiceButton.class::cast).forEach(StyledChoiceButton::closeMenu);
+    }
+    private void openNodeFieldPicker(TriggerGraph.Node node, NodeOption option) {
+        var options = new ArrayList<QuestValuePickerScreen.Option>();
+        if (option.key().equals("expected")) {
+            options.add(new QuestValuePickerScreen.Option("literal:", text("travel.literal").getString()));
+            TriggerGraph.FIELDS.forEach(field -> options.add(new QuestValuePickerScreen.Option(
+                    "field:" + field, text("field." + field).getString())));
+            variables().forEach(variable -> options.add(new QuestValuePickerScreen.Option(
+                    "var:" + variable.id(), variable.id())));
+        } else {
+            TriggerGraph.FIELDS.forEach(field -> options.add(new QuestValuePickerScreen.Option(
+                    field, text("field." + field).getString())));
+            if (!node.type().equals("context"))
+                variables().forEach(variable -> options.add(new QuestValuePickerScreen.Option(
+                        "var:" + variable.id(), variable.id())));
+        }
+        String currentValue = option.value();
+        if (option.key().equals("expected") && !currentValue.isBlank()
+                && !currentValue.startsWith("var:")) currentValue = "field:" + currentValue;
+        minecraft.setScreen(new QuestValuePickerScreen(this, text("field_picker").getString(), "",
+                () -> options, currentValue, value -> {
+            var activeNode = selected();
+            if (activeNode == null || !activeNode.id().equals(node.id())) return;
+            if (value.equals("literal:")) {
+                minecraft.setScreen(new QuestPropertyValueScreen(this, text("expected"),
+                        activeNode.get("expected" + option.suffix(), ""), literal -> {
+                    var currentNode = selected();
+                    if (currentNode == null || !currentNode.id().equals(node.id())) return;
+                    var data = new LinkedHashMap<>(currentNode.data());
+                    data.remove("expectedVar" + option.suffix());
+                    data.remove("expectedField" + option.suffix());
+                    data.put("expected" + option.suffix(), literal);
+                    replaceData(currentNode, "expected" + option.suffix(), data);
+                    init();
+                }));
+                return;
+            }
+            var data = new LinkedHashMap<>(activeNode.data());
+            if (option.key().equals("expected")) {
+                data.remove("expectedVar" + option.suffix());
+                data.remove("expectedField" + option.suffix());
+                data.put((value.startsWith("var:") ? "expectedVar" : "expectedField") + option.suffix(),
+                        value.startsWith("var:") ? value.substring(4)
+                                : value.startsWith("field:") ? value.substring(6) : value);
+                data.put("expectedPlayer" + option.suffix(),
+                        activeNode.get("expectedPlayer" + option.suffix(), "@s"));
+            } else {
+                data.put("field" + option.suffix(), value);
+                if (TriggerNodeLibrary.PLAYER_VALUES.contains(value)
+                        && !List.of("eventType", "eventTarget").contains(value))
+                    data.put("fieldPlayer" + option.suffix(), activeNode.get("fieldPlayer" + option.suffix(), "@s"));
+            }
+            replaceData(activeNode, option.key(), data);
+            init();
+        }));
+    }
+    private void extractNodeOption(double x, double y) {
+        var option = pressedNodeOption;
+        var source = nodes.stream().filter(node -> node.id().equals(pressedOptionNode)).findFirst().orElse(null);
+        if (source == null || option == null || option.value().isBlank()
+                || !List.of("field", "expected").contains(option.key()) || nodes.size() >= 128) return;
+        boolean custom = option.value().startsWith("var:");
+        if (!custom && !TriggerGraph.FIELDS.contains(option.value())) return;
+        String id;
+        do { id = "node_" + ++serial; } while (contains(id));
+        var data = new LinkedHashMap<String, String>();
+        if (custom) {
+            data.put("variable", option.value().substring(4));
+            data.put("operator", "eq"); data.put("expected", "");
+        } else {
+            data.put("field", option.value());
+            data.put("player", source.get((option.left() ? "fieldPlayer" : "expectedPlayer") + option.suffix(),
+                    source.type().equals("context") ? source.get("player", "@s") : "@s"));
+        }
+        var node = new TriggerGraph.Node(id, custom ? "variable" : "context",
+                (int) Math.clamp((x - 8 - panX) / zoom - 20, -100000, 100000),
+                (int) Math.clamp((y - 56 - panY) / zoom - 20, -100000, 100000), data);
+        remember();
+        nodes.add(node);
+        selected = node.id(); selectedIds.clear(); selectedIds.add(selected);
+        dragOrigins.clear(); dragOrigins.put(selected, node);
+        grabX = x; grabY = y;
+        pressedNodeOption = null;
+        dragging = dragRemembered = true;
+        init();
+    }
+    private void openNodeValue(TriggerGraph.Node node, String property) {
+        Consumer<String> save = value -> {
+            if (!selected.equals(node.id())) return;
+            if (property.startsWith("expected")) {
+                var current = selected();
+                var data = new LinkedHashMap<>(current.data());
+                String suffix = property.substring("expected".length());
+                data.remove("expectedVar" + suffix);
+                data.remove("expectedField" + suffix);
+                data.put(property, value);
+                replaceData(current, property, data);
+            } else update(property, value);
+            init();
+        };
+        if (property.equals("script")) {
+            if (node.type().equals("kubejs_script") && !QuestNodeLibraryScreen.available(node.type())) return;
+            minecraft.setScreen(new QuestScriptEditorScreen(this, nodeTitle(node), node.get(property, ""), save,
+                    node.type().equals("kubejs_script")
+                            ? xtdpotato.xero_quest_journal.core.model.QuestScriptReference.Kind.KUBEJS
+                            : xtdpotato.xero_quest_journal.core.model.QuestScriptReference.Kind.GRAPH_PREDICATE));
+        } else {
+            minecraft.setScreen(new QuestPropertyValueScreen(this,
+                    text(property.startsWith("expected") ? "expected" : property), node.get(property, ""), save,
+                    property.equals("body") || node.type().equals("mail_set_property") ? 8192 : 4096));
+        }
+    }
     private void connectTo(TriggerGraph.Node node) {
         try {
             var edge = new TriggerGraph.Edge(wireFrom, node.id(), wirePort);
@@ -2353,6 +2890,11 @@ public final class QuestTriggerGraphScreen extends AnimatedQuestScreen {
         wiring = false;
     }
     @Override public boolean mouseDragged(double x, double y, int button, double dx, double dy) {
+        if (button == 0 && pressedNodeOption != null) {
+            optionMoved |= Math.abs(x - optionPressX) + Math.abs(y - optionPressY) >= 4;
+            if (optionMoved && System.nanoTime() - optionPressedAt >= 300_000_000L) extractNodeOption(x, y);
+            return true;
+        }
         if (dragChoicePopup(x, y, button, dx, dy)) return true;
         if (resizeOrigin != null && button == 0) { resizeNode(x, y); return true; }
         if (inspectorDragging && button == 0) {
@@ -2378,6 +2920,7 @@ public final class QuestTriggerGraphScreen extends AnimatedQuestScreen {
             int offsetX = (int) Math.round((x - grabX) / zoom);
             int offsetY = (int) Math.round((y - grabY) / zoom);
             if ((offsetX != 0 || offsetY != 0) && !dragRemembered) {
+                lastValueClick = 0;
                 remember();
                 dragRemembered = true;
             }
@@ -2406,6 +2949,13 @@ public final class QuestTriggerGraphScreen extends AnimatedQuestScreen {
         return super.mouseDragged(x, y, button, dx, dy);
     }
     @Override public boolean mouseReleased(double x, double y, int button) {
+        if (button == 0 && pressedNodeOption != null) {
+            var option = pressedNodeOption;
+            pressedNodeOption = null;
+            var node = nodes.stream().filter(value -> value.id().equals(pressedOptionNode)).findFirst().orElse(null);
+            if (!optionMoved && node != null) openNodeOption(node, option, x, y);
+            return true;
+        }
         if (releaseChoicePopup(x, y, button)) return true;
         if (button == 0 && pressedContextAction >= 0) {
             int action = pressedContextAction;
@@ -2486,17 +3036,25 @@ public final class QuestTriggerGraphScreen extends AnimatedQuestScreen {
                 if (target != null) {
                     if (target.type().equals("set_context") || target.type().equals("set_variable")) {
                         var data = new LinkedHashMap<>(target.data());
+                        String type;
                         if (variable.type().equals("context")) {
+                            type = "set_context";
                             String field = variable.get("field", "");
                             String scope = TriggerGraph.SETTABLE_PLAYER_FIELDS.contains(field) ? "player" : "world";
                             data.put("scope", scope);
                             data.put("field", field);
-                            data.put("value", List.of("raining", "thundering").contains(field) ? "false" : "0");
-                            if (scope.equals("player")) data.putIfAbsent("player", "@s");
+                            data.put("value", defaultGameValue(field));
+                            data.remove("variable"); data.remove("operator");
+                            data.remove("sourceVariable"); data.remove("sourceField");
+                            if (scope.equals("player")) data.put("player", variable.get("player", "@s"));
                             else data.putIfAbsent("dimension", "");
-                        } else data.put("variable", variable.get("variable", ""));
+                        } else {
+                            type = "set_variable";
+                            data.put("variable", variable.get("variable", ""));
+                            data.remove("scope"); data.remove("field"); data.remove("player"); data.remove("dimension");
+                        }
                         nodes.set(nodes.indexOf(target),
-                                new TriggerGraph.Node(target.id(), target.type(), target.x(), target.y(), data));
+                                new TriggerGraph.Node(target.id(), type, target.x(), target.y(), data));
                         finishVariableDrop(variable, target);
                         return true;
                     }
@@ -2515,6 +3073,7 @@ public final class QuestTriggerGraphScreen extends AnimatedQuestScreen {
                     var data = new LinkedHashMap<>(target.data());
                     if (variable.type().equals("context")) {
                         data.put(leftSlot ? slot : "expectedField" + suffix, variable.get("field", ""));
+                        data.put((leftSlot ? "fieldPlayer" : "expectedPlayer") + suffix, variable.get("player", "@s"));
                         if (!leftSlot) data.remove("expectedVar" + suffix);
                     } else {
                         data.put(slot, leftSlot ? "var:" + variable.get("variable", "")
@@ -2536,10 +3095,10 @@ public final class QuestTriggerGraphScreen extends AnimatedQuestScreen {
     private static boolean acceptsVariable(TriggerGraph.Node target, TriggerGraph.Node variable) {
         if (target.id().equals(variable.id())) return false;
         if (target.type().equals("js") && target.get("mode", "script").equals("visual")) return true;
-        if (target.type().equals("set_variable")) return variable.type().equals("variable");
-        return target.type().equals("set_context") && variable.type().equals("context")
+        return List.of("set_context", "set_variable").contains(target.type())
+                && (variable.type().equals("variable") || variable.type().equals("context")
                 && (TriggerGraph.SETTABLE_PLAYER_FIELDS.contains(variable.get("field", ""))
-                || TriggerGraph.SETTABLE_WORLD_FIELDS.contains(variable.get("field", "")));
+                || TriggerGraph.SETTABLE_WORLD_FIELDS.contains(variable.get("field", ""))));
     }
     private void finishVariableDrop(TriggerGraph.Node variable, TriggerGraph.Node target) {
         boolean linked = edges.stream().anyMatch(edge ->
@@ -2618,6 +3177,8 @@ public final class QuestTriggerGraphScreen extends AnimatedQuestScreen {
         inspectorScroll = next;
         inspectorWidgets.forEach(widget -> widget.setY(widget.getY() + offset));
         labels.replaceAll(label -> new Label(label.text(), label.x(), label.y() + offset));
+        inspectorHints.replaceAll(hint -> new InspectorHint(hint.title(), hint.detail(),
+                hint.x(), hint.y() + offset, hint.width(), hint.valid()));
     }
     @Override public void onClose() {
         boolean unchanged;
@@ -2635,6 +3196,7 @@ public final class QuestTriggerGraphScreen extends AnimatedQuestScreen {
                 () -> minecraft.setScreen(parent)));
     }
     @Override public boolean keyPressed(int key, int scan, int modifiers) {
+        if (hasChoicePopup()) return super.keyPressed(key, scan, modifiers);
         if (sourceMode && hasControlDown() && (key == GLFW.GLFW_KEY_Z || key == GLFW.GLFW_KEY_Y)) {
             boolean forward = key == GLFW.GLFW_KEY_Y || (modifiers & GLFW.GLFW_MOD_SHIFT) != 0;
             restoreSource(forward ? sourceRedo : sourceUndo, forward ? sourceUndo : sourceRedo);

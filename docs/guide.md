@@ -1,6 +1,9 @@
 # 玩家与作者使用指南
 
-[返回项目首页](../README.md) · [全部命令](commands.md) · [JavaScript](javascript.md) · [判断节点](trigger-conditions.md) · [奖励和条件参考](奖励与条件配置.md)
+[返回项目首页](../README.md) · [全部命令](commands.md) · [JavaScript](javascript.md) · [判断节点](trigger-conditions.md) · [节点字段与物品栏入口](visual-graph-and-inventory-shortcuts.md) · [奖励和条件参考](奖励与条件配置.md)
+
+常见界面的完整中文 1920×1080 截图、入口和操作见 [界面图鉴](interface-gallery.md)。
+当前章节外观、实时预览及背景节点见 [背景与历程编辑](background-and-journey-editor.md)。
 
 本指南对应已完成的 1.20.1 Forge/Fabric（Java 17）和 1.21.1 NeoForge/Fabric（Java 21）。
 26.x 尚未完成。界面、命令和文件中的任务 ID 是同一个引用体系，编辑前建议同时备份任务目录和世界进度。
@@ -15,7 +18,7 @@
 | 常规 | 默认日志/总览、物品栏入口、追踪 HUD、物品栏 X/Y 偏移 |
 | 动画 | 减弱动态、弹出层时长、独立动画参数编辑器 |
 | 通知 | 通知大小、图标大小、真实通知预览 |
-| 外观 | 作者主题编辑、成就背景选择与重置 |
+| 外观 | 作者主题编辑、传说人物背景实时编辑与重置 |
 | 任务 | 服务端任务分页、任务奖励来源显示 |
 | 工具 | 按键绑定、配置文件夹、展开折叠任务组 |
 
@@ -32,6 +35,9 @@
 游戏内编辑器也内置对应参考和示例，保存只做语法检查，不会试运行奖励。
 
 ![游戏内示例面板，中文 1920×1080](images/js-editor-examples-zh-1920.png)
+
+事件图的字段选取、长按拖出变量、玩家目标/选择器和节点双击快速编辑详见
+[节点与背包入口参考](visual-graph-and-inventory-shortcuts.md)。
 
 ## 1. 玩家操作
 

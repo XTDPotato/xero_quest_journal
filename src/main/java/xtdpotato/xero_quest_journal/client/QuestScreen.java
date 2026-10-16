@@ -147,6 +147,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
     private CompletableFuture<QuestAuthoring.Result> pending;
     private int menuX;
     private int menuY;
+    private final List<String> menuRowGroups = new ArrayList<>();
     private int menuScroll;
     private final SmoothScroll menuMotion = new SmoothScroll();
     private boolean menuDragging, menuMoved;
@@ -213,6 +214,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
     private String initialPropertyId = "";
     private boolean hotEventPropertyOnly;
     private final UiMotion overviewFeatureHover = new UiMotion(false, System.nanoTime());
+    private UiMotion detailReveal = new UiMotion(false, System.nanoTime());
     private QuestTemplate previewTemplate;
     private QuestDefinition previewQuest;
     private Viewport previewViewport;
@@ -223,6 +225,18 @@ public final class QuestScreen extends AnimatedQuestScreen {
 
     public QuestScreen(Screen parent) {
         this(parent, false);
+    }
+
+    public static QuestScreen resume(Screen parent) {
+        String id = ClientPreferences.get().lastSelectedQuestId;
+        QuestScreen screen = new QuestScreen(parent, false, id);
+        var quest = ClientQuestDefinitions.find(id);
+        String category = ClientPreferences.get().lastSelectedQuestCategory;
+        if (quest != null && ClientQuestDefinitions.types().stream().anyMatch(type -> type.id().equals(category))
+                || quest != null && category.equals("completed")) {
+            screen.category = category;
+        }
+        return screen;
     }
 
     @Override
@@ -731,6 +745,9 @@ public final class QuestScreen extends AnimatedQuestScreen {
         List<xtdpotato.xero_quest_journal.core.network.QuestCatalog.Chapter> chapters =
                 ClientQuestDefinitions.chapters();
         advanceFromCompletedTask();
+        var previouslySelectedView = selectedId.isBlank() ? null : ClientQuestProgress.view(selectedId);
+        if (!editMode && previouslySelectedView != null && previouslySelectedView.status().equals("claimed")
+                && !category.equals("completed")) category = "completed";
         var allTasks = ClientQuestDefinitions.all();
         journalSearch.queryChanged(searchQuery);
         if (!searchQuery.isBlank()) journalSearch.synchronize(allTasks, groups, chapters);
@@ -744,12 +761,20 @@ public final class QuestScreen extends AnimatedQuestScreen {
                         || !ClientQuestProgress.view(quest.id()).hidden())
                 .filter(quest -> editMode || !category.equals("active")
                         || ClientQuestProgress.view(quest.id()) == null
-                        || !ClientQuestProgress.view(quest.id()).completed())
+                        || !ClientQuestProgress.view(quest.id()).status().equals("claimed"))
                 .filter(quest -> overviewMode || editMode && category.equals("active")
                         || matchesCategory(quest, category))
                 .filter(quest -> !chapterId.isEmpty() || groupId.isEmpty()
                         || ClientQuestDefinitions.groupOf(quest.id()).equals(groupId))
                 .filter(quest -> chapterId.isEmpty() || chapterTasks.contains(quest.id()))
+                .filter(quest -> {
+                    var filters = ClientPreferences.get().questSearchFilters;
+                    Set<String> groupsForFilter = QuestSearchFilters.selected(filters, "group");
+                    return (groupsForFilter.isEmpty()
+                            || groupsForFilter.contains(ClientQuestDefinitions.groupOf(quest.id())))
+                            && QuestSearchFilters.matchesContent(quest, filters)
+                            && QuestSearchFilters.matchesStatus(quest, filters);
+                })
                 .toList();
         if (searchQuery.isBlank()) {
             quests = baseQuests;
@@ -776,7 +801,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
             if (selectedIndex >= 0) {
                 listPage = listPages > 1 ? selectedIndex / QUESTS_PER_PAGE : 0;
                 if (!requestedInitialTask.isBlank()) expandGroup(ClientQuestDefinitions.groupOf(selectedId));
-                revealTaskRow = requestedInitialTask.isBlank() ? "" : selectedId;
+                if (!requestedInitialTask.isBlank()) revealTaskRow = selectedId;
                 revealSelectedPage = false;
             }
         }
@@ -809,10 +834,13 @@ public final class QuestScreen extends AnimatedQuestScreen {
                 : JournalListModel.build(pageQuests, visibleGroups, ClientQuestDefinitions::groupOf,
                         visualCollapsed, editMode && chapterId.isEmpty() && listPage == 0, this::questRowHeight);
         updateGroupSlideLayout();
+        boolean waitingForRequestedTask = !initialTaskResolved && !requestedInitialTask.isBlank();
         selected = pageQuests.stream().filter(quest -> quest.id().equals(selectedId)).findFirst()
-                .orElseGet(() -> journalList.rows().stream().map(JournalListModel.Row::quest)
-                        .filter(Objects::nonNull).findFirst().orElse(null));
-        selectedId = selected == null ? "" : selected.id();
+                .orElseGet(() -> waitingForRequestedTask ? null : journalList.rows().stream()
+                        .map(JournalListModel.Row::quest).filter(Objects::nonNull).findFirst().orElse(null));
+        selectedId = selected == null
+                ? waitingForRequestedTask ? requestedInitialTask : ""
+                : selected.id();
         refreshClaimableRewardState();
         if (!movingTask.isBlank() && quests.stream().noneMatch(q -> q.id().equals(movingTask))) movingTask = "";
     }
@@ -830,6 +858,9 @@ public final class QuestScreen extends AnimatedQuestScreen {
      */
     private void advanceFromCompletedTask() {
         if (editMode || overviewMode || selectedId.isBlank()) return;
+        // A completed task remains the user's active selection until its reward is claimed.
+        var selectedView = ClientQuestProgress.view(selectedId);
+        if (selectedView != null && selectedView.status().equals("complete")) return;
         boolean justCompleted = ClientQuestProgress.completionNotices().stream()
                 .anyMatch(notice -> notice.questId().equals(selectedId));
         if (!justCompleted) return;
@@ -935,7 +966,8 @@ public final class QuestScreen extends AnimatedQuestScreen {
             } else {
                 var quest = row.quest();
                 var view = ClientQuestProgress.view(quest.id());
-                boolean completed = !editMode && view != null && view.completed();
+                boolean completed = !editMode && view != null && view.status().equals("claimed");
+                boolean claimable = !editMode && view != null && view.status().equals("complete");
                 boolean tracked = ClientQuestProgress.isTracked(quest.id());
                 String status = editMode ? "active" : view == null ? "" : tracked ? "tracked" : view.status();
                 button = new JournalListButton(listLeft() + row.indent(), listRowY(row),
@@ -946,11 +978,13 @@ public final class QuestScreen extends AnimatedQuestScreen {
                         editMode ? () -> openTaskInGroup(ClientQuestDefinitions.groupOf(quest.id()), quest.id()) : null)
                         .accent(taskAccent(quest))
                         .newTask(!editMode && view != null && view.newTask())
+                        .claimable(claimable)
                         .trackingType(quest.type())
                         .locked(editMode && view != null && !view.unlocked())
                         .subtitle(editMode ? null : () -> rowSubtitle(quest))
                         .extraCss(quest.buttonCss());
                 Component tooltip = QuestText.tooltip(quest);
+                if (claimable) tooltip = tooltip.copy().append("\n").append(text("claim"));
                 if (view != null && view.newTask())
                     tooltip = tooltip.copy().append("\n").append(text("task.new"));
                 button.setTooltip(Tooltip.create(tooltip));
@@ -1008,7 +1042,9 @@ public final class QuestScreen extends AnimatedQuestScreen {
     private void initTaskSearch() {
         int y = searchY();
         int width = Math.max(80, listWidth - (overviewMode && editMode ? 26 : 0));
-        taskSearch = new EditBox(font, listLeft() + 24, y + 6, width - 44, 10,
+        int settingsX = listLeft() + width - 22;
+        int fieldWidth = Math.max(24, settingsX - 4 - (listLeft() + 24));
+        taskSearch = new EditBox(font, listLeft() + 24, y + 6, fieldWidth, 10,
                 text("quest_search"));
         taskSearch.setBordered(false);
         taskSearch.setValue(searchQuery);
@@ -1022,10 +1058,21 @@ public final class QuestScreen extends AnimatedQuestScreen {
             searchDirty = true;
         });
         addRenderableWidget(taskSearch);
+        var settings = new JournalNavButton(settingsX, y, 22, 20, text("search_settings"),
+                ignored -> minecraft.setScreen(new QuestSearchSettingsScreen(this)), styles,
+                "search-settings", JournalNavButton.Kind.ICON, "settings");
+        settings.setTooltip(Tooltip.create(text("search_settings")));
+        addRenderableWidget(settings);
         if (overviewMode && editMode) {
             action("add-task", "+", "add_task", listRight() - 22, y, 22,
                     this::globalAddMenu);
         }
+    }
+
+    void searchConfigurationChanged() {
+        listPage = 0;
+        resetListScroll();
+        init();
     }
 
     private int searchY() {
@@ -1340,6 +1387,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
         revealTaskRow = "";
         revealSelectedPage = false;
         category = value;
+        revealDetails();
         revealCategory = true;
         categoryTransitionTarget = value;
         categoryTransitionStart = System.nanoTime();
@@ -1356,11 +1404,11 @@ public final class QuestScreen extends AnimatedQuestScreen {
 
     public static boolean matchesCategory(QuestDefinition quest, String category) {
         var view = ClientQuestProgress.view(quest.id());
-        if (category.equals("completed")) return view != null && view.completed();
+        if (category.equals("completed")) return view != null && view.status().equals("claimed");
         if (!category.equals("active")) return quest.type().equals(category)
                 && (ClientEditMode.enabled()
-                || view == null || !view.completed());
-        return view != null && view.unlocked() && !view.completed();
+                || view == null || !view.status().equals("claimed"));
+        return view != null && view.unlocked() && !view.status().equals("claimed");
     }
 
     private void resolveInitialTask() {
@@ -1377,11 +1425,24 @@ public final class QuestScreen extends AnimatedQuestScreen {
         }
         if (target.isBlank()) return;
         var quest = ClientQuestDefinitions.find(target);
-        if (quest == null) return;
+        if (quest == null) {
+            if (!requestedInitialTask.isBlank()) {
+                ClientPreferences.get().lastSelectedQuestId = "";
+                ClientPreferences.get().save();
+            }
+            return;
+        }
         selectedId = target;
-        if (!editMode && !matchesCategory(quest, category)) category = quest.type();
+        if (!editMode && viewClaimed(target)) category = "completed";
+        else if (!editMode && !matchesCategory(quest, category)) category = quest.type();
+        rememberSelectedQuest(target);
         revealSelectedPage = !requestedInitialTask.isBlank();
         if (!requestedInitialTask.isBlank()) expandGroup(ClientQuestDefinitions.groupOf(target));
+    }
+
+    private static boolean viewClaimed(String id) {
+        var view = ClientQuestProgress.view(id);
+        return view != null && view.status().equals("claimed");
     }
 
     private void revealTaskRow() {
@@ -1400,6 +1461,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
         if (id == null || id.isEmpty()) return;
         QuestScreen journal = overviewJournal();
         journal.selectedId = id;
+        journal.rememberSelectedQuest(id);
         journal.initialTaskResolved = true;
         journal.editMode = false;
         var destinationQuest = ClientQuestDefinitions.find(id);
@@ -1535,24 +1597,30 @@ public final class QuestScreen extends AnimatedQuestScreen {
                 styles, "overview-feature-empty", "toolbar-button") {
             @Override
             protected void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float delta) {
-                // Muted panorama with a parchment frame instead of a flat placeholder block.
-                graphics.fill(getX() - 2, getY() - 2, getRight() + 2, getBottom() + 2, 0xFFE9DDD0);
-                graphics.enableScissor(getX(), getY(), getRight(), getBottom());
-                ClientMediaManager.renderImageCover(graphics, "minecraft:textures/gui/title/background/panorama_0.png",
-                        getX(), getY(), getWidth(), getHeight(), 1);
-                graphics.disableScissor();
-                graphics.fillGradient(getX(), getY(), getRight(), getBottom(), 0xA0182030, 0xD0101622);
-                int centerX = getX() + getWidth() / 2, centerY = getY() + getHeight() / 2 - 10;
-                JournalDetailRenderer.diamondRing(graphics, centerX, centerY, 14, 0xC0F2D29A);
-                JournalDetailRenderer.diamondRing(graphics, centerX, centerY, 10, 0x80F2D29A);
-                MailDecor.diamond(graphics, centerX, centerY, 4, 0xE0F2D29A);
-                var lines = font.split(text("overview_feature_empty"), Math.max(1, getWidth() - 12));
-                int lineY = centerY + 22;
-                for (var line : lines) {
-                    if (lineY + font.lineHeight > getBottom()) break;
-                    graphics.drawCenteredString(font, line, centerX, lineY, 0xFFF4E8D2);
-                    lineY += font.lineHeight + 2;
+                int x = getX(), y = getY(), w = getWidth(), h = getHeight();
+                int frame = Math.max(2, Math.min(8, Math.min(w, h) / 28));
+                graphics.fill(x - 5, y + 5, getRight() + 7, getBottom() + 10, 0xFFBFA982);
+                graphics.fill(x - 8, y - 5, getRight() + 9, getBottom() + 3, 0xFFC9B28A);
+                graphics.fill(x - 2, y - 2, getRight() + 2, getBottom() + 2, 0xFFF8F5EE);
+                graphics.fill(x + frame, y + frame, getRight() - frame, getBottom() - frame, 0xFFE9D9B9);
+                int captionHeight = Math.max(30, Math.min(56, h / 8));
+                int imageBottom = getBottom() - frame - captionHeight;
+                graphics.fill(x + frame, y + frame, getRight() - frame, imageBottom, 0xFFE8D7B4);
+                graphics.fillGradient(x + frame, y + frame, getRight() - frame, imageBottom,
+                        0xFFF1E5CA, 0xFFE4D1AA);
+                for (int row = y + frame + 4, index = 0; row < imageBottom; row += 18, index++) {
+                    for (int column = x + frame + 5 + (index % 2) * 9;
+                         column < getRight() - frame; column += 18) {
+                        MailDecor.diamond(graphics, column, row, 3, 0x12A98A5D);
+                    }
                 }
+                int centerX = x + w / 2, centerY = y + frame + (imageBottom - y - frame) / 2;
+                JournalNavButton.drawIcon(graphics, "guide", centerX - Math.min(w, h) / 3,
+                        centerY - Math.min(w, h) / 3, Math.min(w, h) * 2 / 3, 0x2C8C714C);
+                graphics.fill(x + frame, imageBottom, getRight() - frame, getBottom() - frame, 0xFFFCFBF8);
+                int captionY = imageBottom + Math.max(4, (getBottom() - frame - imageBottom - font.lineHeight) / 2);
+                graphics.drawString(font, text("overview_feature_empty"), x + frame + 10, captionY,
+                        0xFF596274, true);
             }
             };
             empty.active = false;
@@ -1711,9 +1779,24 @@ public final class QuestScreen extends AnimatedQuestScreen {
             selectedLayoutIds.clear();
             selectedLayoutId = null;
             detailScroll = detailTargetScroll = 0;
+            revealDetails();
         }
         selectedId = quest.id();
+        rememberSelectedQuest(quest.id());
         init();
+    }
+
+    private void rememberSelectedQuest(String id) {
+        if (id == null || id.isBlank() || editMode || overviewMode
+                || previewTemplate != null || previewQuest != null) return;
+        var preferences = ClientPreferences.get();
+        String category = viewClaimed(id) ? "completed" : this.category;
+        if (!id.equals(preferences.lastSelectedQuestId)
+                || !category.equals(preferences.lastSelectedQuestCategory)) {
+            preferences.lastSelectedQuestId = id;
+            preferences.lastSelectedQuestCategory = category;
+            preferences.save();
+        }
     }
 
     private void markSelectedTaskRead() {
@@ -2812,8 +2895,12 @@ public final class QuestScreen extends AnimatedQuestScreen {
                         Form draft = form;
                         minecraft.setScreen(new JourneyAppearanceScreen(this, draft.journeyAppearance,
                                 value -> draft.journeyAppearance = value)
-                                .preview("chapter", draft.icon, draft.name)
-                                .preview("tab", "", draft.name));
+                                .chapterContext(new QuestCatalog.Chapter(draft.id, draft.name, draft.description,
+                                                draft.icon, draft.targetGroup, List.of(), draft.journeyBackgrounds,
+                                                draft.journeyAppearance),
+                                        ClientQuestDefinitions.all().stream().filter(quest ->
+                                                draft.targetGroup.isBlank() || draft.targetGroup.equals(
+                                                        ClientQuestDefinitions.groupOf(quest.id()))).toList()));
                     }, styles, "journey-appearance", "toolbar-button"));
         }
         if (form.kind.equals("task")) {
@@ -3590,37 +3677,38 @@ public final class QuestScreen extends AnimatedQuestScreen {
     }
 
     private void initIconPicker() {
-        int w = Math.min(440, width - 24);
-        int h = Math.min(310, height - 16);
-        int x = (width - w) / 2;
-        int y = (height - h) / 2;
+        int w = width;
+        int h = height;
+        int x = 0, y = 0;
         iconPicker.sourceButtons.clear();
         List<IconSource> sources = iconPicker.itemOnly
                 ? iconPicker.allowTags ? List.of(IconSource.INVENTORY, IconSource.ITEMS, IconSource.TAGS)
                     : List.of(IconSource.INVENTORY, IconSource.ITEMS)
                 : List.of(IconSource.INVENTORY, IconSource.ITEMS, IconSource.TEXTURES, IconSource.LOCAL);
-        int tabWidth = Math.max(50, (w - 24) / sources.size());
-        int tabX = x + 12;
+        int tabWidth = Math.max(50, (w - 32) / sources.size());
+        int tabX = x + 16;
         for (IconSource source : sources) {
-            StyledButton tab = new StyledButton(tabX, y + 28, tabWidth - 2, 20,
+            StyledButton tab = new StyledButton(tabX, y + 42, tabWidth - 4, 26,
                     text("icon_picker." + source.key), ignored -> {
                         iconPicker.source = source;
                         iconPicker.page = 0;
                         init();
                     }, styles, "icon-source-" + source.key, "toolbar-button");
+            tab.setSelectionHighlighted(iconPicker.source == source);
             tab.active = iconPicker.source != source;
             addRenderableWidget(tab);
             iconPicker.sourceButtons.add(tab);
             tabX += tabWidth;
         }
-        EditBox search = field("icon_picker.search", iconPicker.search, x + 12, y + 54,
-                w - 78, 128, value -> iconPicker.search = value);
+        int searchY = y + 76;
+        EditBox search = field("icon_picker.search", iconPicker.search, x + 16, searchY,
+                Math.max(80, w - 198), 128, value -> iconPicker.search = value);
         search.setResponder(value -> {
             iconPicker.search = value;
             iconPicker.page = 0;
             rebuildIconPickerResults(x, y, w, h);
         });
-        var refresh = new JournalNavButton(x + w - 60, y + 54, 48, 20, Component.empty(),
+        var refresh = new JournalNavButton(x + w - 174, searchY, 24, 22, text("icon_picker.refresh"),
                 ignored -> {
                     QuestIcons.refreshChoices();
                     iconPicker.cachedChoices.clear();
@@ -3629,32 +3717,53 @@ public final class QuestScreen extends AnimatedQuestScreen {
                 }, styles, "icon-filter", JournalNavButton.Kind.ICON, "refresh");
         refresh.setTooltip(Tooltip.create(text("icon_picker.refresh")));
         addRenderableWidget(refresh);
-        int columns = Math.max(4, (w - 24) / 28);
-        int rows = Math.max(1, Math.min(5, (h - 158) / 28));
+        var sort = new StyledChoiceButton<>(x + w - 144, searchY, 100, 22,
+                text("icon_picker.sort"), List.of("id", "name", "created", "modified"), iconPicker.sort,
+                value -> text("icon_picker.sort." + value), value -> {
+                    iconPicker.sort = value;
+                    iconPicker.page = 0;
+                    rebuildIconPickerResults(x, y, w, h);
+                }, styles, "icon-sort");
+        sort.setTooltip(Tooltip.create(text("icon_picker.sort")));
+        addRenderableWidget(sort);
+        var order = new JournalNavButton(x + w - 40, searchY, 24, 22, text("icon_picker.order"),
+                ignored -> {
+                    iconPicker.descending = !iconPicker.descending;
+                    iconPicker.page = 0;
+                    rebuildIconPickerResults(x, y, w, h);
+                    init();
+                }, styles, "icon-sort-order", JournalNavButton.Kind.ICON,
+                iconPicker.descending ? "expand" : "back");
+        order.setTooltip(Tooltip.create(text(iconPicker.descending
+                ? "icon_picker.descending" : "icon_picker.ascending")));
+        addRenderableWidget(order);
+        int columns = Math.max(3, (w - 32) / 40);
+        int rows = Math.max(1, (h - 244) / 40);
         int pageSize = columns * rows;
         iconPicker.pageSize = pageSize;
         for (int slot = 0; slot < pageSize; slot++) {
             int index = slot;
-            int bx = x + 12 + slot % columns * 28;
-            int by = y + 80 + slot / columns * 28;
-            StyledButton icon = new StyledButton(bx, by, 24, 24, Component.empty(), ignored -> {
+            int bx = x + 16 + slot % columns * 40;
+            int by = y + 112 + slot / columns * 40;
+            StyledButton icon = new StyledButton(bx, by, 36, 36, Component.empty(), ignored -> {
                 int choiceIndex = iconPicker.page * iconPicker.pageSize + index;
                 if (choiceIndex < iconPicker.filteredChoices.size()) {
-                    applyPickedResource(iconPicker.filteredChoices.get(choiceIndex).value());
+                    iconPicker.manual = iconPicker.filteredChoices.get(choiceIndex).value();
+                    updateIconPickerSelection();
                 }
             }, styles, "icon-entry", "toolbar-button");
             icon.visible = false;
             addRenderableWidget(icon);
             iconChoiceButtons.add(icon);
         }
-        int controlsY = y + h - 76;
-        iconPrevious = new StyledButton(x + 12, controlsY, 28, 20, Component.literal("\u2039"),
+        int controlsY = y + h - 126;
+        iconPrevious = new StyledButton(x + 16, controlsY, 32, 24, Component.literal("\u2039"),
                 ignored -> {
                     iconPicker.page--;
                     rebuildIconPickerResults(x, y, w, h);
                 }, styles, "icon-previous", "toolbar-button");
         addRenderableWidget(iconPrevious);
-        iconNext = new StyledButton(x + 44, controlsY, 28, 20, Component.literal("\u203a"),
+        iconNext = new StyledButton(x + 54, controlsY, 32, 24, Component.literal("\u203a"),
                 ignored -> {
                     iconPicker.page++;
                     rebuildIconPickerResults(x, y, w, h);
@@ -3668,8 +3777,9 @@ public final class QuestScreen extends AnimatedQuestScreen {
 
     private void rebuildIconPickerResults(int x, int y, int w, int h) {
         String normalizedSearch = iconPicker.search.strip().toLowerCase(Locale.ROOT);
-        iconPicker.filteredChoices = normalizedSearch.isEmpty() ? iconChoices(iconPicker.source)
-                : iconChoices(iconPicker.source).stream()
+        List<QuestIcons.IconChoice> sorted = sortIconChoices(iconChoices(iconPicker.source));
+        iconPicker.filteredChoices = normalizedSearch.isEmpty() ? sorted
+                : sorted.stream()
                 .filter(choice -> choice.matchesNormalized(normalizedSearch)).toList();
         int pages = Math.max(1, (iconPicker.filteredChoices.size() + iconPicker.pageSize - 1)
                 / iconPicker.pageSize);
@@ -3683,25 +3793,123 @@ public final class QuestScreen extends AnimatedQuestScreen {
             if (visible) {
                 QuestIcons.IconChoice choice = iconPicker.filteredChoices.get(index);
                 icon.leadingIcon(choice.value());
-                icon.setTooltip(Tooltip.create(QuestIcons.tooltip(choice.value())));
+                icon.setSelectionHighlighted(choice.value().equals(iconPicker.manual));
+                icon.setTooltip(Tooltip.create(QuestIcons.metadataTooltip(choice.value())));
             }
         }
         iconPrevious.active = iconPicker.page > 0;
         iconNext.active = iconPicker.page + 1 < pages;
     }
 
-    private void initIconPickerFooter(int x, int y, int w, int h) {
-        int controlsY = y + h - 76;
-        if (iconPicker.source == IconSource.LOCAL) {
-            addRenderableWidget(new StyledButton(x + w - 126, controlsY, 114, 20,
-                    text("icon_picker.open_folder"), ignored -> {
-                        Util.getPlatform().openFile(QuestIcons.localRoot().toFile());
-                    }, styles, "icon-folder", "toolbar-button"));
+    private List<QuestIcons.IconChoice> sortIconChoices(List<QuestIcons.IconChoice> choices) {
+        boolean reverse = iconPicker.descending;
+        Comparator<QuestIcons.IconChoice> comparator = switch (iconPicker.sort) {
+            case "name" -> Comparator.comparing(QuestIcons.IconChoice::displayName,
+                    (first, second) -> naturalCompareDirection(first, second, reverse));
+            case "created", "modified" -> {
+                boolean creation = iconPicker.sort.equals("created");
+                Comparator<QuestIcons.IconChoice> time = (first, second) -> {
+                    long a = QuestIcons.fileTimestamp(first.value(), creation);
+                    long b = QuestIcons.fileTimestamp(second.value(), creation);
+                    if (a < 0 || b < 0) {
+                        if (a < 0 && b >= 0) return 1;
+                        if (b < 0 && a >= 0) return -1;
+                    }
+                    return Long.compare(a, b);
+                };
+                yield time.thenComparing(QuestIcons.IconChoice::value, QuestScreen::naturalCompare);
+            }
+            default -> Comparator.comparing(QuestIcons.IconChoice::value,
+                    (first, second) -> naturalCompareDirection(first, second, reverse));
+        };
+        if (iconPicker.descending && !iconPicker.sort.equals("id") && !iconPicker.sort.equals("name")) {
+            comparator = (first, second) -> {
+                long a = QuestIcons.fileTimestamp(first.value(), iconPicker.sort.equals("created"));
+                long b = QuestIcons.fileTimestamp(second.value(), iconPicker.sort.equals("created"));
+                if (a < 0 || b < 0) {
+                    if (a < 0 && b >= 0) return 1;
+                    if (b < 0 && a >= 0) return -1;
+                }
+                int time = Long.compare(b, a);
+                return time == 0 ? naturalCompare(first.value(), second.value()) : time;
+            };
         }
+        return choices.stream().sorted(comparator).toList();
+    }
 
-        field("icon_picker.manual", iconPicker.manual, x + 12, y + h - 50,
-                w - 104, 8192, value -> iconPicker.manual = value);
-        addRenderableWidget(new StyledButton(x + w - 86, y + h - 50, 74, 20,
+    private static int naturalCompareDirection(String left, String right, boolean descending) {
+        int leftClass = leadingSortClass(left), rightClass = leadingSortClass(right);
+        if (leftClass != rightClass) return Integer.compare(leftClass, rightClass);
+        int compared = naturalCompare(left, right);
+        return descending ? -compared : compared;
+    }
+
+    private static int leadingSortClass(String value) {
+        for (int index = 0; index < value.length(); index++) {
+            char character = value.charAt(index);
+            if (Character.isDigit(character)) return 0;
+            if (Character.isLetter(character)) return 1;
+        }
+        return 2;
+    }
+
+    private static int naturalCompare(String left, String right) {
+        int a = 0, b = 0;
+        while (a < left.length() && b < right.length()) {
+            char ca = Character.toLowerCase(left.charAt(a));
+            char cb = Character.toLowerCase(right.charAt(b));
+            if (Character.isDigit(ca) && Character.isDigit(cb)) {
+                int endA = a, endB = b;
+                while (endA < left.length() && Character.isDigit(left.charAt(endA))) endA++;
+                while (endB < right.length() && Character.isDigit(right.charAt(endB))) endB++;
+                String numberA = left.substring(a, endA), numberB = right.substring(b, endB);
+                int nonZeroA = 0, nonZeroB = 0;
+                while (nonZeroA < numberA.length() - 1 && numberA.charAt(nonZeroA) == '0') nonZeroA++;
+                while (nonZeroB < numberB.length() - 1 && numberB.charAt(nonZeroB) == '0') nonZeroB++;
+                String significantA = numberA.substring(nonZeroA), significantB = numberB.substring(nonZeroB);
+                int numeric = Integer.compare(significantA.length(), significantB.length());
+                if (numeric == 0) numeric = significantA.compareTo(significantB);
+                if (numeric != 0) return numeric;
+                a = endA;
+                b = endB;
+                continue;
+            }
+            int classA = Character.isDigit(ca) ? 0 : Character.isLetter(ca) ? 1 : 2;
+            int classB = Character.isDigit(cb) ? 0 : Character.isLetter(cb) ? 1 : 2;
+            if (classA != classB) return Integer.compare(classA, classB);
+            if (ca != cb) return Character.compare(ca, cb);
+            a++;
+            b++;
+        }
+        return Integer.compare(left.length() - a, right.length() - b);
+    }
+
+    private void updateIconPickerSelection() {
+        var manual = formFields.get("icon_picker.manual");
+        if (manual instanceof EditBox editBox && !editBox.getValue().equals(iconPicker.manual))
+            editBox.setValue(iconPicker.manual);
+        for (int slot = 0; slot < iconChoiceButtons.size(); slot++) {
+            StyledButton button = iconChoiceButtons.get(slot);
+            int choiceIndex = iconPicker.page * iconPicker.pageSize + slot;
+            button.setSelectionHighlighted(button.visible && choiceIndex < iconPicker.filteredChoices.size()
+                    && iconPicker.filteredChoices.get(choiceIndex).value().equals(iconPicker.manual));
+        }
+        children().stream().filter(StyledButton.class::isInstance).map(StyledButton.class::cast)
+                .filter(button -> button.styleId().equals("icon-preview")).findFirst()
+                .ifPresent(button -> button.active = !iconPicker.manual.isBlank());
+    }
+
+    private void initIconPickerFooter(int x, int y, int w, int h) {
+        int footerY = y + h - 88;
+        int actionX = x + w - 308;
+        field("icon_picker.manual", iconPicker.manual, x + 16, footerY,
+                Math.max(80, actionX - x - 28), 8192, value -> {
+                    iconPicker.manual = value;
+                    children().stream().filter(StyledButton.class::isInstance).map(StyledButton.class::cast)
+                            .filter(button -> button.styleId().equals("icon-preview")).findFirst()
+                            .ifPresent(button -> button.active = !value.isBlank());
+                });
+        addRenderableWidget(new StyledButton(actionX, footerY, 72, 22,
                 text("icon_picker.apply"), ignored -> {
                     String value = iconPicker.manual.strip();
                     var id = ResourceLocation.tryParse(value);
@@ -3716,12 +3924,26 @@ public final class QuestScreen extends AnimatedQuestScreen {
                         error = "create.error.icon";
                     }
                 }, styles, "icon-apply", "toolbar-button"));
-        addRenderableWidget(new StyledButton(x + 12, y + h - 24, (w - 30) / 2, 20,
-                text("icon_picker.none"), ignored -> {
-                    applyPickedResource("");
+        var preview = new JournalNavButton(actionX + 78, footerY, 24, 22, text("icon_picker.preview"),
+                ignored -> {
+                    if (!iconPicker.manual.isBlank())
+                        minecraft.setScreen(new QuestIconPreviewScreen(this, iconPicker.manual));
+                }, styles, "icon-preview", JournalNavButton.Kind.ICON, "overview");
+        preview.active = !iconPicker.manual.isBlank();
+        preview.setTooltip(Tooltip.create(text("icon_picker.preview")));
+        addRenderableWidget(preview);
+        if (iconPicker.source == IconSource.LOCAL)
+            addRenderableWidget(new StyledButton(actionX + 108, footerY, 112, 22,
+                    text("icon_picker.open_folder"), ignored ->
+                    Util.getPlatform().openFile(QuestIcons.localRoot().toFile()),
+                    styles, "icon-folder", "toolbar-button"));
+        addRenderableWidget(new StyledButton(x + 16, y + h - 42, (w - 42) / 2, 26,
+                text("icon_picker.blank"), ignored -> {
+                    iconPicker.manual = "";
+                    updateIconPickerSelection();
                 }, styles, "icon-none", "toolbar-button"));
-        addRenderableWidget(new StyledButton(x + 18 + (w - 30) / 2, y + h - 24,
-                (w - 30) / 2, 20, Component.translatable("gui.cancel"), ignored -> {
+        addRenderableWidget(new StyledButton(x + 26 + (w - 42) / 2, y + h - 42,
+                (w - 42) / 2, 26, Component.translatable("gui.cancel"), ignored -> {
                     if (externalPicker) {
                         onClose();
                         return;
@@ -4831,18 +5053,23 @@ public final class QuestScreen extends AnimatedQuestScreen {
     public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
         super.renderBackground(g, mouseX, mouseY, partialTick);
         if (iconPicker != null) {
-            backdrop(g, 0xF01C2026);
-            int w = Math.min(440, width - 24);
-            int h = Math.min(310, height - 16);
-            int x = (width - w) / 2;
-            int y = (height - h) / 2;
-            g.fill(x - 2, y - 2, x + w + 2, y + h + 2, ButtonStyle.FRAME_COLOR);
-            g.fill(x, y, x + w, y + h, 0xFF292E36);
+            backdrop(g, 0xF0181C22);
+            g.fill(0, 0, width, 38, 0xFF252C34);
             g.drawString(font, text(iconPicker.itemOnly ? "item_picker.title" : "icon_picker.title"),
-                    x + 12, y + 10, 0xFFFFFFFF);
-            if (error != null) {
-                g.drawString(font, text(error), x + 130, y + 10, 0xFFFF7777);
+                    16, 14, 0xFFF1D49A, false);
+            g.drawString(font, Component.translatable(
+                            "screen.xero_quest_journal.icon_picker.count", iconPicker.filteredChoices.size()),
+                    Math.max(16, width - 170), 15, 0xFFB6C0CD, false);
+            g.fill(0, height - 66, width, height, 0xFF252C34);
+            if (!iconPicker.manual.isBlank()) {
+                QuestIcons.render(g, iconPicker.manual, 16, height - 61, 16);
+                g.drawString(font, font.plainSubstrByWidth(QuestIcons.displayName(iconPicker.manual),
+                                Math.max(1, (error == null ? width : width / 2) - 64)),
+                        40, height - 57, 0xFFE2E7EC, false);
+            } else {
+                g.drawString(font, text("icon_picker.blank"), 16, height - 57, 0xFF9DAAB8, false);
             }
+            if (error != null) g.drawString(font, text(error), width / 2, height - 57, 0xFFFF7777);
             return;
         }
         if (form != null) {
@@ -4893,9 +5120,9 @@ public final class QuestScreen extends AnimatedQuestScreen {
             int searchWidth = Math.max(80, listWidth - (overviewMode && editMode ? 26 : 0));
             g.fill(listLeft(), searchY(), listLeft() + searchWidth, searchY() + 20, 0x66202633);
             g.renderOutline(listLeft(), searchY(), searchWidth, 20, taskSearch.isFocused() ? 0xFFF3D38B : 0xFFA3A6AA);
-            JournalNavButton.drawIcon(g, "mail_search", listLeft() + 5, searchY() + 3, 14, 0xFFB6BAC3);
-            if (journalSearch.pending())
-                JournalNavButton.drawIcon(g, "refresh", listLeft() + searchWidth - 18, searchY() + 4, 12, 0xFFF2CF83);
+            JournalNavButton.drawIcon(g, journalSearch.pending() ? "refresh" : "mail_search",
+                    listLeft() + 5, searchY() + 3, 14,
+                    journalSearch.pending() ? 0xFFF2CF83 : 0xFFB6BAC3);
         }
         if (listPages > 1 && listAvailable()) {
             String page = (listPage + 1) + "/" + listPages;
@@ -4923,6 +5150,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
             JournalDetailRenderer.renderFooter(g, font, selected, displayedRewards(), detailsLeft,
                     detailContentBottom(), width - 14, mouseX, mouseY, controls.containsKey("system:daily-bonus"));
         }
+        renderDetailReveal(g);
         if (editMode) {
             g.drawString(font, font.plainSubstrByWidth((actionMessage == null
                             ? text(systemLayout ? "system_layout" : "edit_mode") : actionText(actionMessage)).getString(),
@@ -4986,7 +5214,22 @@ public final class QuestScreen extends AnimatedQuestScreen {
     private void renderActionToast(GuiGraphics g) {
         var layout = StatusToastRenderer.layout(font, actionText(actionMessage), width - 24, height - 84);
         int y = Math.max(4, height - (stackedFocusControl() ? 66 : 38) - layout.height());
-        StatusToastRenderer.draw(g, font, layout, width / 2, y);
+        StatusToastRenderer.drawAnimated(g, font, layout, width / 2, y,
+                StatusToastRenderer.lifetimeProgress(actionMessageStartedAt, 3000));
+    }
+
+    private void renderDetailReveal(GuiGraphics graphics) {
+        if (detailReveal.settled()) return;
+        detailReveal.advance(System.nanoTime(), popupAnimationMillis());
+        int alpha = Math.round((1 - detailReveal.eased()) * 210);
+        if (alpha > 0) graphics.fill(detailsLeft, detailsTop(), width - 16, canvasBottom(),
+                alpha << 24 | 0x202A36);
+    }
+
+    private void revealDetails() {
+        long now = System.nanoTime();
+        detailReveal = new UiMotion(false, now);
+        detailReveal.target(true, now, popupAnimationMillis());
     }
 
     private void renderOverviewPresentation(GuiGraphics g) {
@@ -5442,13 +5685,16 @@ public final class QuestScreen extends AnimatedQuestScreen {
             case "quest_description" -> QuestText.description(selected).getString();
             case "quest_progress" -> {
                 var view = ClientQuestProgress.view(selected.id());
-                yield view != null && view.required() > 0 && !view.completed()
-                        ? Component.translatable("screen.xero_quest_journal.progress",
-                        view.current(), view.required()).getString() : "";
+                if (view == null || view.required() <= 0 || view.completed()) yield "";
+                String label = progressDisplayName(element);
+                yield label.isBlank() ? Component.translatable("screen.xero_quest_journal.progress",
+                        view.current(), view.required()).getString()
+                        : Component.literal(label + ": " + view.current() + " / " + view.required()).getString();
             }
             case "quest_objective" -> {
                 var view = ClientQuestProgress.view(selected.id());
-                String label = QuestText.objective(selected).getString();
+                String configured = progressDisplayName(element);
+                String label = configured.isBlank() ? QuestText.objective(selected).getString() : configured;
                 // Leading spaces reserve the objective diamond drawn by renderObjectiveElement.
                 yield "    " + label + (view == null || view.required() <= 1 || view.completed() ? ""
                         : "  (" + view.current() + "/" + view.required() + ")");
@@ -5743,7 +5989,9 @@ public final class QuestScreen extends AnimatedQuestScreen {
         int gold = applyAlpha(JournalDetailRenderer.GOLD, alpha);
         String overridden = ClientControlState.properties(element.quest(), QuestPresentationClient.sourceId(element))
                 .get("value");
-        String label = overridden != null ? overridden : QuestText.objective(selected).getString();
+        String configured = progressDisplayName(element);
+        String label = overridden != null ? overridden
+                : configured.isBlank() ? QuestText.objective(selected).getString() : configured;
         var view = ClientQuestProgress.view(selected.id());
         String progress = view != null && view.required() > 1 && !view.completed()
                 ? "(" + view.current() + "/" + view.required() + ")" : "";
@@ -5763,6 +6011,13 @@ public final class QuestScreen extends AnimatedQuestScreen {
         if (!progress.isEmpty())
             JournalDetailRenderer.scaled(g, font, progress, right - progressWidth, textY, scale, color, false);
         g.disableScissor();
+    }
+
+    private String progressDisplayName(LayoutEditorState.Element element) {
+        String value = element.attribute("displayText", "");
+        if (editMode) return value;
+        return ClientControlState.properties(element.quest(), QuestPresentationClient.sourceId(element))
+                .getOrDefault("displayText", value);
     }
 
     private static float parseTextScaleSafe(String value, float fallback) {
@@ -5920,9 +6175,130 @@ public final class QuestScreen extends AnimatedQuestScreen {
                     int top = menuTop(), visibleHeight = Math.min(height - 16, menu.size() * 20);
                     g.fill(first.getX() - 3, top - 3, first.getRight() + 3, top + visibleHeight + 3, 0xFF171B21);
                     g.renderOutline(first.getX() - 2, top - 2, first.getWidth() + 4, visibleHeight + 4, 0xFF9DB4D2);
+                    g.enableScissor(first.getX(), top, first.getRight(), top + visibleHeight);
                     menu.forEach(button -> button.render(g, x, y, tick));
+                    renderContextGroupMarkers(g, top);
+                    g.disableScissor();
                     g.pose().popPose();
                 });
+    }
+
+    private void renderContextGroupMarkers(GuiGraphics g, int top) {
+        for (int start = 0; start < menu.size() && start < menuRowGroups.size();) {
+            int end = start + 1;
+            String group = menuRowGroups.get(start);
+            while (end < menu.size() && end < menuRowGroups.size()
+                    && menuRowGroups.get(end).equals(group)) end++;
+            int firstY = top + start * 20 - menuScroll;
+            int lastY = top + end * 20 - menuScroll;
+            g.fill(menu.getFirst().getX() + 3, firstY + 3, menu.getFirst().getX() + 5,
+                    Math.max(firstY + 4, lastY - 3), contextGroupColor(group));
+            start = end;
+        }
+    }
+
+    private static int contextGroupColor(String group) {
+        return switch (group) {
+            case "edit" -> 0xFF79B8D8;
+            case "organize" -> 0xFF9DC58C;
+            case "progress" -> 0xFFF0C36D;
+            case "danger" -> 0xFFE17C72;
+            default -> 0xFFAAB7D2;
+        };
+    }
+
+    private final class ContextMenuButton extends StyledButton {
+        private final String key;
+        private final String group;
+
+        private ContextMenuButton(int x, int y, int width, int height, Component label,
+                                  String key, String group, OnPress action) {
+            super(x, y, width, height, label, action, styles, "context-" + key);
+            this.key = key;
+            this.group = group;
+            setTooltip(Tooltip.create(Component.translatable(
+                    "screen.xero_quest_journal.context.group." + group).copy().append("\n").append(label)));
+        }
+
+        @Override
+        protected void renderContent(GuiGraphics g, ButtonStyle style, int color) {
+            int iconColor = contextGroupColor(group);
+            drawContextIcon(g, key, getX() + 9, getY() + 5, iconColor);
+            var font = QuestScreen.this.font;
+            String label = font.plainSubstrByWidth(getMessage().getString(), Math.max(1, getWidth() - 36));
+            g.drawString(font, label, getX() + 29, getY() + (getHeight() - font.lineHeight) / 2,
+                    color, style.textShadow());
+        }
+    }
+
+    private static void drawContextIcon(GuiGraphics g, String key, int x, int y, int color) {
+        switch (key) {
+            case "delete", "delete_tasks", "delete_groups", "delete_quest_type" -> {
+                g.fill(x + 2, y + 2, x + 11, y + 4, color);
+                g.fill(x + 4, y, x + 9, y + 2, color);
+                g.fill(x + 3, y + 4, x + 10, y + 11, color);
+                g.fill(x + 5, y + 5, x + 6, y + 10, 0xFF24272D);
+                g.fill(x + 8, y + 5, x + 9, y + 10, 0xFF24272D);
+            }
+            case "copy_id", "copy_tasks", "duplicate_tasks" -> {
+                g.fill(x + 1, y + 2, x + 8, y + 3, color);
+                g.fill(x + 1, y + 3, x + 2, y + 10, color);
+                g.fill(x + 2, y + 10, x + 9, y + 11, color);
+                g.fill(x + 8, y + 3, x + 9, y + 10, color);
+                g.fill(x + 4, y, x + 11, y + 1, color);
+                g.fill(x + 10, y + 1, x + 11, y + 8, color);
+                g.fill(x + 4, y + 8, x + 10, y + 9, color);
+            }
+            case "graph.overview", "graph.settings", "unlock_graph.title" -> {
+                g.fill(x + 1, y + 2, x + 5, y + 6, color);
+                g.fill(x + 8, y, x + 12, y + 4, color);
+                g.fill(x + 8, y + 8, x + 12, y + 12, color);
+                g.fill(x + 4, y + 3, x + 9, y + 4, color);
+                g.fill(x + 5, y + 3, x + 6, y + 9, color);
+                g.fill(x + 5, y + 8, x + 9, y + 9, color);
+            }
+            case "order.move_task", "layer_up", "layer_down", "layer_front", "layer_back" -> {
+                g.fill(x + 5, y, x + 8, y + 2, color);
+                g.fill(x + 3, y + 2, x + 10, y + 3, color);
+                g.fill(x + 5, y + 3, x + 8, y + 6, color);
+                g.fill(x + 5, y + 6, x + 8, y + 9, 0xFFB9C4D1);
+                g.fill(x + 3, y + 9, x + 10, y + 10, 0xFFB9C4D1);
+                g.fill(x + 5, y + 10, x + 8, y + 12, 0xFFB9C4D1);
+            }
+            case "paste_tasks", "paste" -> {
+                g.fill(x + 2, y + 2, x + 11, y + 12, color);
+                g.fill(x + 5, y, x + 9, y + 3, 0xFF24272D);
+                g.fill(x + 4, y + 4, x + 9, y + 5, 0xFF24272D);
+                g.fill(x + 4, y + 7, x + 9, y + 8, 0xFF24272D);
+            }
+            case "reset_progress", "reset_selected_progress", "reset_position" -> {
+                g.fill(x + 4, y, x + 9, y + 2, color);
+                g.fill(x + 1, y + 2, x + 4, y + 4, color);
+                g.fill(x, y + 4, x + 2, y + 9, color);
+                g.fill(x + 2, y + 9, x + 5, y + 11, color);
+                g.fill(x + 5, y + 10, x + 10, y + 12, color);
+                g.fill(x + 6, y + 5, x + 11, y + 6, color);
+                g.fill(x + 10, y + 5, x + 12, y + 9, color);
+                g.fill(x + 8, y + 3, x + 11, y + 6, color);
+            }
+            case "properties", "conditions.edit", "template.edit", "layout.canvas_settings" -> {
+                g.fill(x + 2, y + 2, x + 5, y + 10, color);
+                g.fill(x + 5, y + 1, x + 7, y + 9, color);
+                g.fill(x + 7, y + 3, x + 9, y + 11, color);
+                g.fill(x + 9, y + 2, x + 11, y + 10, color);
+            }
+            case "add_task", "add_group", "add_chapter" -> {
+                g.fill(x + 5, y, x + 8, y + 12, color);
+                g.fill(x, y + 5, x + 12, y + 8, color);
+            }
+            default -> {
+                g.fill(x + 2, y + 1, x + 10, y + 2, color);
+                g.fill(x + 1, y + 2, x + 2, y + 10, color);
+                g.fill(x + 10, y + 2, x + 11, y + 10, color);
+                g.fill(x + 2, y + 10, x + 10, y + 11, color);
+                g.fill(x + 4, y + 4, x + 8, y + 8, color);
+            }
+        }
     }
 
     private void renderEditorViewIndicators(GuiGraphics graphics) {
@@ -6049,6 +6425,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
             return;
         }
         menu.clear();
+        menuRowGroups.clear();
         menuScroll = 0;
         menuMotion.jump(0);
         if (!editMode) {
@@ -6156,20 +6533,54 @@ public final class QuestScreen extends AnimatedQuestScreen {
             entries.add(Map.entry("layout.canvas_settings", () -> openCanvasSize(selectedId)));
             addLayoutEntries(entries);
         }
-        int w = Math.min(210, width - 16);
-        int left = Math.max(8, Math.min(x, width - w - 8));
-        int top = Math.max(8, Math.min(y, height - entries.size() * 20 - 8));
+        int w = Math.min(250, Math.max(210, entries.stream()
+                .mapToInt(entry -> font.width(text(entry.getKey())) + 40).max().orElse(210)));
+        w = Math.min(Math.max(1, width - 16), w);
+        var preferences = ClientPreferences.get();
+        int viewportHeight = Math.min(height - 16, entries.size() * 20);
+        int requestedX = x, requestedY = y;
+        if (target != null && target.startsWith("quest:") && preferences.fixedQuestContextMenuPosition) {
+            requestedX = 8 + Math.max(0, width - w - 16) * preferences.questContextMenuXPercent / 100;
+            requestedY = 8 + Math.max(0, height - viewportHeight - 16)
+                    * preferences.questContextMenuYPercent / 100;
+        }
+        int left = Math.max(8, Math.min(requestedX, width - w - 8));
+        int top = Math.max(8, Math.min(requestedY, height - viewportHeight - 8));
+        menuX = left;
+        menuY = top;
         for (int i = 0; i < entries.size(); i++) {
             var entry = entries.get(i);
-            StyledButton button = new StyledButton(left, top + i * 20, w, 20, text(entry.getKey()),
-                    ignored -> {
-                        menu.clear();
-                        menuTarget = null;
-                        entry.getValue().run();
-                    }, styles, "context-" + entry.getKey());
+            String group = contextMenuGroup(target, entry.getKey());
+            menuRowGroups.add(group);
+            StyledButton button = new ContextMenuButton(left, top + i * 20, w, 20, text(entry.getKey()),
+                    entry.getKey(), group, ignored -> {
+                menu.clear();
+                menuTarget = null;
+                entry.getValue().run();
+            });
             menu.add(button);
         }
         updateMenuViewport();
+    }
+
+    private static String contextMenuGroup(String target, String key) {
+        if (target != null && target.startsWith("quest:")) {
+            return switch (key) {
+                case "copy_id", "order.move_task", "unlock_graph.title", "layout.canvas_settings" -> "task";
+                case "graph.overview", "properties", "conditions.edit", "template.edit" -> "edit";
+                case "duplicate_tasks", "copy_tasks", "paste_tasks" -> "organize";
+                case "reset_progress", "reset_selected_progress" -> "progress";
+                case "delete_tasks" -> "danger";
+                default -> "task";
+            };
+        }
+        if (key.contains("delete")) return "danger";
+        if (key.startsWith("add_") || key.equals("paste_tasks") || key.equals("put_into_layout"))
+            return "organize";
+        if (key.startsWith("reset_")) return "progress";
+        if (key.contains("properties") || key.endsWith(".edit") || key.equals("graph.settings"))
+            return "edit";
+        return "task";
     }
 
     private void selectGroupTasks(String targetGroup, boolean invert) {
@@ -6525,6 +6936,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
 
     private void showMenu(int x, int y, List<Map.Entry<String, Runnable>> entries) {
         menu.clear();
+        menuRowGroups.clear();
         menuScroll = 0;
         menuMotion.jump(0);
         menuTarget = null;
@@ -6600,6 +7012,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
 
     private void layoutContentsMenu(String parentId) {
         menu.clear();
+        menuRowGroups.clear();
         List<LayoutEditorState.Element> choices = layout.elements().values().stream()
                 .filter(element -> element.quest().equals(selectedId) && !element.id().equals(parentId))
                 .filter(element -> !parentId.equals(layout.parentOf(element.id())))
@@ -6784,6 +7197,14 @@ public final class QuestScreen extends AnimatedQuestScreen {
             }
         }
         String target = hit(x, y);
+        if (button == 0 && !editMode && target != null && target.startsWith("quest:")) {
+            StyledButton row = controls.get(target);
+            if (row instanceof JournalListButton questRow && questRow.claimable()
+                    && questRow.claimIconContains(x, y)) {
+                runAction(target.substring("quest:".length()), true);
+                return true;
+            }
+        }
         if (button == 0 && !editMode && target != null && layout.elements().containsKey(target)) {
             var element = layout.elements().get(target);
             if (!element.kind().equals("quest_rewards") && (xtdpotato.xero_quest_journal.core.model.ControlProperties.button(element.kind())
@@ -6895,6 +7316,11 @@ public final class QuestScreen extends AnimatedQuestScreen {
                 taskSearch.setFocused(false);
             }
             StyledButton clickedRow = target == null ? null : controls.get(target);
+            if (!editMode && clickedRow instanceof JournalListButton questRow
+                    && questRow.claimable() && questRow.claimIconContains(x, y)) {
+                runAction(target.substring("quest:".length()), true);
+                return true;
+            }
             listTargetScroll = listScroll;
             listReleaseVelocity = 0;
             listDragStartY = listLastDragY = y;
@@ -7715,6 +8141,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
     @Override
     public void onClose() {
         if (pending == null && batchPending == null) {
+            rememberSelectedQuest(selectedId);
             if (overviewMode && parent instanceof QuestScreen journal) journal.layout = LayoutStore.load("journal");
             closeTo(parent);
         }
@@ -7744,11 +8171,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
     @Override protected Object popupKey() { return iconPicker != null ? iconPicker : form; }
     @Override protected Viewport popupBounds() {
         if (iconPicker != null) {
-            int w = Math.min(440, width - 24);
-            int h = Math.min(310, height - 16);
-            int x = (width - w) / 2;
-            int y = (height - h) / 2;
-            return new Viewport(x - 2, y - 2, x + w + 2, y + h + 2);
+            return new Viewport(0, 0, width, height);
         }
         if (form != null) {
             int w = formWidth();
@@ -7970,6 +8393,8 @@ public final class QuestScreen extends AnimatedQuestScreen {
         IconSource source = IconSource.INVENTORY;
         String search = "";
         String manual;
+        String sort = "id";
+        boolean descending;
         int page;
         int pageSize = 1;
         List<QuestIcons.IconChoice> filteredChoices = List.of();

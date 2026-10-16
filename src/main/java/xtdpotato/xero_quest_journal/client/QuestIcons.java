@@ -17,6 +17,8 @@ import xtdpotato.xero_quest_journal.core.runtime.QuestItemStackValue;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HexFormat;
@@ -293,6 +295,74 @@ public final class QuestIcons {
             }
         }
         return Component.literal(displayName(value));
+    }
+
+    public static Component metadataTooltip(String value) {
+        var result = tooltip(value).copy();
+        result.append(Component.literal("\n" + Component.translatable(
+                "screen.xero_quest_journal.icon_picker.metadata.id", value).getString())
+                .withStyle(net.minecraft.ChatFormatting.GRAY));
+        Path path = filePath(value);
+        if (path != null) {
+            try {
+                BasicFileAttributes attributes = Files.readAttributes(path, BasicFileAttributes.class);
+                result.append(Component.literal("\n" + Component.translatable(
+                        "screen.xero_quest_journal.icon_picker.metadata.path", path.toAbsolutePath()).getString())
+                        .withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
+                result.append(Component.literal("\n" + Component.translatable(
+                        "screen.xero_quest_journal.icon_picker.metadata.created",
+                        Instant.ofEpochMilli(attributes.creationTime().toMillis())).getString())
+                        .withStyle(net.minecraft.ChatFormatting.GRAY));
+                result.append(Component.literal("\n" + Component.translatable(
+                        "screen.xero_quest_journal.icon_picker.metadata.modified",
+                        Instant.ofEpochMilli(attributes.lastModifiedTime().toMillis())).getString())
+                        .withStyle(net.minecraft.ChatFormatting.GRAY));
+                result.append(Component.literal("\n" + Component.translatable(
+                        "screen.xero_quest_journal.icon_picker.metadata.size",
+                        attributes.size() / 1024.0).getString()).withStyle(net.minecraft.ChatFormatting.GRAY));
+                return result;
+            } catch (Exception ignored) {
+                // Keep resource metadata available even if filesystem attributes are inaccessible.
+            }
+        }
+        ResourceLocation id = ResourceLocation.tryParse(value);
+        if (id != null && !id.getNamespace().equals(LOCAL_NAMESPACE)) {
+            var resource = Minecraft.getInstance().getResourceManager().getResource(id).orElse(null);
+            if (resource != null) {
+                result.append(Component.literal("\n" + Component.translatable(
+                        "screen.xero_quest_journal.icon_picker.metadata.pack", resource.sourcePackId()).getString())
+                        .withStyle(net.minecraft.ChatFormatting.GRAY));
+                return result;
+            }
+            if (BuiltInRegistries.ITEM.containsKey(id)) {
+                result.append(Component.literal("\n" + Component.translatable(
+                        "screen.xero_quest_journal.icon_picker.metadata.registry",
+                        BuiltInRegistries.ITEM.getKey(BuiltInRegistries.ITEM.get(id)).toString()).getString())
+                        .withStyle(net.minecraft.ChatFormatting.GRAY));
+                return result;
+            }
+        }
+        result.append(Component.literal("\n" + Component.translatable(
+                "screen.xero_quest_journal.icon_picker.metadata.time_unavailable").getString())
+                .withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
+        return result;
+    }
+
+    public static Path filePath(String value) {
+        ResourceLocation id = ResourceLocation.tryParse(value);
+        if (id != null && id.getNamespace().equals(LOCAL_NAMESPACE)) return localPath(id);
+        return null;
+    }
+
+    public static long fileTimestamp(String value, boolean creation) {
+        Path path = filePath(value);
+        if (path == null) return -1;
+        try {
+            BasicFileAttributes attributes = Files.readAttributes(path, BasicFileAttributes.class);
+            return (creation ? attributes.creationTime() : attributes.lastModifiedTime()).toMillis();
+        } catch (Exception ignored) {
+            return -1;
+        }
     }
 
     public static boolean matchesSearch(String query, String... values) {

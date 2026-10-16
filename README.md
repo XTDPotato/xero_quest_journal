@@ -4,31 +4,37 @@
 
 项目采用单仓库、单模组 ID 的多加载器布局。当前完整构建基线仍是
 Minecraft 1.21.1 NeoForge。Forge 1.20.1、Fabric 1.20.1 和 Fabric 1.21.1
-已接入共享功能，各移植版本通过 33 项客户端/集成服务器专项回归。
+已接入共享功能，2026-10-13 各移植版本通过 33 项客户端/集成服务器专项回归。
 两个 Fabric 发布 JAR 另通过生产专用服务器初始化检查；服务器保持 `eula=false`，
 未验证远端联机。26.1–26.3 已建立 Java 25 工程并验证原生存档适配层，
 完整渲染、输入与运行时迁移尚未完成，暂无可安装包。
 每个游戏版本/加载器使用独立 JAR。详见 [版本矩阵](docs/porting-matrix.md)
 和 [Fabric 验证报告](docs/fabric-verification.md)。
 
-2026-10-13 作者工具更新：全屏六标签设置、固定 100ms 标签切换、带参考和示例的 JS 编辑器，
-以及完整命令树。详见 [本轮验证](docs/authoring-verification.md)。
+2026-10-16 多版本预览 5：同步四个已完成平台，包含章节独立外观、多选实时预览、
+背景/音乐节点、搜索筛选、奖励/邮件/战利品编辑和完整作者工具。
+详细状态见 [本轮验证](docs/release-verification-2026-10-16.md)；
+常见界面、入口与操作见 [中文 1080p 界面图鉴](docs/interface-gallery.md)。
 
 Xero Quest Journal 面向整合包作者、地图作者与喜欢任务引导的玩家，把任务列表、章节历程、世界目标、奖励和邮箱放在一套原生游戏界面中。作者可以在本地世界内编辑任务，也可以用 JSON、HTML 或 XML 配置任务文件。
 
 核心模组保持轻量，媒体解码使用可选后端；任务完成、奖励领取和玩家进度由服务端处理。
 
-> 当前为 **0.1.0 开发版本**。标有“2026-10-13”的新截图均为中文界面、原生 1920×1080；其余历史截图保留作功能参考。功能边界见 [测试与验证](docs/testing.md) 和 [本轮验证](docs/authoring-verification.md)。
+> 当前为 **0.1.0 开发预览版**。新的界面图鉴全部采用中文、原生 1920×1080 截图；
+> 历史验证与本次验证分开记录。26.1–26.3 尚无完整可安装包。
 
-![任务详情、新任务与奖励展示](docs/images/task-details.png)
+![任务日志、进度与底部奖励，中文 1920×1080](docs/images/journal-current-zh-1920.png)
 
 ## 导航
 
 - [功能一览](#功能一览)
 - [界面与截图](#界面与截图)
+- [中文 1080p 界面图鉴：常见界面、入口和操作](docs/interface-gallery.md)
+- [2026-10-16 多版本构建与回归](docs/release-verification-2026-10-16.md)
 - [全部命令](docs/commands.md)
 - [JavaScript 编写参考与示例](docs/javascript.md)
 - [判断节点详解](docs/trigger-conditions.md)
+- [节点字段、物品栏入口与 REI 收藏](docs/visual-graph-and-inventory-shortcuts.md)
 - [安装和开始使用](#安装和开始使用)
 - [任务文件示例](#任务文件示例)
 - [标签与物品数据](#标签与物品数据)
@@ -47,13 +53,16 @@ Xero Quest Journal 面向整合包作者、地图作者与喜欢任务引导的�
 | 任务日志 | 分类、分组折叠、搜索、选中详情、滚动、任务追踪 |
 | 新任务提示 | 任务行右上角未读红点，打开详情清除；右上角支持一键全部已读 |
 | 总览 | 推荐任务、分类入口、可配置背景 |
-| 旅行历程 | 章节标签、任务主线与支线、图文卡片、时间线滚动 |
+| 旅行历程 | 章节标签、主线与支线、任务详情弹窗、当前章节独立外观、多选拖动与尺寸编辑 |
 | 任务规则 | 持有、累计获取、提交、击杀、方块交互、进度、地点、脚本与组合条件 |
 | 解锁关系 | 前置任务 DAG、可视化连线、节点移动、循环检查、撤销与重做 |
 | 事件节点 | 任务控件事件图、条件与动作节点、连线、属性编辑 |
-| 脚本编辑 | 分用途参考、可追加示例、行号、语法检查、文件冲突保护 |
+| 脚本编辑 | 分用途参考、可追加示例、行号、语法检查、文件冲突保护；节点文字块双击编辑、内容可折叠 |
+| 可视化字段 | 节点字段直点选择、拼音搜索，长按拖出变量；玩家目标显式标记 |
+| 背包入口 | 任务/邮件独立开关和九宫格锚点，可拖拽、吸附并设置相对偏移 |
+| JEI / REI / EMI | 16×16 专属任务/邮件图标入口，避免重复背包按钮；REI 收藏可添加与移除 |
 | 模组设置 | 全屏常规/动画/通知/外观/任务/工具标签，100ms 内容切换 |
-| 奖励 | 物品、经验、命令、函数、脚本、效果、战利品等；手动或自动发放 |
+| 奖励 | 物品、经验、命令、函数、脚本、效果、战利品与奖励节点图；任务/邮件底部展示 |
 | 品质卡片 | 灰、绿、蓝、紫、金、红六档品质，可选背景色覆盖 |
 | 邮箱 | 未读、收藏、附件、单封与批量领取、保护性删除、邮件编辑 |
 | 自动任务 | 按进度、可获取物品与敌对生物生成；支持不同奖励模式 |
@@ -61,31 +70,41 @@ Xero Quest Journal 面向整合包作者、地图作者与喜欢任务引导的�
 | 结构场景 | Java NBT 预览、场景进入与返回、部分触发器与恢复逻辑 |
 | 媒体 | 图片及基础音频；视频和扩展音频通过可选后端提供 |
 | 本地化 | 简体中文与英文，作者文本可使用翻译键 |
+| 搜索筛选 | 标题/描述/副标题/任务内部范围，分类、奖励类型/物品、完成条件与目标筛选 |
+| 变量计算 | 数字/字符串、玩家/队伍共享、任务进度变量、加减乘除与常见科学函数 |
+| 背景编辑 | 热点事件、传说人物和章节背景共用实时预览，支持缩放模式、偏移、音乐 |
 
 ## 界面与截图
+
+[完整中文界面图鉴](docs/interface-gallery.md) 按 16 类操作展示常见界面，
+包括任务、搜索、条件、奖励、邮件、战利品、章节编辑、背景、节点、
+JS、变量、图标、富文本、回收站、设置、动画、物品栏、模板和位置目标。
+下列为主要界面的选图；原图均可点开查看。
 
 ### 任务总览
 
 推荐任务与分类入口集中展示，支持作者设置背景。总览负责导航，完整任务操作仍在任务详情内完成。
 
-![中文 1920×1080 任务总览，2026-10-13](docs/images/overview-authoring-zh-1920.png)
+![中文 1920×1080 任务总览](docs/images/overview-authoring-zh-1920.png)
 
 ### 全屏设置与脚本参考
 
-设置使用顶部六个标签，下面展示对应选项。个人偏好无需作者模式；
+设置使用顶部六个标签，下面展示对应选项。常规设置可分别启用任务/邮件背包入口，
+进入可视摆放界面并按九宫格锚点设置偏移。左上锚点的 `(0,0)` 就是屏幕左上。
+安装 REI 时还可管理书本/纸张快捷收藏。个人偏好无需作者模式；
 服务器分页和作者主题仍需管理员权限。重复的按键、文件夹和动画编辑入口已合并。
 切换标签使用 100ms 动画；关闭动画或减弱动态时立即切换。
 
-![中文全屏设置：常规，2026-10-13](docs/images/settings-general-zh-1920.png)
+![中文全屏设置：常规](docs/images/settings-general-zh-1920.png)
 
-![中文全屏设置：动画，2026-10-13](docs/images/settings-motion-zh-1920.png)
+![中文全屏设置：动画](docs/images/settings-motion-zh-1920.png)
 
 事件图中选择“JavaScript”后打开代码编辑器，可以同时阅读字段参考和用途对应的示例。
 代码区、参考区、底部错误信息独立裁剪。保存先检查语法；追加示例保留现有草稿。
 
-![JS 判断模式与独立编辑入口，2026-10-13](docs/images/js-predicate-graph-zh-1920.png)
+![JS 判断模式与独立编辑入口](docs/images/js-predicate-graph-zh-1920.png)
 
-![游戏内 JavaScript 参考，2026-10-13](docs/images/js-editor-reference-zh-1920.png)
+![游戏内 JavaScript 参考](docs/images/js-editor-reference-zh-1920.png)
 
 内置判断最后必须得到布尔 `true`；不能直接写顶层 `return true`。
 事件图字段都是字符串，例如 `Number(experienceLevel) >= 10;`。
@@ -94,9 +113,13 @@ Xero Quest Journal 面向整合包作者、地图作者与喜欢任务引导的�
 
 ### 旅行历程
 
-章节以可滚动时间线组织，主线卡片与支线节点保留连接关系。背景、章节外观和部分元素位置可编辑。
+章节以可滚动时间线组织，主线卡片与支线节点保留连接关系。
+外观编辑只影响当前章节：左侧实时预览，右侧编辑属性，可多选后一起移动、
+调宽高或等比例缩放。浏览时点击任务先打开详情弹窗，底部按钮再进入日志。
 
-![旅行历程](docs/images/journey.png)
+![旅行历程](docs/images/journey-chapter-marker-zh-1920.png)
+
+![当前章节外观的实时多选编辑](docs/images/journey-chapter-multiselect-zh-1920.png)
 
 ### 新任务红点
 
@@ -114,23 +137,27 @@ Xero Quest Journal 面向整合包作者、地图作者与喜欢任务引导的�
 
 ![品质奖励局部展示](docs/images/reward-detail.png)
 
-![奖励品质与背景覆盖编辑器](docs/images/reward-editor.png)
+![奖励品质与背景覆盖编辑器](docs/images/rewards-editor-zh-1920.png)
+
+![战利品条目与品质编辑](docs/images/loot-editor-zh-1920.png)
 
 ### 任务节点图与解锁图
 
 事件节点图和任务前置解锁图是两种不同的编辑工具：前者配置事件/条件/动作，后者编辑任务之间的前置关系。
 
-![事件节点图](docs/images/event-graph.png)
+![事件节点与完整脚本显示](docs/images/graph-full-script-zh-1920.png)
 
-![任务解锁图](docs/images/unlock-graph.png)
+![任务解锁图](docs/images/unlock-graph-current-zh-1920.png)
 
 ### 邮箱与标签选择
 
 邮箱提供独立的邮件列表和详情；物品选择器可列出运行时加载的原版、模组和数据包物品标签。
 
-![中文 1920×1080 邮箱列表和邮件详情，2026-10-13](docs/images/mailbox-authoring-zh-1920.png)
+![中文 1920×1080 邮箱列表和邮件详情](docs/images/mailbox-current-zh-1920.png)
 
-![运行时物品标签选择器](docs/images/item-tags.png)
+![邮件编辑与发送](docs/images/mail-compose-zh-1920.png)
+
+![全屏物品选择器](docs/images/item-picker-zh-1920.png)
 
 更多截图与来源说明见 [截图索引](docs/images/README.md)。
 
@@ -144,7 +171,7 @@ Xero Quest Journal 面向整合包作者、地图作者与喜欢任务引导的�
 | 核心文件 | Release 中与 Minecraft/加载器完全匹配的单个 JAR |
 | 许可 | MIT，第三方依赖保留各自许可 |
 
-1. 从 [多版本预览 4 Release](https://github.com/XTDPotato/xero_quest_journal/releases/tag/v0.1.0-multiversion-preview.4) 选择与游戏版本、加载器相匹配的核心 JAR，放入实例的 `mods` 目录。
+1. 从 [多版本预览 5 Release](https://github.com/XTDPotato/xero_quest_journal/releases/tag/v0.1.0-multiversion-preview.5) 选择与游戏版本、加载器相匹配的核心 JAR，放入实例的 `mods` 目录。
 2. 多人环境下，客户端与服务端应安装相互匹配的版本。当前网络协议为 **10**；相同的 `0.1.0` 显示版本不保证不同开发构建之间的协议兼容。
 3. 启动游戏并进入世界，默认按 `J` 打开任务日志，按 `F8` 打开邮箱、`F7` 打开新邮件。
 4. 任务目录默认位于 `config/xero_quest/groups/`，编辑后使用 `/xero_quest reload` 重载。
@@ -428,9 +455,13 @@ tools/                     图标生成与独立检查工具
 | 文档 | 内容 |
 | --- | --- |
 | [使用指南](docs/guide.md) | 目录组织、日常操作、作者流程、备份与故障定位 |
+| [背景与旅行历程编辑](docs/background-and-journey-editor.md) | 背景缩放与音乐、背景节点、章节切换事件、可视化尺寸编辑及任务弹窗 |
+| [中文 1080p 界面图鉴](docs/interface-gallery.md) | 常见界面全屏截图、入口、操作、保存和预览行为 |
+| [预览 5 发布验证](docs/release-verification-2026-10-16.md) | 本次四平台构建、客户端回归、安装包与未覆盖范围 |
 | [全部命令](docs/commands.md) | 三个根命令、64 条共享分支及 Forge 状态命令、参数、权限与示例 |
 | [JavaScript 参考](docs/javascript.md) | 文件与事件图类型、返回值、奖励 API、编辑器、15 个示例 |
 | [判断节点详解](docs/trigger-conditions.md) | 可视化与 JS 条件、连线、真假/异常、一次执行 |
+| [节点字段与背包入口](docs/visual-graph-and-inventory-shortcuts.md) | 快速编辑、字段选择/拖拽、目标玩家、相对锚点与 REI 收藏 |
 | [本轮验证](docs/authoring-verification.md) | 设置、脚本、四目标复验与发布边界 |
 | [奖励与完成条件](docs/奖励与条件配置.md) | 条件、物品数据、奖励品质、脚本及命令 |
 | [架构说明](docs/architecture.md) | 定义、玩家状态、网络、虚拟化和媒体拆分 |

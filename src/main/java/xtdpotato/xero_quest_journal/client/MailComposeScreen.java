@@ -99,7 +99,8 @@ public final class MailComposeScreen extends AnimatedQuestScreen {
                 (seconds + (gameTime ? 1200 : 86400) - 1) / (gameTime ? 1200 : 86400)));
         initialExpiryValue = expiryValue;
         rewards = mail.attachments().stream().map(a -> new MailboxRuntime.Attachment(
-                a.type(), a.item(), a.count(), false, a.hidden(), a.hidePopup())).toList();
+                a.type(), a.item(), a.count(), false, a.hidden(), a.hidePopup(),
+                a.quality(), a.background())).toList();
     }
 
     private static Component text(String key, Object... args) {
@@ -129,14 +130,14 @@ public final class MailComposeScreen extends AnimatedQuestScreen {
         clearWidgets();
         invalidWidget = null;
         var styles = ButtonStyleSheet.load();
-        int left = 20, gap = 18, contentWidth = Math.max(280, width - left * 2);
-        int sideWidth = Math.min(390, Math.max(140, contentWidth / 3));
-        int mainWidth = Math.max(100, contentWidth - sideWidth - gap);
+        int left = 18, gap = 18, contentWidth = Math.max(280, width - left * 2);
+        int sideWidth = Math.min(400, Math.max(150, contentWidth / 3));
+        int mainWidth = Math.max(120, contentWidth - sideWidth - gap);
         int sideX = left + mainWidth + gap;
         boolean shortScreen = height < 300;
-        int recipientY = shortScreen ? 68 : 78;
-        int subjectY = shortScreen ? 102 : 112, bodyY = shortScreen ? 154 : 164;
-        int templateY = shortScreen ? 24 : 42;
+        int recipientY = shortScreen ? 58 : 96;
+        int subjectY = shortScreen ? 92 : 130, bodyY = shortScreen ? 142 : 174;
+        int templateY = shortScreen ? 22 : 40;
 
         StyledButton templates = new StyledButton(left, templateY, mainWidth, 22, text("template_picker"),
                 ignored -> chooseTemplate(), styles, "mail-compose-templates");
@@ -184,7 +185,7 @@ public final class MailComposeScreen extends AnimatedQuestScreen {
                 }, styles, "mail-compose-rewards"));
         rewardEditor.active = editingMail == null || editingMail.attachments().stream().noneMatch(
                 MailboxRuntime.Attachment::claimed);
-        int iconY = recipientY + (shortScreen ? 34 : 32);
+        int iconY = recipientY + 32;
         icon = field(sideX, iconY, sideWidth - 30, 8192, "icon_label", iconValue);
         icon.setHint(text("icon_default"));
         addRenderableWidget(new StyledButton(sideX + sideWidth - 24, iconY, 24, 20,
@@ -193,13 +194,13 @@ public final class MailComposeScreen extends AnimatedQuestScreen {
                     minecraft.setScreen(QuestScreen.pickResource(this, iconValue, false, icon::setValue));
                 }, styles, "mail-compose-pick-icon"));
 
-        int optionsY = iconY + (shortScreen ? 26 : 32);
+        int optionsY = iconY + 32;
         addRenderableWidget(Checkbox.builder(text("treasured"), font).pos(sideX, optionsY)
                 .selected(treasured).onValueChange((box, value) -> {
                     treasured = value;
                     if (expiry != null) expiry.active = !value;
                 }).build());
-        int expiryY = optionsY + (shortScreen ? 34 : 32);
+        int expiryY = optionsY + 32;
         int expiryWidth = (sideWidth - 10) / 2;
         expiry = field(sideX, expiryY, expiryWidth, 6, "expiry_days", expiryValue);
         expiry.active = !treasured;
@@ -209,7 +210,7 @@ public final class MailComposeScreen extends AnimatedQuestScreen {
                 value -> text("clock." + (value ? "game" : "real")),
                 value -> gameTime = value, styles, "mail-compose-clock"));
         int optionWidth = (sideWidth - 6) / 2;
-        int extraY = expiryY + (shortScreen ? 28 : 32);
+        int extraY = expiryY + 32;
         addRenderableWidget(new StyledButton(sideX, extraY, optionWidth, 22, text("add_to_rewards"),
                 ignored -> addToRewards(), styles, "mail-compose-add-to-rewards"));
         addRenderableWidget(new StyledButton(sideX + optionWidth + 6, extraY,
@@ -397,7 +398,8 @@ public final class MailComposeScreen extends AnimatedQuestScreen {
         try {
             if (rewards.size() > 128 || rewards.stream().anyMatch(reward -> reward.type().equals("mail")
                     || !unchangedStoredReward(reward)
-                    && !QuestRewards.valid(new QuestDefinition.Reward(reward.type(), reward.item(), reward.count()))))
+                    && !QuestRewards.valid(new QuestDefinition.Reward(reward.type(), reward.item(), reward.count(),
+                    reward.quality(), reward.background()))))
                 return invalid(null, "invalid_rewards");
         } catch (IllegalArgumentException invalid) {
             return invalid(null, "invalid_rewards");
@@ -409,7 +411,8 @@ public final class MailComposeScreen extends AnimatedQuestScreen {
     private boolean unchangedStoredReward(MailboxRuntime.Attachment reward) {
         var source = editingMail != null ? editingMail : resendSource;
         return source != null && source.attachments().stream().anyMatch(a -> reward.equals(
-                new MailboxRuntime.Attachment(a.type(), a.item(), a.count(), false, a.hidden(), a.hidePopup())));
+                new MailboxRuntime.Attachment(a.type(), a.item(), a.count(), false, a.hidden(), a.hidePopup(),
+                        a.quality(), a.background())));
     }
 
     private boolean validRecipient() {
@@ -540,8 +543,22 @@ public final class MailComposeScreen extends AnimatedQuestScreen {
 
     @Override protected void renderContents(GuiGraphics graphics, int x, int y, float delta) {
         updateBodyTools();
-        backdrop(graphics, 0xF01C2430);
-        graphics.drawString(font, editingMail == null ? title : text("edit_mail"), 18, 12, 0xFFF3D38B, false);
+        backdrop(graphics, 0xF0181D23);
+        int left = 18, gap = 18, contentWidth = Math.max(280, width - left * 2);
+        int sideWidth = Math.min(400, Math.max(150, contentWidth / 3));
+        int mainWidth = Math.max(120, contentWidth - sideWidth - gap);
+        int sideX = left + mainWidth + gap;
+        int panelTop = 34, panelHeight = Math.max(1, height - 76);
+        RewardEditorTheme.panel(graphics, left - 6, panelTop, mainWidth + 12, panelHeight,
+                RewardEditorTheme.GOLD);
+        RewardEditorTheme.panel(graphics, sideX - 6, panelTop, sideWidth + 12, panelHeight,
+                RewardEditorTheme.GREEN);
+        graphics.drawString(font, editingMail == null ? title : text("edit_mail"), left, 12,
+                RewardEditorTheme.GOLD, false);
+        if (height >= 300) {
+            graphics.drawString(font, text("compose.content"), left + 12, 68, RewardEditorTheme.TEXT, false);
+            graphics.drawString(font, text("compose.delivery"), sideX + 12, 68, RewardEditorTheme.TEXT, false);
+        }
         for (var entry : java.util.Map.of(recipient, "recipient_short", sender, "sender_label",
                 subject, "subject_label", icon, "icon_label", expiry, "expiry_days").entrySet())
             graphics.drawString(font, text(entry.getValue()), entry.getKey().getX(),
@@ -564,14 +581,14 @@ public final class MailComposeScreen extends AnimatedQuestScreen {
             graphics.pose().pushPose();
             graphics.pose().translate(0, 0, 1000);
             int w = HalfScreenDialog.width(width), h = HalfScreenDialog.height(height);
-            int left = (width - w) / 2, top = (height - h) / 2, part = (w - 24) / 3;
-            MailDecor.frame(graphics, left, top, w, h, true);
+            int confirmLeft = (width - w) / 2, top = (height - h) / 2, part = (w - 24) / 3;
+            MailDecor.frame(graphics, confirmLeft, top, w, h, true);
             var lines = font.split(text("save_draft_question"), Math.max(1, w - 24));
             for (int i = 0; i < Math.min(3, lines.size()); i++)
-                graphics.drawString(font, lines.get(i), left + 12, top + 16 + i * font.lineHeight, 0xFF505A6B, false);
+                graphics.drawString(font, lines.get(i), confirmLeft + 12, top + 16 + i * font.lineHeight, 0xFF505A6B, false);
             String[] keys = {"save_draft_yes", "save_draft_no", "cancel"};
             for (int i = 0; i < 3; i++) {
-                int bx = left + 8 + i * (part + 4), by = top + h - 34;
+                int bx = confirmLeft + 8 + i * (part + 4), by = top + h - 34;
                 graphics.fill(bx, by, bx + part, by + 24, 0xFF303C50);
                 String label = text(keys[i]).getString();
                 float scale = Math.min(1, (part - 8F) / Math.max(1, font.width(label)));

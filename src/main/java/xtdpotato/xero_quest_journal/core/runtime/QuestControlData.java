@@ -11,9 +11,15 @@ import java.util.*;
 
 public final class QuestControlData extends SavedData {
     private CompoundTag players = new CompoundTag();
+    private CompoundTag teams = new CompoundTag();
     public static QuestControlData get(ServerPlayer player) {
         return player.server.overworld().getDataStorage().computeIfAbsent(new Factory<>(QuestControlData::new,
-                (tag, registries) -> { var data = new QuestControlData(); data.players = tag.getCompound("players"); return data; }),
+                (tag, registries) -> {
+                    var data = new QuestControlData();
+                    data.players = tag.getCompound("players");
+                    data.teams = tag.getCompound("teams");
+                    return data;
+                }),
                 "xero_control_state");
     }
     private CompoundTag player(ServerPlayer player) {
@@ -124,13 +130,37 @@ public final class QuestControlData extends SavedData {
     public String variable(ServerPlayer player, String id) {
         var definition = QuestVariableStore.find(id);
         if (definition == null) throw new IllegalArgumentException("Unknown variable");
+        if (definition.readOnly()) return progressVariable(player, definition);
+        if (definition.teamShared()) {
+            String team = teamKey(player);
+            return teams.getCompound(team).contains(id)
+                    ? teams.getCompound(team).getString(id) : definition.initial();
+        }
         return players.getCompound(player.getUUID().toString()).getCompound("variables")
                 .contains(id) ? players.getCompound(player.getUUID().toString()).getCompound("variables")
                 .getString(id) : definition.initial();
     }
+    public Map<String, String> variableSnapshot(ServerPlayer player) {
+        Map<String, String> values = new LinkedHashMap<>();
+        for (var definition : QuestVariableStore.all())
+            values.put(definition.id(), variable(player, definition.id()));
+        return Map.copyOf(values);
+    }
     public void setVariable(ServerPlayer player, String id, String value) {
-        if (QuestVariableStore.find(id) == null || value == null || value.length() > 4096)
+        var definition = QuestVariableStore.find(id);
+        if (definition == null || definition.readOnly() || value == null || value.length() > 4096
+                || definition.numeric() && !finiteNumber(value))
             throw new IllegalArgumentException("Invalid variable value");
+        if (definition.teamShared()) {
+            String team = teamKey(player);
+            if (!teams.contains(team)) teams.put(team, new CompoundTag());
+            CompoundTag values = teams.getCompound(team);
+            if (!values.contains(id) && values.size() >= 1024)
+                throw new IllegalStateException("Too many team variable values");
+            values.putString(id, value);
+            setDirty();
+            return;
+        }
         CompoundTag person = player(player);
         if (!person.contains("variables")) person.put("variables", new CompoundTag());
         CompoundTag values = person.getCompound("variables");
@@ -148,7 +178,41 @@ public final class QuestControlData extends SavedData {
             values.remove(oldId);
             changed = true;
         }
+        for (String team : teams.getAllKeys()) {
+            CompoundTag values = teams.getCompound(team);
+            if (!values.contains(oldId)) continue;
+            values.putString(newId, values.getString(oldId));
+            values.remove(oldId);
+            changed = true;
+        }
         if (changed) setDirty();
+    }
+    public static String teamKey(ServerPlayer player) {
+        var team = player.getTeam();
+        return team == null ? "solo:" + player.getUUID() : team.getName();
+    }
+    private static boolean finiteNumber(String value) {
+        try { return Double.isFinite(Double.parseDouble(value)); }
+        catch (RuntimeException invalid) { return false; }
+    }
+    private static String progressVariable(ServerPlayer player,
+                                           xtdpotato.xero_quest_journal.core.model.QuestVariable variable) {
+        String id = variable.id();
+        String suffix = id.substring(id.lastIndexOf('.') + 1);
+        String taskId = variable.scope();
+        QuestDefinition quest = QuestRepository.find(taskId);
+        if (quest == null) return "0";
+        QuestProgressData data = QuestProgressData.get(player.server);
+        QuestConditions.Progress progress = QuestConditions.progress(player,
+                QuestSteps.current(data, player.getUUID(), quest));
+        int current = data.entry(player.getUUID(), quest) == null ? progress.current() : progress.required();
+        int required = progress.required();
+        return switch (suffix) {
+            case "progress_current" -> Integer.toString(current);
+            case "progress_required" -> Integer.toString(required);
+            case "progress_ratio" -> required <= 0 ? "0" : Double.toString(current / (double) required);
+            default -> "0";
+        };
     }
     public Map<String, Map<String, Map<String, String>>> snapshot(ServerPlayer player) {
         Map<String, Map<String, Map<String, String>>> result = new LinkedHashMap<>();
@@ -165,6 +229,7 @@ public final class QuestControlData extends SavedData {
     }
     @Override public CompoundTag save(CompoundTag tag, HolderLookup.Provider registries) {
         tag.put("players", players.copy());
+        tag.put("teams", teams.copy());
         return tag;
     }
 }

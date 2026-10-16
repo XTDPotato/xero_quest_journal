@@ -9,14 +9,16 @@ public record TriggerGraph(List<Node> nodes, List<Edge> edges) {
     public static final List<String> EVENTS = List.of("click", "jump", "join", "leave", "dimension",
             "death", "respawn", "kill", "block_break", "block_interact", "item_pickup", "craft",
             "smelt", "sleep", "wake", "advancement", "tick", "world_tick", "day_start", "night_start",
-            "rain_start", "rain_stop", "thunder_start", "thunder_stop", "hover", "press", "release", "hold");
+            "rain_start", "rain_stop", "thunder_start", "thunder_stop", "hover", "press", "release", "hold",
+            "chapter_switch_after", "chapter_switch_before");
     public static final List<String> CONTROL_EVENTS = List.of("click", "hover", "press", "release", "hold");
     public static final List<String> ACTIONS = List.of("complete", "advance_step", "activate", "unlock", "lock",
             "set_task_property", "command",
             "set_property", "reset_property",
-            "set_theme", "set_overview_background", "reward", "kubejs_call", "kubejs_script", "set_variable",
+            "set_theme", "set_overview_background", "set_hot_event_background", "reward", "kubejs_call", "kubejs_script", "set_variable",
             "set_context", "end", "context");
-    public static final List<String> SETTABLE_PLAYER_FIELDS = List.of("experienceLevel", "health", "foodLevel");
+    public static final List<String> SETTABLE_PLAYER_FIELDS = List.of("experienceLevel", "health", "maxHealth",
+            "foodLevel", "x", "y", "z", "sneaking", "sprinting");
     public static final List<String> SETTABLE_WORLD_FIELDS = List.of("dayTime", "raining", "thundering");
     public static final List<String> PROPERTIES = ControlProperties.all();
     public static final List<String> FIELDS = List.of("eventType", "eventTarget", "dimension",
@@ -33,8 +35,8 @@ public record TriggerGraph(List<Node> nodes, List<Edge> edges) {
             if (id == null || !id.matches("[A-Za-z0-9_-]{1,64}")
                     || !List.of("event", "js", "variable", "context", "complete", "advance_step", "activate",
                     "unlock", "lock", "reset_property",
-                    "set_theme", "set_overview_background", "reward", "kubejs_call", "kubejs_script", "set_property",
-                    "set_task_property", "set_variable", "command", "end",
+                    "set_theme", "set_overview_background", "set_hot_event_background", "reward", "kubejs_call", "kubejs_script", "set_property",
+                    "set_task_property", "set_variable", "calculate_variable", "command", "end",
                     "set_context", "delay",
                     "mail_send", "mail_check", "mail_delete", "mail_set_property", "mail_lock_task", "mail_unlock_task",
                     "locate_structure", "locate_biome", "teleport", "enter_structure").contains(type))
@@ -105,8 +107,21 @@ public record TriggerGraph(List<Node> nodes, List<Edge> edges) {
                 if (!List.of("player", "server").contains(data.getOrDefault("scope", "player")))
                     throw new IllegalArgumentException("Invalid overview background scope");
             }
+            if (type.equals("set_hot_event_background")) {
+                new HotEventCanvas(data.getOrDefault("source", ""), "", List.of(), true, Map.of(),
+                        data.getOrDefault("type", "image"), Double.parseDouble(data.getOrDefault("scale", "1")),
+                        Integer.parseInt(data.getOrDefault("offsetX", "0")),
+                        Integer.parseInt(data.getOrDefault("offsetY", "0")), data.getOrDefault("mode", "cover"),
+                        data.getOrDefault("music", ""));
+            }
             if (type.equals("context") && !FIELDS.contains(data.getOrDefault("field", "")))
                 throw new IllegalArgumentException("Unknown event variable");
+            if (data.containsKey("showAll") && !List.of("true", "false").contains(data.get("showAll")))
+                throw new IllegalArgumentException("Invalid node display flag");
+            if (type.equals("context"))
+                xtdpotato.xero_quest_journal.core.runtime.QuestContextTargets.validateRead(data.getOrDefault("player", "@s"));
+            if (type.equals("js")) for (String key : List.of("fieldPlayer", "fieldPlayer2", "expectedPlayer", "expectedPlayer2"))
+                xtdpotato.xero_quest_journal.core.runtime.QuestContextTargets.validateRead(data.getOrDefault(key, "@s"));
             for (String key : List.of("expectedField", "expectedField2", "sourceField"))
                 if (!data.getOrDefault(key, "").isBlank() && !FIELDS.contains(data.get(key)))
                     throw new IllegalArgumentException("Unknown comparison event variable");
@@ -128,6 +143,16 @@ public record TriggerGraph(List<Node> nodes, List<Edge> edges) {
                     && (data.getOrDefault("variable", "").isBlank()
                     || !OPERATORS.contains(data.getOrDefault("operator", "eq"))))
                 throw new IllegalArgumentException("Invalid variable node");
+            if (type.equals("calculate_variable")
+                    && (data.getOrDefault("variable", "").isBlank()
+                    || !xtdpotato.xero_quest_journal.core.runtime.QuestVariableMath.OPERATIONS
+                    .contains(data.getOrDefault("operation", "add"))
+                    || data.getOrDefault("operand", "").length() > 256
+                    || data.getOrDefault("operandVariable", "").length() > 129))
+                throw new IllegalArgumentException("Invalid calculator node");
+            if ((type.equals("locate_structure") || type.equals("locate_biome"))
+                    && data.getOrDefault("storeVariable", "").length() > 129)
+                throw new IllegalArgumentException("Invalid locate result variable");
             int cooldown = Integer.parseInt(data.getOrDefault("cooldown", "20"));
             if (cooldown < 1 || cooldown > 72000) throw new IllegalArgumentException("Invalid cooldown");
         }
@@ -180,10 +205,15 @@ public record TriggerGraph(List<Node> nodes, List<Edge> edges) {
                     int parsed = Integer.parseInt(value);
                     if (parsed < 0 || parsed > 21863) throw new IllegalArgumentException("Invalid experience level");
                 }
-                case "health" -> {
+                case "health", "maxHealth" -> {
                     float parsed = Float.parseFloat(value);
-                    if (!Float.isFinite(parsed) || parsed < 0 || parsed > 2048)
+                    if (!Float.isFinite(parsed) || parsed < (field.equals("maxHealth") ? .1F : 0) || parsed > 2048)
                         throw new IllegalArgumentException("Invalid health");
+                }
+                case "x", "y", "z" -> {
+                    double parsed = Double.parseDouble(value);
+                    if (!Double.isFinite(parsed) || Math.abs(parsed) > (field.equals("y") ? 2048 : 30000000))
+                        throw new IllegalArgumentException("Invalid player position");
                 }
                 case "foodLevel" -> {
                     int parsed = Integer.parseInt(value);
@@ -193,7 +223,7 @@ public record TriggerGraph(List<Node> nodes, List<Edge> edges) {
                     long parsed = Long.parseLong(value);
                     if (parsed < 0) throw new IllegalArgumentException("Invalid day time");
                 }
-                case "raining", "thundering" -> {
+                case "raining", "thundering", "sneaking", "sprinting" -> {
                     if (!List.of("true", "false").contains(value))
                         throw new IllegalArgumentException("Invalid weather state");
                 }

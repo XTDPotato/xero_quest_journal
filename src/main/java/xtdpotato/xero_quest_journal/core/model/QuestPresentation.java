@@ -54,7 +54,7 @@ public record QuestPresentation(boolean authored, int width, int height, List<Co
             var nodes = control.graph().nodes().stream().map(node -> {
                 var data = new LinkedHashMap<>(node.data());
                 for (String key : List.of("field", "field2", "expectedVar", "expectedVar2",
-                        "variable", "sourceVariable")) {
+                        "variable", "sourceVariable", "valueVariable", "operandVariable", "storeVariable")) {
                     if (oldId.equals(data.get(key))) data.put(key, newId);
                     if (("field".equals(key) || "field2".equals(key)) && ("var:" + oldId).equals(data.get(key)))
                         data.put(key, "var:" + newId);
@@ -75,7 +75,7 @@ public record QuestPresentation(boolean authored, int width, int height, List<Co
                         && ids.containsKey(node.get("target", "")))
                     data.put("target", ids.get(node.get("target", "")));
                 for (String key : List.of("field", "field2", "expectedVar", "expectedVar2",
-                        "variable", "sourceVariable")) {
+                        "variable", "sourceVariable", "valueVariable", "operandVariable", "storeVariable")) {
                     String value = data.get(key);
                     if (value == null) continue;
                     boolean field = (key.equals("field") || key.equals("field2")) && value.startsWith("var:");
@@ -93,7 +93,7 @@ public record QuestPresentation(boolean authored, int width, int height, List<Co
         }).toList(), variables.stream().map(variable -> {
             String scope = variable.scope();
             return ids.containsKey(scope) ? new QuestVariable(ids.get(scope) + "." + variable.name(),
-                    variable.initial(), variable.created()) : variable;
+                    variable.initial(), variable.created(), variable.type(), variable.sharing()) : variable;
         }).toList());
     }
 }

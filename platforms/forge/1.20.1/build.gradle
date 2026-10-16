@@ -64,9 +64,20 @@ minecraft {
 repositories {
     maven { url = "https://maven.minecraftforge.net/" }
     mavenCentral()
+    maven {
+        name = "XeroReiApi"; url = "https://maven.shedaniel.me"
+        content { includeGroup("me.shedaniel"); includeGroup("me.shedaniel.cloth") }
+    }
+    maven {
+        name = "XeroArchitecturyApi"; url = "https://maven.architectury.dev"
+        content { includeGroup("dev.architectury") }
+    }
 }
 
 dependencies {
+    compileOnly(fg.deobf("me.shedaniel:RoughlyEnoughItems-api-forge:12.1.785")) { transitive = false }
+    compileOnly("me.shedaniel.cloth:basic-math:0.6.1") { transitive = false }
+    compileOnly(fg.deobf("dev.architectury:architectury-forge:9.0.7")) { transitive = false }
     minecraft "net.minecraftforge:forge:${project.minecraft_version}-${project.forge_version}"
     implementation "org.jsoup:jsoup:1.18.3"
     implementation "org.mozilla:rhino:1.7.15"
@@ -177,8 +188,8 @@ tasks.register("prepareForgeSources") {
                                 "save(CompoundTag root)")
             }
             if (relative.endsWith("QuestControlData.java")) {
-                text = text.replace("new Factory<>(QuestControlData::new,\n                (tag, registries) -> { var data = new QuestControlData(); data.players = tag.getCompound(\"players\"); return data; }),",
-                        "tag -> { var data = new QuestControlData(); data.players = tag.getCompound(\"players\"); return data; }, QuestControlData::new,")
+                text = text.replaceAll(/new Factory<>\(QuestControlData::new,\s*\(tag, registries\) -> \{([\s\S]*?)\}\),/,
+                        'tag -> {$1}, QuestControlData::new,')
                         .replace("save(CompoundTag tag, HolderLookup.Provider registries)", "save(CompoundTag tag)")
             }
             if (relative.endsWith("QuestStructures.java")) {
@@ -506,7 +517,7 @@ tasks.register("prepareForgeSources") {
                         .replace("game.player.getServer().registryAccess()", "game.level.registryAccess()")
                         .replace("minecraft.player.getServer().registryAccess()", "minecraft.level.registryAccess()")
                         .replace("new net.minecraft.core.component.DataComponents.CUSTOM_NAME", "ForgeSmokeData.CUSTOM_NAME")
-                text = text.replaceAll(/(\.save\((?:new )?(?:net\.minecraft\.nbt\.)?CompoundTag\(\)),\s*(?:player\.getServer\(\)|server)\.registryAccess\(\)\)/,
+                text = text.replaceAll(/(\.save\((?:new )?(?:net\.minecraft\.nbt\.)?CompoundTag\(\)),\s*(?:player\.getServer\(\)|server|p\.server)\.registryAccess\(\)\)/,
                         "\$1)")
                         .replaceAll(/((?:QuestProgressData|MailboxData)\.load\([^;]*),\s*(?:player\.getServer\(\)|server)\.registryAccess\(\)\)/,
                                 "\$1)")

@@ -295,7 +295,7 @@ final class HotEventsRegression {
                                 button.styleId().equals("overview-feature-empty")),
                         "Completed recommended task remained featured");
                 require(Component.translatable("screen.xero_quest_journal.overview_feature_empty")
-                                .getString().equals("当前无推荐任务"),
+                                .getString().equals("未完待续…"),
                         "Empty recommended card has the wrong message");
                 capture(game, "hot-events-overview-empty");
                 fixture = new CompletableFuture<>();
@@ -442,6 +442,16 @@ final class HotEventsRegression {
         var setter = HotEventsScreen.class.getDeclaredMethod("setZoom", double.class);
         setter.setAccessible(true);
         setter.invoke(screen, 1.0);
+        double defaultZoom = position("zoom");
+        double center = invokeNumber("canvasX", screen.width / 2.0);
+        require(screen.mouseScrolled(screen.width / 2.0, screen.height / 2.0, 0, 1),
+                "Mouse wheel was not handled over the hot-events canvas");
+        require(position("zoom") > defaultZoom
+                        && Math.abs(sx(center) - screen.width / 2.0) < .001,
+                "Ordinary mouse wheel did not zoom around the screen center");
+        screen.mouseScrolled(screen.width / 2.0, screen.height / 2.0, 0, -1);
+        require(Math.abs(position("zoom") - defaultZoom) < .001,
+                "Reverse mouse wheel did not restore the hot-events zoom");
     }
 
     private static void verifyScaledDragging() throws Exception {

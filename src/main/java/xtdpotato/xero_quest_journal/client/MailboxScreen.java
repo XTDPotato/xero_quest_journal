@@ -74,6 +74,7 @@ public final class MailboxScreen extends AnimatedQuestScreen {
     private List<AbstractWidget> baseWidgets = List.of();
     private boolean helpScrollbar;
     private final UiCompositor rowCompositor = new UiCompositor();
+    private UiMotion detailReveal = new UiMotion(false, System.nanoTime());
     private final java.util.Map<String, Integer> rowEntranceOrder = new java.util.LinkedHashMap<>();
     private long rowEntranceStart;
     private int rowEntranceDuration;
@@ -395,6 +396,7 @@ public final class MailboxScreen extends AnimatedQuestScreen {
             detailScroll = 0;
             detailMotion.jump(0);
             attachmentMotion.jump(0);
+            revealDetails();
         }
         selectedId = mail.id();
         noticeId = "";
@@ -659,6 +661,7 @@ public final class MailboxScreen extends AnimatedQuestScreen {
         }
         if (selected != null) {
             renderDetails(graphics, selected, mouseX, mouseY);
+            renderDetailReveal(graphics);
         }
         if (maxRowScroll() > 0) {
             graphics.fill(split() - 5, listTop(), split() - 2, listBottom(), 0xFF383F50);
@@ -667,7 +670,9 @@ public final class MailboxScreen extends AnimatedQuestScreen {
         if (actionMessage != null) {
             var layout = StatusToastRenderer.layout(font, text("action." + actionMessage),
                     width - 24, height - 84);
-            StatusToastRenderer.draw(graphics, font, layout, width / 2, height - 54 - layout.height());
+            StatusToastRenderer.drawAnimated(graphics, font, layout, width / 2,
+                    height - 54 - layout.height(),
+                    StatusToastRenderer.lifetimeProgress(actionMessageStartedAt, 3000));
         }
         renderAnimatedMenu(graphics, "compose", composeMenuOpen && !favoriteOnly ? "compose" : null,
                 viewport(composeMenuLeft(), composeMenuTop(), composeMenuLeft() + 176,
@@ -828,11 +833,28 @@ public final class MailboxScreen extends AnimatedQuestScreen {
                 MailboxRuntime.Attachment attachment = attachments.get(index);
                 RewardCardRenderer.render(graphics, font,
                         QuestRewardsScreen.icon(attachment.type(), attachment.item()), attachment.count(),
+                        attachment.quality(), attachment.background(),
                         rewards.left() + index * ATTACHMENT_COLUMN_STEP - attachmentMotion.pixels(),
                         attachmentTop(mail), 1, 1, attachment.claimed(), index == hoveredAttachment);
             }
             graphics.disableScissor();
         }
+    }
+
+    private void renderDetailReveal(GuiGraphics graphics) {
+        if (detailReveal.settled()) return;
+        detailReveal.advance(System.nanoTime(), popupAnimationMillis());
+        Viewport detail = detailViewport();
+        int alpha = Math.round((1 - detailReveal.eased()) * 210);
+        if (alpha > 0) graphics.fill(detail.left(), detail.top(), width - 12,
+                selected != null && !visibleAttachments(selected).isEmpty() ? height - 44 : detail.bottom(),
+                alpha << 24 | 0x202A36);
+    }
+
+    private void revealDetails() {
+        long now = System.nanoTime();
+        detailReveal = new UiMotion(false, now);
+        detailReveal.target(true, now, popupAnimationMillis());
     }
 
     private Viewport detailViewport() {
@@ -894,7 +916,8 @@ public final class MailboxScreen extends AnimatedQuestScreen {
         MailboxRuntime.Attachment attachment = visibleAttachments(selected).get(index);
         if (attachment.type().equals("item") && !attachment.item().isBlank())
             minecraft.setScreen(new QuestRewardPopupScreen(this,
-                    new QuestDefinition.Reward("item", attachment.item(), attachment.count())));
+                    new QuestDefinition.Reward("item", attachment.item(), attachment.count(),
+                            attachment.quality(), attachment.background())));
     }
     private ItemStack attachmentStack(MailboxRuntime.Attachment attachment) {
         if (!attachment.type().equals("item") || attachment.item().isBlank() || minecraft.player == null)

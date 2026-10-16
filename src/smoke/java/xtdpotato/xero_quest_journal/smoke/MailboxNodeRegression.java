@@ -225,9 +225,12 @@ final class MailboxNodeRegression {
     private static void verifyPresentation(ServerPlayer player) throws Exception {
         String id = "mail_graph_presentation";
         var attachments = List.of(
-                new MailboxRuntime.Attachment("item", "minecraft:diamond", 1, false),
-                new MailboxRuntime.Attachment("item", "minecraft:emerald", 2, false, false, true),
-                new MailboxRuntime.Attachment("item", "minecraft:gold_ingot", 3, false, true, false),
+                new MailboxRuntime.Attachment("item", "minecraft:diamond", 1, false,
+                        false, false, "mythic", "#327A65"),
+                new MailboxRuntime.Attachment("item", "minecraft:emerald", 2, false,
+                        false, true, "rare", ""),
+                new MailboxRuntime.Attachment("item", "minecraft:gold_ingot", 3, false,
+                        true, false, "epic", ""),
                 new MailboxRuntime.Attachment("command", "tag @s add mail_hidden_reward", 1, false, true, true));
         var node = node("presentation", "mail_send", Map.of("rewards", GSON.toJson(attachments)));
         require(QuestMailActions.attachments(node).equals(attachments), "Mail node discarded presentation flags");
@@ -238,7 +241,9 @@ final class MailboxNodeRegression {
                 {"id":"old","sender":"Xero","subject":"Legacy","body":"","icon":"","treasured":false,
                  "rewards":[{"type":"item","item":"minecraft:diamond","count":1}]}
                 """, xtdpotato.xero_quest_journal.core.mailbox.MailDraft.class);
-        require(legacy.attachments().equals(List.of(attachments.getFirst())), "Legacy bundles no longer show item receipts");
+        require(legacy.attachments().equals(List.of(
+                        new MailboxRuntime.Attachment("item", "minecraft:diamond", 1, false))),
+                "Legacy bundles no longer default missing reward quality");
         var wire = new QuestNetwork.MailboxSendPayload(7, "@s", id, "Sender", "Subject", "Body", "", false, attachments);
         var buffer = new RegistryFriendlyByteBuf(Unpooled.buffer(), player.registryAccess());
         try {
@@ -255,7 +260,8 @@ final class MailboxNodeRegression {
             require(restored.messages(player.getUUID()).stream().filter(mail -> mail.id().equals(id))
                     .findFirst().orElseThrow().attachments().equals(attachments), "NBT lost flags");
             var receipt = MailboxRuntime.receiptItems(player, id, false);
-            require(receipt.equals(List.of(new QuestDefinition.Reward("item", "minecraft:diamond", 1))),
+            require(receipt.equals(List.of(new QuestDefinition.Reward(
+                            "item", "minecraft:diamond", 1, "mythic", "#327A65"))),
                     "Receipt includes hidden, silent or non-item rewards");
             var result = new QuestNetwork.MailboxActionResultPayload(8, "claimed", receipt);
             QuestNetwork.MailboxActionResultPayload.STREAM_CODEC.encode(buffer, result);

@@ -59,8 +59,13 @@ final class QuestVariableListScreen extends AnimatedQuestScreen {
         Comparator<QuestVariable> order = (side == 0 ? globalByDate : taskByDate)
                 ? Comparator.comparingLong(QuestVariable::created).reversed().thenComparing(QuestVariable::id)
                 : Comparator.comparing(QuestVariable::name).thenComparing(QuestVariable::id);
-        return ClientQuestDefinitions.variables().stream().filter(variable -> variable.scope().equals(scope)
-                && variable.id().toLowerCase(java.util.Locale.ROOT).contains(filter)).sorted(order).toList();
+        var values = new java.util.ArrayList<>(ClientQuestDefinitions.variables().stream()
+                .filter(variable -> variable.scope().equals(scope)).toList());
+        if (side == 1 && taskId.matches("[A-Za-z0-9_-][A-Za-z0-9_.-]{0,63}"))
+            for (String name : List.of("progress_current", "progress_required", "progress_ratio"))
+                values.add(new QuestVariable(taskId + "." + name, "0", 0, "number", "player"));
+        return values.stream().filter(variable -> variable.id().toLowerCase(java.util.Locale.ROOT).contains(filter))
+                .sorted(order).toList();
     }
     @Override protected void init() {
         if (globalSearch != null) { globalFilter = globalSearch.getValue(); taskFilter = taskSearch.getValue(); }
@@ -90,9 +95,13 @@ final class QuestVariableListScreen extends AnimatedQuestScreen {
             var edit = action("edit", x, height - 29, (w - 4) / 2, () -> {
                 var variable = ClientQuestDefinitions.variables().stream()
                         .filter(v -> v.id().equals(selected[s])).findFirst().orElse(null);
-                if (variable != null) openEdit(variable.scope(), variable);
+                if (variable != null && !xtdpotato.xero_quest_journal.core.io.QuestVariableStore
+                        .builtInLocation(variable.id())) openEdit(variable.scope(), variable);
             });
-            edit.active = !selected[s].isEmpty();
+            var selectedVariable = ClientQuestDefinitions.variables().stream()
+                    .filter(v -> v.id().equals(selected[s])).findFirst().orElse(null);
+            edit.active = selectedVariable != null
+                    && !xtdpotato.xero_quest_journal.core.io.QuestVariableStore.builtInLocation(selectedVariable.id());
             var place = action("insert", x + (w + 4) / 2, height - 29, (w - 4) / 2, () -> {
                 if (!selected[s].isEmpty()) { insert.accept(selected[s]); minecraft.setScreen(parent); }
             });
@@ -150,9 +159,29 @@ final class QuestVariableListScreen extends AnimatedQuestScreen {
             }
         }
         super.renderContents(g, mouseX, mouseY, delta);
-        if (hovered != null && draggingSide < 0)
-            g.renderTooltip(font, List.of(Component.literal(hovered.id()),
-                    text("initial").copy().append(": " + hovered.initial())), java.util.Optional.empty(), mouseX, mouseY);
+        if (hovered != null && draggingSide < 0) {
+            var details = new java.util.ArrayList<Component>();
+            details.add(Component.literal(hovered.id()));
+            details.add(text("initial").copy().append(": " + hovered.initial()));
+            details.add(text("type").copy().append(": ").append(text("type." + hovered.type())));
+            details.add(text(hovered.teamShared() ? "sharing.team" : "sharing.player"));
+            String liveValue = ClientControlState.variable(hovered.id());
+            if (liveValue == null && hovered.readOnly()) {
+                var progress = ClientQuestProgress.view(hovered.scope());
+                if (progress != null) {
+                    liveValue = switch (hovered.name()) {
+                        case "progress_current" -> Integer.toString(progress.current());
+                        case "progress_required" -> Integer.toString(progress.required());
+                        case "progress_ratio" -> progress.required() <= 0 ? "0"
+                                : Double.toString(progress.current() / (double) progress.required());
+                        default -> null;
+                    };
+                }
+            }
+            if (liveValue != null) details.add(text("current_value").copy().append(": " + liveValue));
+            if (hovered.readOnly()) details.add(text("progress_readonly"));
+            g.renderTooltip(font, details, java.util.Optional.empty(), mouseX, mouseY);
+        }
     }
     @Override public boolean mouseClicked(double x, double y, int button) {
         if (super.mouseClicked(x, y, button)) return true;

@@ -12,18 +12,23 @@ final class QuestPropertyValueScreen extends AnimatedQuestScreen {
     private final Consumer<String> saved;
     private String draft;
     private MultiLineEditBox editor;
+    private final int limit;
 
     QuestPropertyValueScreen(Screen parent, Component title, String initial, Consumer<String> saved) {
+        this(parent, title, initial, saved, 4096);
+    }
+    QuestPropertyValueScreen(Screen parent, Component title, String initial, Consumer<String> saved, int limit) {
         super(title);
         this.parent = parent;
         this.saved = saved;
         this.draft = initial;
+        this.limit = limit;
     }
     @Override protected void init() {
         if (editor != null) draft = editor.getValue();
         clearWidgets();
         editor = new SmoothTextBox(font, 12, 35, width - 24, height - 74, title, Component.empty());
-        editor.setCharacterLimit(4096);
+        editor.setCharacterLimit(Math.max(limit, draft.length()));
         editor.setValue(draft);
         addRenderableWidget(editor);
         var styles = ButtonStyleSheet.load();

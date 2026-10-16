@@ -3,6 +3,7 @@ package xtdpotato.xero_quest_journal.smoke;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
 import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.components.Checkbox;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.IntTag;
 import net.minecraft.nbt.ListTag;
@@ -35,6 +36,7 @@ final class RuntimeRegression {
     private static CompletableFuture<Void> reload;
     private static QuestScreen journal;
     private static final String GUI = PREFIX + "_gui";
+    private static int searchSettingsPhase;
 
     static boolean tick(Minecraft game) throws Exception {
         game.getToasts().clear();
@@ -56,7 +58,69 @@ final class RuntimeRegression {
                 pending.join();
                 reload.join();
                 if (ClientQuestDefinitions.find(GUI) == null) return false;
-                journal = QuestScreen.task(null, GUI);
+                if (journal == null) {
+                    var preferences = ClientPreferences.get();
+                    preferences.questSearchScopes = Set.of("title", "description");
+                    preferences.questSearchFilters = Map.of();
+                    preferences.lastSelectedQuestId = "";
+                    preferences.lastSelectedQuestCategory = "active";
+                    preferences.save();
+                    journal = new QuestScreen();
+                    game.setScreen(journal);
+                }
+                if (searchSettingsPhase == 0) {
+                    button(game, "search-settings").onPress();
+                    require(game.screen instanceof QuestSearchSettingsScreen,
+                            "Search settings did not open from the task search field");
+                    require(game.screen.children().stream().filter(Checkbox.class::isInstance).count() == 4,
+                            "Search settings did not show the four searchable task fields");
+                    searchSettingsPhase = 1;
+                    wait = 12;
+                    return false;
+                }
+                if (searchSettingsPhase == 1) {
+                    capture(game, "runtime-search-settings");
+                    button(game, "search-settings-filters").onPress();
+                    require(game.screen instanceof QuestSearchFilterScreen,
+                            "Advanced task filters did not open");
+                    searchSettingsPhase = 2;
+                    wait = 12;
+                    return false;
+                }
+                if (searchSettingsPhase == 2) {
+                    require(game.screen instanceof QuestSearchFilterScreen,
+                            "Advanced task filter screen did not remain open");
+                    capture(game, "runtime-search-filters");
+                    require((double) field(field(game.screen, "scroll"), "maximum") > 0,
+                            "Advanced task filter list did not enable smooth scrolling");
+                    var selectedFilters = Map.of(
+                            "reward_type", Set.of("item"),
+                            "reward_item", Set.of("minecraft:emerald"),
+                            "condition_type", Set.of("confirm"));
+                    set(game.screen, "draft", selectedFilters);
+                    button(game, "search-filter-apply").onPress();
+                    require(ClientPreferences.get().questSearchFilters.equals(selectedFilters),
+                            "Search filter selections were not persisted");
+                    var fixture = QuestRepository.find(GUI);
+                    require(QuestSearchFilters.matchesContent(fixture, selectedFilters),
+                            "Combined reward and condition filters rejected a matching task");
+                    require(!QuestSearchFilters.matchesContent(fixture, Map.of(
+                                    "reward_type", Set.of("item"), "reward_item", Set.of("minecraft:diamond"))),
+                            "Reward-item filter accepted an unrelated item");
+                    ClientPreferences.get().questSearchFilters = Map.of();
+                    ClientPreferences.get().save();
+                    call(journal, "searchConfigurationChanged", new Class<?>[0]);
+                    searchSettingsPhase = 3;
+                    wait = 12;
+                    return false;
+                }
+                if (game.screen instanceof QuestSearchSettingsScreen) {
+                    button(game, "search-settings-close").onPress();
+                    wait = 12;
+                    return false;
+                }
+                if (game.screen != journal) return false;
+                searchSettingsPhase = 4;
                 game.setScreen(new QuestRewardsScreen(journal, GUI));
             }
             case 2 -> {
@@ -64,9 +128,18 @@ final class RuntimeRegression {
                 require(game.screen.children().stream().anyMatch(w -> w instanceof StyledChoiceButton<?>),
                         "No reward type selector");
                 game.setScreen(new QuestConditionsScreen(journal, GUI));
+                button(game, "condition-type-0").onPress();
             }
             case 3 -> {
                 capture(game, "runtime-conditions");
+                var conditionType = (StyledChoiceButton<?>) button(game, "condition-type-0");
+                require(conditionType.isOpen(), "Condition type popup did not open");
+                @SuppressWarnings("unchecked") var groups =
+                        (Map<String, String>) field(conditionType, "optionGroups");
+                require(groups.values().containsAll(List.of("manual", "inventory", "combat", "world",
+                                "quest", "events", "logic")),
+                        "Condition type popup is missing its visual option groups");
+                conditionType.onPress();
                 var edits = fields(game);
                 require(edits.size() >= 2, "No completion condition inputs");
                 button(game, "conditions-add").onPress();
@@ -109,9 +182,39 @@ final class RuntimeRegression {
                 if (view == null || !view.status().equals("complete")) return false;
                 if (ClientQuestProgress.completionNotices().stream()
                         .anyMatch(notice -> notice.questId().equals(GUI))) return false;
-                game.setScreen(QuestScreen.task(null, GUI));
+                EditorRegression.reveal(game, GUI);
+                var taskRow = game.screen.children().stream().filter(JournalListButton.class::isInstance)
+                        .map(JournalListButton.class::cast)
+                        .filter(row -> row.styleId().equals("quest-" + GUI)).findFirst().orElseThrow();
+                double selectX = taskRow.getX() + 30;
+                double selectY = taskRow.getY() + taskRow.getHeight() / 2.0;
+                require(game.screen.mouseClicked(selectX, selectY, 0),
+                        "Could not select the completed task before closing the journal");
+                game.screen.mouseReleased(selectX, selectY, 0);
+                require(field(game.screen, "selectedId").equals(GUI),
+                        "Selecting a task did not update the journal selection");
+                ((QuestScreen) game.screen).onClose();
+                journal = QuestScreen.resume(null);
+                require(field(journal, "selectedId").equals(GUI)
+                                && field(journal, "category").equals("active"),
+                        "Closing and reopening reset the selected task: selected="
+                                + field(journal, "selectedId") + ", category=" + field(journal, "category")
+                                + ", savedId=" + ClientPreferences.get().lastSelectedQuestId
+                                + ", savedCategory=" + ClientPreferences.get().lastSelectedQuestCategory);
+                game.setScreen(journal);
             }
-            case 9 -> button(game, "claim").onPress();
+            case 9 -> {
+                var taskRow = game.screen.children().stream().filter(JournalListButton.class::isInstance)
+                        .map(JournalListButton.class::cast)
+                        .filter(row -> row.styleId().equals("quest-" + GUI)).findFirst().orElseThrow();
+                require(taskRow.claimable(), "Completed-unclaimed task has no claim marker");
+                require(QuestScreen.matchesCategory(QuestRepository.find(GUI), "active")
+                                && !QuestScreen.matchesCategory(QuestRepository.find(GUI), "completed"),
+                        "Completed-unclaimed task left In Progress before it was claimed");
+                require(game.screen.mouseClicked(taskRow.getRight() - 14,
+                                taskRow.getY() + taskRow.getHeight() / 2.0, 0),
+                        "Clicking the list claim icon did not start reward claiming");
+            }
             case 10 -> {
                 if (!(game.screen != null && game.screen.getClass().getSimpleName().equals("QuestConfirmScreen")))
                     return false;
@@ -139,6 +242,9 @@ final class RuntimeRegression {
             case 14 -> {
                 var view = ClientQuestProgress.view(GUI);
                 if (view == null || !view.status().equals("claimed")) return false;
+                require(!QuestScreen.matchesCategory(QuestRepository.find(GUI), "active")
+                                && QuestScreen.matchesCategory(QuestRepository.find(GUI), "completed"),
+                        "Claimed task did not move to Completed");
                 return true;
             }
             default -> throw new AssertionError("Invalid runtime stage");
@@ -514,6 +620,16 @@ final class RuntimeRegression {
         var field = target.getClass().getDeclaredField(name);
         field.setAccessible(true);
         return field.get(target);
+    }
+    private static Object call(Object target, String name, Class<?>[] types, Object... args) throws Exception {
+        var method = target.getClass().getDeclaredMethod(name, types);
+        method.setAccessible(true);
+        return method.invoke(target, args);
+    }
+    private static void set(Object target, String name, Object value) throws Exception {
+        var field = target.getClass().getDeclaredField(name);
+        field.setAccessible(true);
+        field.set(target, value);
     }
     private static void capture(Minecraft game, String name) throws Exception {
         Path output = Path.of("../build/verification");

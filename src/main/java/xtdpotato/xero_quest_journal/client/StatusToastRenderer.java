@@ -9,6 +9,7 @@ import java.util.List;
 /** Shared task-style capsule for transient status messages. */
 public final class StatusToastRenderer {
     public record Layout(int width, int height, List<FormattedCharSequence> lines) {}
+    private static final UiCompositor COMPOSITOR = new UiCompositor();
 
     private StatusToastRenderer() {}
 
@@ -39,5 +40,35 @@ public final class StatusToastRenderer {
             graphics.drawString(font, line, centerX - font.width(line) / 2, lineY, alpha | 0x50586D, false);
             lineY += font.lineHeight + 2;
         }
+    }
+
+    public static void drawAnimated(GuiGraphics graphics, Font font, Layout layout,
+                                    int centerX, int y, double progress) {
+        var profile = ClientPreferences.get().popupAnimation;
+        var transform = profile.sample(progress);
+        if (transform.opacity() <= 0) return;
+        if (progress >= 1 && transform.scale() == 1 && transform.x() == 0 && transform.y() == 0
+                && transform.rotation() == 0 && transform.opacity() == 1) {
+            draw(graphics, font, layout, centerX, y);
+            return;
+        }
+        Runnable draw = () -> draw(graphics, font, layout, centerX, y);
+        COMPOSITOR.capture(graphics, draw);
+        var game = net.minecraft.client.Minecraft.getInstance();
+        int screenWidth = game.getWindow().getGuiScaledWidth();
+        int screenHeight = game.getWindow().getGuiScaledHeight();
+        int left = centerX - layout.width() / 2;
+        COMPOSITOR.transformed(graphics, screenWidth, screenHeight, left, y,
+                left + layout.width(), y + layout.height(), transform.scale(), transform.x(),
+                transform.y(), transform.rotation(), transform.opacity());
+    }
+
+    public static double lifetimeProgress(long startedAt, long lifetimeMillis) {
+        int duration = AnimatedQuestScreen.popupAnimationMillis();
+        if (duration <= 0 || startedAt <= 0) return 1;
+        long elapsed = Math.max(0, System.nanoTime() - startedAt) / 1_000_000L;
+        double entering = Math.clamp(elapsed / (double) duration, 0, 1);
+        double exiting = Math.clamp((lifetimeMillis - elapsed) / (double) duration, 0, 1);
+        return Math.min(entering, exiting);
     }
 }

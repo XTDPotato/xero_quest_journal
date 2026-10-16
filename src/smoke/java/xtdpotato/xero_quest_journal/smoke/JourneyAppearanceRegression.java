@@ -62,6 +62,9 @@ final class JourneyAppearanceRegression {
                 button(journal, "journey-appearance").onPress();
                 require(game.screen instanceof JourneyAppearanceScreen, "Chapter appearance action missing");
                 editor = (JourneyAppearanceScreen) game.screen;
+                var targetChapter = (QuestCatalog.Chapter) member(editor, "chapterContext");
+                require(targetChapter.id().equals(chapterId),
+                        "Appearance editor targeted a different chapter: " + targetChapter.id());
                 field("text_x").setValue("17");
                 field("text_y").setValue("-9");
                 field("icon_x").setValue("8");
@@ -123,8 +126,8 @@ final class JourneyAppearanceRegression {
                 button(journal, "journey-appearance").onPress();
                 editor = (JourneyAppearanceScreen) game.screen;
                 button(editor, "journey-appearance-reset").onPress();
-                require(field("text_y").getValue().equals("0") && field("icon").getValue().isBlank(),
-                        "Reset did not restore inherited defaults");
+                require(field("text_y").getValue().equals("-9") && field("icon").getValue().isBlank(),
+                        "Reset did not restrict inherited defaults to the selected icon");
                 button(editor, "journey-appearance-cancel").onPress();
                 journey = new JourneyScreen(journal);
                 game.setScreen(journey);
@@ -141,8 +144,13 @@ final class JourneyAppearanceRegression {
                 int x = journey.width - 52, y = 22;
                 journey.mouseClicked(x, y, 0);
                 journey.mouseReleased(x, y, 0);
-                require(game.screen instanceof JourneyAppearanceScreen, "Global appearance tool did not open");
+                require(game.screen == journey && (boolean) member(journey, "editing"),
+                        "Pencil did not enter journey editing mode");
+                invoke(journey, "editAppearance", new Class<?>[]{});
+                require(game.screen instanceof JourneyAppearanceScreen, "Appearance action did not open");
                 editor = (JourneyAppearanceScreen) game.screen;
+                require(((QuestCatalog.Chapter) member(editor, "chapterContext")).id().equals(chapterId),
+                        "Live appearance action did not target the active chapter");
                 setSelected("header");
                 field("icon").setValue("minecraft:compass");
                 field("text_x").setValue("5");
@@ -151,22 +159,31 @@ final class JourneyAppearanceRegression {
                 wait = 10;
             }
             case 4 -> {
-                if (game.screen == editor) return false;
-                require(game.screen == journey && ClientQuestProgress.uiTheme().journeyAppearance()
-                        .get("header").icon().equals("minecraft:compass"), "Server theme did not save journey appearance");
+                if (game.screen == editor || member(journey, "pending") != null) return false;
+                require(game.screen == journey && ClientQuestProgress.uiTheme().equals(originalTheme),
+                        "Chapter appearance editor changed the global theme");
+                savedAppearance = QuestRepository.chapters().stream().filter(c -> c.id().equals(chapterId))
+                        .findFirst().orElseThrow().journeyAppearance();
                 var effective = (JourneyAppearance) invoke(journey, "appearance", new Class<?>[]{});
                 require(effective.get("chapter").equals(savedAppearance.get("chapter"))
                                 && effective.get("header").icon().equals("minecraft:compass"),
-                        "Chapter overrides replaced unrelated global slots");
-                capture(game, "journey-custom-defaults");
+                        "Chapter overrides replaced unrelated global slots: effective=" + effective
+                                + ", saved=" + savedAppearance + ", selectedChapter=" + member(journey, "chapterIndex")
+                                + ", saveError=" + member(journey, "saveError"));
+                require(ClientQuestDefinitions.chapters().stream().filter(c -> !c.id().equals(chapterId))
+                                .noneMatch(c -> c.journeyAppearance().get("header").icon().equals("minecraft:compass")),
+                        "Editing the current chapter changed another chapter");
+                capture(game, "journey-custom-chapter-only");
                 var theme = ClientQuestProgress.uiTheme();
                 require(theme.with("accent", "#ffffff").journeyAppearance().equals(theme.journeyAppearance())
                                 && theme.withOverviewImage("").journeyAppearance().equals(theme.journeyAppearance()),
                         "Unrelated theme edits lost journey appearance");
                 work = CompletableFuture.runAsync(() -> {
                     var player = game.getSingleplayerServer().getPlayerList().getPlayer(game.player.getUUID());
-                    require(QuestConfig.reload() && QuestConfig.defaults().uiTheme.journeyAppearance()
-                            .get("header").icon().equals("minecraft:compass"), "Theme appearance did not survive reload");
+                    QuestRepository.reload();
+                    require(QuestRepository.chapters().stream().filter(c -> c.id().equals(chapterId))
+                                    .findFirst().orElseThrow().journeyAppearance().get("header").icon().equals("minecraft:compass"),
+                            "Chapter appearance did not survive reload");
                     var buffer = new RegistryFriendlyByteBuf(Unpooled.buffer(), player.registryAccess());
                     try {
                         var state = new QuestUiThemeNetwork.State(new Gson().toJson(theme));
@@ -186,13 +203,13 @@ final class JourneyAppearanceRegression {
                 game.getWindow().setHeight(480);
                 game.resizeDisplay();
                 editor.setFocused(field("icon_x"));
-                editor.mouseScrolled(100, editor.height - 55, 0, -1);
+                editor.mouseScrolled(editor.width - 60, editor.height - 55, 0, -1);
                 wait = 6;
             }
             case 6 -> {
                 require(editor.getFocused() == field("icon_x"),
                         "Scrolling rebuilt the focused appearance field");
-                editor.mouseScrolled(100, editor.height - 55, 0, -8);
+                editor.mouseScrolled(editor.width - 60, editor.height - 55, 0, -8);
                 wait = 6;
             }
             case 7 -> {
@@ -330,8 +347,8 @@ final class JourneyAppearanceRegression {
         }
     }
     private static int[] previewPixels(Minecraft game) throws Exception {
-        int x = (int) invoke(editor, "left", new Class<?>[]{}) + 15;
-        int y = (61 + (int) invoke(editor, "bodyTop", new Class<?>[]{}) - 8) / 2 - 14;
+        int x = (int) invoke(editor, "previewIconX", new Class<?>[]{});
+        int y = (int) invoke(editor, "previewIconY", new Class<?>[]{});
         try (var image = Screenshot.takeScreenshot(game.getMainRenderTarget())) {
             double sx = image.getWidth() / (double) editor.width, sy = image.getHeight() / (double) editor.height;
             int[] pixels = new int[28 * 28];

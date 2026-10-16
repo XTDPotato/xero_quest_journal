@@ -3,6 +3,7 @@ package xtdpotato.xero_quest_journal.smoke;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.chat.Component;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -77,6 +78,8 @@ final class SpotlightUiRegression {
                             data.addProperty("defaultUnlocked", true);
                             data.add("triggers", com.google.gson.JsonParser.parseString(
                                     "[{\"type\":\"confirm\",\"count\":1}]"));
+                            if (i == 3) data.add("rewards", com.google.gson.JsonParser.parseString(
+                                    "[{\"type\":\"item\",\"item\":\"minecraft:diamond\",\"count\":3}]"));
                             data.add("hotEvent", com.google.gson.JsonParser.parseString(
                                     "{\"enabled\":true,\"positioned\":true,\"x\":" + (48 + i * 228) + ",\"y\":12}"));
                             Files.writeString(group.resolve(id(i) + ".json"), data.toString());
@@ -146,6 +149,16 @@ final class SpotlightUiRegression {
                 require(field(task, "parent") == null && field(task, "selectedId").equals(id(3)),
                         "Hot task retained a history screen or selected another task");
                 require(button(task, "quest-" + id(3)).getTooltip() != null, "Player journal row has no tooltip");
+                String taskTooltip = QuestText.tooltip(QuestRepository.find(id(3))).getString();
+                require(taskTooltip.contains(Component.translatable(
+                                "screen.xero_quest_journal.tooltip.progress").getString()),
+                        "Task tooltip omitted progress");
+                require(taskTooltip.contains(Component.translatable(
+                                "screen.xero_quest_journal.tooltip.rewards").getString())
+                                && taskTooltip.contains(QuestIcons.displayName("minecraft:diamond")
+                                .replaceAll(" \\([^)]*\\)$", ""))
+                                && taskTooltip.contains("3"),
+                        "Task tooltip omitted its completion reward");
                 cursor(game, button(task, "quest-" + id(3)).getX() + 45,
                         button(task, "quest-" + id(3)).getY() + 10);
                 capture(game, "spotlight-task-tooltip");

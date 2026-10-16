@@ -33,7 +33,29 @@ public final class QuestTemplateStore {
     public static void ensureDefaults() throws IOException {
         Files.createDirectories(ROOT);
         Path marker = QuestConfig.root().resolve("runtime/template_catalog_v2");
-        if (Files.exists(marker)) return;
+        String catalogVersion = Files.exists(marker) ? Files.readString(marker).strip() : "";
+        if (catalogVersion.equals("6")) return;
+        if (catalogVersion.equals("5")) {
+            writeTeachingTemplates();
+            AtomicFiles.write(marker, "6\n", true);
+            return;
+        }
+        if (catalogVersion.equals("4")) {
+            writeTeachingTemplates();
+            AtomicFiles.write(marker, "6\n", true);
+            return;
+        }
+        if (catalogVersion.equals("3")) {
+            writeTeachingTemplates();
+            AtomicFiles.write(marker, "6\n", true);
+            return;
+        }
+        if (catalogVersion.equals("2")) {
+            migrateDefaultRewardLayouts();
+            writeTeachingTemplates();
+            AtomicFiles.write(marker, "6\n", true);
+            return;
+        }
         var legacy = List.of(
                 new QuestTemplate("guide", "指引任务", "自定义完成条件的主线任务", "main",
                         "minecraft:book", "minecraft:oak_log", 1, "", 1, "default", "", legacyDefaultElements()),
@@ -53,8 +75,92 @@ public final class QuestTemplateStore {
             for (String mode : List.of("view", "travel", "submit", "structure", "event"))
                 writeIfMissing(defaultTemplate(type, mode));
         QuestTemplateSceneDefaults.ensure();
+        writeTeachingTemplates();
         Files.createDirectories(marker.getParent());
-        AtomicFiles.write(marker, "2\n", false);
+        AtomicFiles.write(marker, "6\n", false);
+    }
+
+    private static void writeTeachingTemplates() throws IOException {
+        var progressGraph = new TriggerGraph(List.of(
+                new TriggerGraph.Node("click", "event", 0, 0,
+                        Map.of("event", "click", "category", "control_event", "cooldown", "4")),
+                new TriggerGraph.Node("rename", "set_property", 180, 0,
+                        Map.of("control", "progress", "property", "displayText", "value", "已提交"))),
+                List.of(new TriggerGraph.Edge("click", "rename", "next")));
+        var progressElements = new java.util.ArrayList<>(builtInDefaultElements());
+        var progressButton = actionElement("rename_progress", "button", "更新进度名称", 150, 26,
+                progressGraph, Map.of());
+        progressElements.add(new QuestTemplate.Element(progressButton.id(), progressButton.kind(),
+                progressButton.value(), 0, 0, progressButton.width(), progressButton.height(),
+                progressButton.attributes(), "body"));
+        QuestTemplate oldProgressExample = new QuestTemplate("tutorial_progress_label", "示例：自定义任务进度名称",
+                "完成 4 个物品的提交任务。点击节点图按钮会把进度显示名改成“已提交”。也可在节点图中绑定只读进度变量 progress_current、progress_required 或 progress_ratio。",
+                "world", "minecraft:paper", "minecraft:oak_log", 4, "", 1, "manual", "",
+                progressElements, List.of(new QuestDefinition.Trigger("item_submit", "minecraft:oak_log", 4)),
+                List.of(), "examples", false);
+        var labeledProgressElements = new java.util.ArrayList<>(progressElements);
+        for (int i = 0; i < labeledProgressElements.size(); i++) {
+            var element = labeledProgressElements.get(i);
+            if (!element.id().equals("progress")) continue;
+            var attributes = new LinkedHashMap<>(element.attributes());
+            attributes.put("displayText", "收集进度");
+            labeledProgressElements.set(i, new QuestTemplate.Element(element.id(), element.kind(), element.value(),
+                    element.x(), element.y(), element.width(), element.height(), attributes, element.parent()));
+        }
+        QuestTemplate progressExample = new QuestTemplate(oldProgressExample.id(), oldProgressExample.name(),
+                oldProgressExample.description(), oldProgressExample.type(), oldProgressExample.icon(),
+                oldProgressExample.item(), oldProgressExample.count(), oldProgressExample.rewardItem(),
+                oldProgressExample.rewardCount(), oldProgressExample.rewardMode(), oldProgressExample.css(),
+                labeledProgressElements, oldProgressExample.defaultConditions(),
+                oldProgressExample.defaultRewards(), oldProgressExample.group(), oldProgressExample.archived());
+        writeTeachingTemplate(progressExample, oldProgressExample);
+
+        var locateGraph = new TriggerGraph(List.of(
+                new TriggerGraph.Node("click", "event", 0, 0,
+                        Map.of("event", "click", "category", "control_event", "cooldown", "20")),
+                new TriggerGraph.Node("locate", "locate_structure", 180, 0,
+                        Map.of("target", "minecraft:village_plains", "dimension", "", "radius", "32",
+                                "storeVariable", "globe.located_structure")),
+                new TriggerGraph.Node("done", "end", 360, -36, Map.of()),
+                new TriggerGraph.Node("failed", "end", 360, 36, Map.of())),
+                List.of(new TriggerGraph.Edge("click", "locate", "next"),
+                        new TriggerGraph.Edge("locate", "done", "true"),
+                        new TriggerGraph.Edge("locate", "failed", "false")));
+        var locateElements = new java.util.ArrayList<>(builtInDefaultElements());
+        var locateButton = actionElement("locate_share", "button", "定位并共享村庄坐标", 190, 28,
+                locateGraph, Map.of());
+        locateElements.add(new QuestTemplate.Element(locateButton.id(), locateButton.kind(),
+                locateButton.value(), 0, 0, locateButton.width(), locateButton.height(),
+                locateButton.attributes(), "body"));
+        writeIfMissing(new QuestTemplate("tutorial_shared_locate", "示例：定位并共享结构坐标",
+                "点击按钮搜索最近的平原村庄。成功后自动追踪本任务坐标，并写入默认队伍共享结构变量 globe.located_structure；同时保存结构 ID、维度及 X/Y/Z，可供同一队伍中的其他玩家和节点图读取。",
+                "world", "minecraft:compass", "minecraft:oak_log", 1, "", 1, "manual", "",
+                locateElements, List.of(new QuestDefinition.Trigger("confirm", "", 1)),
+                List.of(), "examples", false));
+    }
+
+    private static void writeTeachingTemplate(QuestTemplate updated, QuestTemplate previousBuiltIn) throws IOException {
+        Path file = ROOT.resolve(updated.id() + ".json");
+        if (!Files.exists(file)) {
+            writeIfMissing(updated);
+            return;
+        }
+        if (previousBuiltIn.equals(read(file))) AtomicFiles.write(file, GSON.toJson(updated), true);
+    }
+
+    private static void migrateDefaultRewardLayouts() throws IOException {
+        for (String type : List.of("main", "legendary", "commission", "world")) {
+            for (String mode : List.of("view", "travel", "submit", "structure", "event")) {
+                QuestTemplate updated = defaultTemplate(type, mode);
+                Path file = ROOT.resolve(updated.id() + ".json");
+                if (!Files.exists(file)) {
+                    writeIfMissing(updated);
+                } else if (defaultTemplate(type, mode, false).equals(read(file))) {
+                    AtomicFiles.write(file, GSON.toJson(updated), true);
+                }
+            }
+        }
+        QuestTemplateSceneDefaults.ensure();
     }
 
     private static void writeIfMissing(QuestTemplate template) throws IOException {
@@ -92,6 +198,13 @@ public final class QuestTemplateStore {
     }
 
     private static List<QuestTemplate.Element> builtInDefaultElements() {
+        var elements = new java.util.ArrayList<>(legacyBuiltInDefaultElements());
+        elements.add(new QuestTemplate.Element("rewards", "quest_rewards", "", 0, 0, 350, 32,
+                Map.of("layout_width", "-1", "layout_height", "-2"), "body"));
+        return List.copyOf(elements);
+    }
+
+    private static List<QuestTemplate.Element> legacyBuiltInDefaultElements() {
         return List.of(
                 new QuestTemplate.Element("body", "linear", "", 0, 12, 370, 230,
                         Map.of("layout_width", "-1", "layout_height", "-2", "orientation", "vertical",
@@ -110,6 +223,10 @@ public final class QuestTemplateStore {
     }
 
     private static QuestTemplate defaultTemplate(String type, String mode) {
+        return defaultTemplate(type, mode, true);
+    }
+
+    private static QuestTemplate defaultTemplate(String type, String mode, boolean includeRewardFooter) {
         String prefix = switch (type) {
             case "main" -> "主线"; case "legendary" -> "传说"; case "commission" -> "委托"; default -> "世界";
         };
@@ -129,7 +246,8 @@ public final class QuestTemplateStore {
             case "submit" -> "minecraft:chest"; case "structure" -> "minecraft:structure_block";
             default -> "minecraft:redstone";
         };
-        List<QuestTemplate.Element> elements = new java.util.ArrayList<>(builtInDefaultElements());
+        List<QuestTemplate.Element> elements = new java.util.ArrayList<>(
+                includeRewardFooter ? builtInDefaultElements() : legacyBuiltInDefaultElements());
         var conditions = switch (mode) {
             case "view" -> List.of(new QuestDefinition.Trigger("confirm", "", 1));
             case "travel" -> List.of(new QuestDefinition.Trigger("location", "structure||#minecraft:village", 1));

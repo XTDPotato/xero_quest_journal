@@ -10,12 +10,19 @@ public record LootDefinition(String id, String name, Mode mode, int rolls, Strin
     }
 
     public record Entry(String id, String type, String item, int count, int weight,
-                        String condition, boolean enabled) {
+                        String condition, boolean enabled, String quality, String background) {
+        public Entry(String id, String type, String item, int count, int weight,
+                     String condition, boolean enabled) {
+            this(id, type, item, count, weight, condition, enabled, "", "");
+        }
+
         public Entry {
             id = id == null || id.isBlank() ? "entry" : id;
             type = type == null || type.isBlank() ? "item" : type;
             item = item == null ? "" : item;
             condition = condition == null || condition.isBlank() ? "always" : condition;
+            quality = type.equals("item") ? QuestRewardQuality.normalize(quality) : "";
+            background = type.equals("item") ? QuestRewardQuality.normalizeBackground(background) : "";
             if (count < 1 || count > 1000000) throw new IllegalArgumentException("Loot count must be 1..1000000");
             if (weight < 0 || weight > 1000000) throw new IllegalArgumentException("Loot weight must be 0..1000000");
             if (id.length() > 64 || type.length() > 32 || item.length() > 8192 || condition.length() > 512)
@@ -23,7 +30,7 @@ public record LootDefinition(String id, String name, Mode mode, int rolls, Strin
         }
 
         public QuestDefinition.Reward reward() {
-            return new QuestDefinition.Reward(type, item, count);
+            return new QuestDefinition.Reward(type, item, count, quality, background);
         }
     }
 
@@ -44,6 +51,6 @@ public record LootDefinition(String id, String name, Mode mode, int rolls, Strin
 
     public static LootDefinition empty(String id) {
         return new LootDefinition(id, id, Mode.RANDOM, 1, "", List.of(
-                new Entry("entry-1", "item", "minecraft:diamond", 1, 1, "always", true)));
+                new Entry("entry-1", "item", "minecraft:diamond", 1, 1, "always", true, "", "")));
     }
 }

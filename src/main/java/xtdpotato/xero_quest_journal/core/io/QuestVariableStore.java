@@ -25,7 +25,25 @@ public final class QuestVariableStore {
 
     public static synchronized List<QuestVariable> all() { return snapshot; }
     public static synchronized QuestVariable find(String id) {
-        return snapshot.stream().filter(variable -> variable.id().equals(id)).findFirst().orElse(null);
+        QuestVariable existing = snapshot.stream().filter(variable -> variable.id().equals(id))
+                .findFirst().orElse(null);
+        if (existing != null) return existing;
+        if (id == null) return null;
+        for (String suffix : List.of("progress_current", "progress_required", "progress_ratio")) {
+            String ending = "." + suffix;
+            if (!id.endsWith(ending)) continue;
+            String taskId = id.substring(0, id.length() - ending.length());
+            if (xtdpotato.xero_quest_journal.core.io.QuestRepository.find(taskId) != null)
+                return new QuestVariable(id, "0", 0, "number", "player");
+        }
+        return null;
+    }
+    public static boolean builtInLocation(String id) {
+        return builtInLocationVariables().stream().anyMatch(variable -> variable.id().equals(id));
+    }
+    public static List<QuestVariable> progressVariables(String taskId) {
+        return List.of("progress_current", "progress_required", "progress_ratio").stream()
+                .map(name -> find(taskId + "." + name)).filter(Objects::nonNull).toList();
     }
     public static synchronized void refresh() {
         try {
@@ -40,7 +58,8 @@ public final class QuestVariableStore {
             if (parsed == null || parsed.size() > 1024) throw new IllegalArgumentException("Too many variables");
             var ids = new HashSet<String>();
             for (QuestVariable variable : parsed) {
-                new QuestVariable(variable.id(), variable.initial(), variable.created());
+                new QuestVariable(variable.id(), variable.initial(), variable.created(),
+                        variable.type(), variable.sharing());
                 if (!ids.add(variable.id())) throw new IllegalArgumentException("Duplicate variable ID");
             }
             shared = List.copyOf(parsed);
@@ -56,6 +75,8 @@ public final class QuestVariableStore {
             if (variable.scope().equals("globe") || taskIds.contains(variable.scope()))
                 combined.put(variable.id(), variable);
         }
+        for (QuestVariable variable : builtInLocationVariables()) combined.put(variable.id(), variable);
+        for (QuestVariable variable : builtInLocationVariables()) combined.put(variable.id(), variable);
         for (QuestDefinition task : tasks) {
             for (QuestVariable variable : task.presentation().variables()) {
                 if (!variable.scope().equals(task.id()))
@@ -66,6 +87,15 @@ public final class QuestVariableStore {
         if (combined.size() > 1024) throw new IllegalArgumentException("Too many variables");
         snapshot = List.copyOf(combined.values());
     }
+    private static List<QuestVariable> builtInLocationVariables() {
+        return List.of(
+                new QuestVariable("globe.located_structure", "", 0, "string", "team"),
+                new QuestVariable("globe.located_structure_x", "0", 0, "number", "team"),
+                new QuestVariable("globe.located_structure_y", "0", 0, "number", "team"),
+                new QuestVariable("globe.located_structure_z", "0", 0, "number", "team"),
+                new QuestVariable("globe.located_structure_dimension", "", 0, "string", "team"),
+                new QuestVariable("globe.located_structure_id", "", 0, "string", "team"));
+    }
     public record Result(String id, String error) {
         public boolean successful() { return error == null; }
     }
@@ -75,13 +105,22 @@ public final class QuestVariableStore {
      */
     public static Result save(ServerPlayer author, String taskId, String oldId, String id,
                               String initial, boolean currentOnly) {
+        QuestVariable old = oldId == null || oldId.isBlank() ? null : find(oldId);
+        return save(author, taskId, oldId, id, initial,
+                old == null ? null : old.type(), old == null ? "player" : old.sharing(), currentOnly);
+    }
+
+    public static Result save(ServerPlayer author, String taskId, String oldId, String id,
+                              String initial, String type, String sharing, boolean currentOnly) {
         if (author == null || author.getServer() == null || !author.getServer().isSameThread()
                 || !author.hasPermissions(2)) return new Result(id, "permission");
         synchronized (QuestRepository.class) {
             try {
                 if (QuestRepository.find(taskId) == null) return new Result(id, "missing_task");
-                QuestVariable next = new QuestVariable(id, initial, System.currentTimeMillis());
+                QuestVariable next = new QuestVariable(id, initial, System.currentTimeMillis(), type, sharing);
                 QuestVariable old = oldId == null || oldId.isBlank() ? null : find(oldId);
+                if (next.readOnly() || builtInLocation(id) || old != null
+                        && (old.readOnly() || builtInLocation(old.id()))) return new Result(id, "readonly");
                 if (oldId != null && !oldId.isBlank() && old == null) return new Result(id, "missing_variable");
                 if (!next.scope().equals("globe") && !next.scope().equals(taskId))
                     return new Result(id, "scope");
@@ -96,7 +135,7 @@ public final class QuestVariableStore {
                 if (find(id) != null && (old == null || !old.id().equals(id) || currentOnly))
                     return new Result(id, "duplicate");
                 QuestVariable saved = new QuestVariable(id, initial,
-                        old == null || currentOnly ? next.created() : old.created());
+                        old == null || currentOnly ? next.created() : old.created(), next.type(), next.sharing());
                 if (snapshot.size() + (old == null || currentOnly ? 1 : 0) > 1024)
                     return new Result(id, "limit");
                 List<QuestVariable> updatedShared = new ArrayList<>(shared);

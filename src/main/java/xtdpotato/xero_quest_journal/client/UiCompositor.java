@@ -56,6 +56,10 @@ final class UiCompositor implements AutoCloseable {
         RenderSystem.enableDepthTest();
     }
 
+    void full(GuiGraphics graphics, int width, int height, float alpha) {
+        band(graphics, width, height, 0, height, 0, alpha);
+    }
+
     void centered(GuiGraphics graphics, int width, int height, int left, int top,
                   int right, int bottom, float scale, float alpha) {
         if (surface == null || alpha <= 0 || right <= left || bottom <= top) return;

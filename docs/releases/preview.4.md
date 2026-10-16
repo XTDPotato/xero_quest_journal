@@ -1,5 +1,8 @@
 # 多版本预览 4：全屏设置、JS 参考与中文文档
 
+这是历史发布草案，未作为独立 GitHub Release 发布。相关功能和后续修订已合并至
+[多版本预览 5](preview.5.md)，下载和最新验证请以预览 5 为准。
+
 本次同时更新四个已完成目标：
 
 | Minecraft | 加载器 | Java |
@@ -17,6 +20,9 @@
 - 全屏设置采用顶部六标签：常规、动画、通知、外观、任务、工具；内容切换 100ms。
 - 合并重复设置入口，普通玩家可修改个人偏好，服务器配置保留管理员校验。
 - 游戏内 JS 编辑器加入用途参考、字段类型、15 个示例、行号、语法错误提示与草稿保留。
+- 节点字段支持拼音可搜索菜单、长按拖出游戏变量、双击长内容快速编辑和默认全部显示。
+- 游戏变量读写显示所属玩家/选择器；背包任务/邮件入口可独立开关并按九宫格锚点拖放。
+- 有安装 REI 时提供书本/纸张收藏快捷入口，可从设置管理并通过 REI 打开对应页面。
 - 条件文件和奖励文件分别展示对应 API；奖励列表直接打开新的奖励脚本参考。
 - 修复判断节点的 JS 标签被模式控件遮挡，追加示例超限时保留原稿。
 - 补齐全部命令、判断节点语义、JS 返回值/类型/异常/一次执行规则。
@@ -29,6 +35,7 @@
 - [JavaScript 编写与游戏内编辑器参考](https://github.com/XTDPotato/xero_quest_journal/blob/v0.1.0-multiversion-preview.4/docs/javascript.md)
 - [判断节点与真假分支](https://github.com/XTDPotato/xero_quest_journal/blob/v0.1.0-multiversion-preview.4/docs/trigger-conditions.md)
 - [本轮验证报告](https://github.com/XTDPotato/xero_quest_journal/blob/v0.1.0-multiversion-preview.4/docs/authoring-verification.md)
+- [节点字段、背包入口与 REI](https://github.com/XTDPotato/xero_quest_journal/blob/v0.1.0-multiversion-preview.4/docs/visual-graph-and-inventory-shortcuts.md)
 - [中文截图索引](https://github.com/XTDPotato/xero_quest_journal/blob/v0.1.0-multiversion-preview.4/docs/images/README.md)
 
 ## 下载与验证
@@ -37,8 +44,7 @@
 可读源码 ZIP 和 `SHA256SUMS.txt`。合集包含公开 Markdown 与截图；
 源码查看请使用本页自动生成的 Source code 或仓库链接。
 
-四个目标均完成生产构建和七项相关客户端/集成服务器回归，合计 28 项最终通过。
-两个 Fabric 最终重映射 JAR 另通过六标签生产客户端和物理 SERVER 初始化检查。
+四个目标需重新完成本轮交互后的生产构建和作者工具回归。NeoForge REI 客户端额外验证收藏添加、移除和点击入口。
 所有核心 JAR 均小于 5 MB，未包含测试类。
 
 ## 当前边界

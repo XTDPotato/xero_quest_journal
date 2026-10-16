@@ -33,12 +33,17 @@ public final class JournalListButton extends StyledButton {
     private String accent = "none";
     private String trackingType = "world";
     private boolean locked;
+    private boolean claimable;
+    private int claimIconX, claimIconY, claimIconSize;
     private boolean newTask;
     private java.util.function.Supplier<String> subtitle;
 
     public JournalListButton locked(boolean value) { locked = value; return this; }
     public boolean locked() { return locked; }
+    public JournalListButton claimable(boolean value) { claimable = value; return this; }
+    public boolean claimable() { return claimable; }
     public JournalListButton newTask(boolean value) { newTask = value; return this; }
+    public boolean notificationBadge() { return !completed && (claimable || newTask); }
 
     /** Second line of a task row (distance, authored subtitle or current step); evaluated each frame. */
     public JournalListButton subtitle(java.util.function.Supplier<String> value) {
@@ -226,7 +231,9 @@ public final class JournalListButton extends StyledButton {
                     baseY + leadingIcon.offsetY(), leadingIcon.width(), leadingIcon.height(), leadingIcon.alpha());
             left += leadingIcon.width() + Math.abs(leadingIcon.offsetX()) + 4;
         }
-        int trailingSpace = trailingIcon.visible()
+        int trailingSpace = claimable
+                ? Math.max(24, trailingIcon.width() + Math.abs(trailingIcon.offsetX()) + 8)
+                : trailingIcon.visible()
                 ? trailingIcon.width() + Math.abs(trailingIcon.offsetX()) + 8 : 4;
         if (locked) trailingSpace = Math.max(trailingSpace, 24);
         int textRight = getRight() - inset - trailingSpace;
@@ -252,7 +259,7 @@ public final class JournalListButton extends StyledButton {
             }
         }
         renderTrailing(graphics, text, inset);
-        if (newTask && !group) {
+        if (notificationBadge() && !group) {
             int right = getRight() - 9, badgeTop = getY() + 3;
             MailDecor.circle(graphics, right - 1, badgeTop - 1, 8, 0xFFF7F4EE);
             MailDecor.circle(graphics, right, badgeTop, 6, 0xFFEF4052);
@@ -266,6 +273,16 @@ public final class JournalListButton extends StyledButton {
                     getY() + (getHeight() - 16) / 2, 16);
             return;
         }
+        if (claimable && !group) {
+            int size = Math.min(16, Math.min(trailingIcon.width(), trailingIcon.height()));
+            claimIconX = getRight() - inset - size + (trailingIcon.width() - size) / 2 + trailingIcon.offsetX();
+            claimIconY = getY() + (getHeight() - size) / 2 + trailingIcon.offsetY();
+            claimIconSize = size;
+            JournalNavButton.drawIcon(graphics, "gift", claimIconX, claimIconY, size,
+                    applyAlpha(selected ? 0xFFF6D78C : 0xFFF2CF83, trailingIcon.alpha() * alpha));
+            return;
+        }
+        claimIconSize = 0;
         if (!trailingIcon.visible()) return;
         String image = trailingIcon.image(tracked);
         int baseX = getRight() - inset - trailingIcon.width();
@@ -295,6 +312,12 @@ public final class JournalListButton extends StyledButton {
                     size, trailingIcon.alpha() * alpha, ClientPreferences.get().reducedMotion);
             graphics.disableScissor();
         }
+    }
+
+    public boolean claimIconContains(double mouseX, double mouseY) {
+        return claimable && !group && !locked && claimIconSize > 0
+                && mouseX >= claimIconX - 3 && mouseX < claimIconX + claimIconSize + 3
+                && mouseY >= claimIconY - 3 && mouseY < claimIconY + claimIconSize + 3;
     }
 
     @Override

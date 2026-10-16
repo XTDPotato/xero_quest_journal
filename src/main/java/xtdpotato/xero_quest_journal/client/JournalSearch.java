@@ -16,6 +16,7 @@ final class JournalSearch {
     private List<QuestCatalog.Group> groupSource = List.of();
     private List<QuestCatalog.Chapter> chapterSource = List.of();
     private Object language, connection;
+    private String scopeSignature = "";
     private final Map<String, String> groupText = new HashMap<>();
     private final Map<String, String> chapterText = new HashMap<>();
     private final Map<String, String> itemNames = new HashMap<>();
@@ -40,13 +41,17 @@ final class JournalSearch {
                         List<QuestCatalog.Chapter> chapters) {
         var game = Minecraft.getInstance();
         Object currentLanguage = Language.getInstance(), currentConnection = game.getConnection();
+        String currentScopeSignature = ClientPreferences.get().questSearchScopes.stream().sorted()
+                .collect(java.util.stream.Collectors.joining(","));
         if (source == tasks && groupSource == groups && chapterSource == chapters
-                && language == currentLanguage && connection == currentConnection) return false;
+                && language == currentLanguage && connection == currentConnection
+                && scopeSignature.equals(currentScopeSignature)) return false;
         source = tasks;
         groupSource = groups;
         chapterSource = chapters;
         language = currentLanguage;
         connection = currentConnection;
+        scopeSignature = currentScopeSignature;
         worker.cancel();
         submittedQuery = null;
         documents = null;
@@ -56,11 +61,21 @@ final class JournalSearch {
         itemNames.clear();
         groupText.clear();
         chapterText.clear();
-        for (var group : groups)
-            groupText.put(group.id(), group.id() + "\n" + group.name() + "\n" + group.description());
+        var scopes = ClientPreferences.get().questSearchScopes;
+        for (var group : groups) {
+            var values = new ArrayList<String>();
+            if (scopes.contains("title")) values.add(group.name());
+            if (scopes.contains("description")) values.add(group.description());
+            if (scopes.contains("internal")) values.add(group.id());
+            groupText.put(group.id(), String.join("\n", values));
+        }
         var chapterFields = new HashMap<String, StringBuilder>();
         for (var chapter : chapters) {
-            String text = chapter.id() + "\n" + chapter.name() + "\n" + chapter.description();
+            var values = new ArrayList<String>();
+            if (scopes.contains("title")) values.add(chapter.name());
+            if (scopes.contains("description")) values.add(chapter.description());
+            if (scopes.contains("internal")) values.add(chapter.id());
+            String text = String.join("\n", values);
             for (String id : chapter.quests())
                 chapterFields.computeIfAbsent(id, ignored -> new StringBuilder()).append(text).append('\n');
         }
@@ -90,28 +105,39 @@ final class JournalSearch {
     }
 
     boolean pending() { return !query.isBlank() && (applied == null || !applied.query().equals(query)); }
-    boolean matchesTask(String id) { return applied == null || applied.ids().contains("task:" + id); }
-    boolean matchesGroup(String id) { return applied == null || applied.ids().contains("group:" + id); }
+    boolean matchesTask(String id) { return query.isBlank() || applied == null || applied.ids().contains("task:" + id); }
+    boolean matchesGroup(String id) { return query.isBlank() || applied == null || applied.ids().contains("group:" + id); }
     void suspend() { worker.cancel(); submittedQuery = null; }
 
     private AsyncQuestSearch.Document document(QuestDefinition quest) {
         var values = new ArrayList<String>();
-        Collections.addAll(values, quest.id(), quest.title(), QuestText.title(quest).getString(),
-                quest.description(), QuestText.description(quest).getString(), quest.type(),
-                QuestText.type(quest).getString(), QuestText.objective(quest).getString(),
-                quest.titleKey(), quest.descriptionKey(), quest.templateId(), quest.subtitle(), quest.objective(), quest.place(),
-                groupText.get(ClientQuestDefinitions.groupOf(quest.id())), chapterText.get(quest.id()));
-        quest.triggers().forEach(trigger -> trigger(values, trigger));
-        quest.steps().forEach(step -> {
-            values.add(step.title());
-            values.add(step.description());
-            step.conditions().forEach(trigger -> trigger(values, trigger));
-        });
-        quest.rewards().forEach(reward -> {
-            values.add(reward.type());
-            values.add(reward.item());
-            values.add(itemName(reward.item()));
-        });
+        var scopes = ClientPreferences.get().questSearchScopes;
+        if (scopes.contains("title")) {
+            values.add(quest.title());
+            values.add(QuestText.title(quest).getString());
+        }
+        if (scopes.contains("description")) {
+            values.add(quest.description());
+            values.add(QuestText.description(quest).getString());
+        }
+        if (scopes.contains("subtitle")) values.add(quest.subtitle());
+        if (scopes.contains("internal")) {
+            Collections.addAll(values, quest.id(), quest.type(), QuestText.type(quest).getString(),
+                    QuestText.objective(quest).getString(), quest.titleKey(), quest.descriptionKey(),
+                    quest.templateId(), quest.objective(), quest.place(),
+                    groupText.get(ClientQuestDefinitions.groupOf(quest.id())), chapterText.get(quest.id()));
+            quest.triggers().forEach(trigger -> trigger(values, trigger));
+            quest.steps().forEach(step -> {
+                values.add(step.title());
+                values.add(step.description());
+                step.conditions().forEach(trigger -> trigger(values, trigger));
+            });
+            quest.rewards().forEach(reward -> {
+                values.add(reward.type());
+                values.add(reward.item());
+                values.add(itemName(reward.item()));
+            });
+        }
         return new AsyncQuestSearch.Document("task:" + quest.id(), values);
     }
 

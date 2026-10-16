@@ -280,6 +280,10 @@ public final class HotEventsScreen extends AnimatedQuestScreen {
             progressRevision = ClientQuestProgress.revision();
             listRevision = ClientQuestProgress.listRevision();
             HotEventCanvas updated = ClientQuestDefinitions.hotEventCanvas();
+            if (!canvas.backgroundMusic().equals(updated.backgroundMusic())
+                    || !canvas.backgroundImage().equals(updated.backgroundImage())
+                    || !canvas.backgroundType().equals(updated.backgroundType()))
+                ClientMediaManager.release(mediaOwner);
             canvas = updated;
             positions.clear();
             positions.putAll(updated.positions());
@@ -364,6 +368,9 @@ public final class HotEventsScreen extends AnimatedQuestScreen {
     private void renderCanvasBackground(GuiGraphics graphics) {
         graphics.fill(0, 0, width, height, 0xFF1C1D22);
         String source = canvas.backgroundImage();
+        if (!canvas.backgroundMusic().isBlank())
+            ClientMediaManager.renderAudio(graphics, mediaOwner, "background-music", canvas.backgroundMusic(),
+                    0, 0, 1, 1, 1, true, true, false, 1, false, "");
         if (source.isBlank()) return;
         double scale = canvas.backgroundScale();
         int left = contentLeft, right = contentRight + CARD_GAP;
@@ -379,9 +386,9 @@ public final class HotEventsScreen extends AnimatedQuestScreen {
         graphics.enableScissor(0, 0, width, height);
         if (canvas.backgroundType().equals("video")) {
             ClientMediaManager.renderVideo(graphics, mediaOwner, "background", source, x, y, w, h, 1,
-                    true, true, true, 0, "cover", "");
+                    true, true, true, 0, canvas.backgroundMode(), "");
         } else {
-            ClientMediaManager.renderImageCover(graphics, source, x, y, w, h, 1);
+            ClientMediaManager.renderImageScaled(graphics, source, x, y, w, h, 1, canvas.backgroundMode());
         }
         graphics.disableScissor();
     }
@@ -671,11 +678,15 @@ public final class HotEventsScreen extends AnimatedQuestScreen {
                              Map<String, HotEventCanvas.Position> nextPositions) {
         updateCanvas(new HotEventCanvas(background, start, edges, true, nextPositions,
                 canvas.backgroundType(), canvas.backgroundScale(),
-                canvas.backgroundOffsetX(), canvas.backgroundOffsetY()));
+                canvas.backgroundOffsetX(), canvas.backgroundOffsetY(), canvas.backgroundMode(),
+                canvas.backgroundMusic()));
     }
 
     private void updateCanvas(HotEventCanvas next) {
         if (!isAdmin() || !editing) return;
+        if (!canvas.backgroundMusic().equals(next.backgroundMusic())
+                || !canvas.backgroundImage().equals(next.backgroundImage())
+                || !canvas.backgroundType().equals(next.backgroundType())) ClientMediaManager.release(mediaOwner);
         canvas = next;
         positions.clear();
         positions.putAll(next.positions());
@@ -837,7 +848,8 @@ public final class HotEventsScreen extends AnimatedQuestScreen {
                 contextConnection = null;
                 updateCanvas(new HotEventCanvas("", canvas.startId(), canvas.connections(), true,
                         positions, canvas.backgroundType(), canvas.backgroundScale(),
-                        canvas.backgroundOffsetX(), canvas.backgroundOffsetY()));
+                        canvas.backgroundOffsetX(), canvas.backgroundOffsetY(), canvas.backgroundMode(),
+                        canvas.backgroundMusic()));
             }
             return;
         }
@@ -942,9 +954,8 @@ public final class HotEventsScreen extends AnimatedQuestScreen {
         if (scrollChoicePopup(mouseX, mouseY, horizontal, vertical)) return true;
         if (contextId != null) return true;
         if (mouseY >= viewportTop() && mouseY < viewportBottom()) {
-            if (Screen.hasControlDown()) {
-                setZoom(zoom + vertical * 0.08);
-            } else targetScrollX -= (horizontal != 0 ? horizontal : vertical) * 48;
+            if (horizontal != 0 && !Screen.hasControlDown()) targetScrollX -= horizontal * 48;
+            else setZoom(zoom + vertical * 0.08);
             clampScroll();
             return true;
         }

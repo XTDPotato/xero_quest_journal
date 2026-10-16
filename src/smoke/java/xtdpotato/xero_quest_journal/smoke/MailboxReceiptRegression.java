@@ -32,7 +32,8 @@ final class MailboxReceiptRegression {
                 ClientPreferences.get().reducedMotion = true;
                 parent = new MailboxScreen();
                 game.setScreen(QuestRewardsScreen.mail(parent, List.of(
-                        new MailboxRuntime.Attachment("item", "minecraft:diamond", 1, false),
+                        new MailboxRuntime.Attachment("item", "minecraft:diamond", 1, false,
+                                false, false, "rare", "#327A65"),
                         new MailboxRuntime.Attachment("command", "tag @s add hidden_mail_ui", 1, false, true, false)),
                         values -> edited = values));
             }
@@ -43,19 +44,33 @@ final class MailboxReceiptRegression {
                                 && !boxes.get(2).selected() && !boxes.get(3).active,
                         "Mail editor did not load visibility/popup defaults");
                 boxes.get(1).onPress();
+                choice(game, "rewards-quality-0").select("mythic");
                 capture(game, "mailbox-reward-presentation-editor");
                 button(game, "rewards-save");
                 require(edited != null && edited.getFirst().hidePopup() && !edited.getFirst().hidden()
-                                && edited.get(1).hidden(), "Mail editor did not save independent flags");
+                                && edited.get(1).hidden() && edited.getFirst().quality().equals("mythic")
+                                && edited.getFirst().background().isBlank(),
+                        "Mail editor did not apply quality or clear the conflicting custom background");
                 var server = game.getSingleplayerServer();
                 serverWork = CompletableFuture.runAsync(() -> {
                     var player = server.getPlayerList().getPlayer(game.player.getUUID());
+                    var styled = new MailboxRuntime.Attachment("item", "minecraft:diamond", 1, false,
+                            false, false, "mythic", "");
+                    var customBackground = new MailboxRuntime.Attachment("item", "minecraft:emerald", 2, false,
+                            false, true, "", "#327A65");
                     MailboxRuntime.sendIfAbsent(player, "receipt_mixed", "Xero", "Item receipt", "Mixed attachments", 0,
-                            List.of(new MailboxRuntime.Attachment("item", "minecraft:diamond", 1, false),
-                                    new MailboxRuntime.Attachment("item", "minecraft:emerald", 2, false, false, true),
+                            List.of(styled,
+                                    customBackground,
                                     new MailboxRuntime.Attachment("item", "minecraft:gold_ingot", 3, false, true, false),
                                     new MailboxRuntime.Attachment("command", "tag @s add hidden_mail_ui", 1, false, true, false),
                                     new MailboxRuntime.Attachment("experience", "", 2, false)));
+                    var saved = MailboxData.get(server).save(new net.minecraft.nbt.CompoundTag(), player.registryAccess());
+                    var restored = MailboxData.load(saved, player.registryAccess()).messages(player.getUUID()).stream()
+                            .filter(mail -> mail.id().equals("receipt_mixed")).findFirst().orElseThrow();
+                    require(restored.attachments().getFirst().equals(styled),
+                            "Mail item quality did not survive NBT save/load");
+                    require(restored.attachments().get(1).equals(customBackground),
+                            "Mail custom background did not survive NBT save/load");
                     MailboxRuntime.sendIfAbsent(player, "receipt_silent", "Xero", "Silent item", "No popup", 0,
                             List.of(new MailboxRuntime.Attachment("item", "minecraft:paper", 1, false, false, true)));
                     MailboxRuntime.sendIfAbsent(player, "receipt_command", "Xero", "Hidden command", "No visible attachment", 0,
@@ -69,6 +84,11 @@ final class MailboxReceiptRegression {
             }
             case 3 -> {
                 if (ClientMailbox.messages().stream().noneMatch(mail -> mail.id().equals("receipt_mixed"))) return false;
+                var synced = ClientMailbox.messages().stream()
+                        .filter(mail -> mail.id().equals("receipt_mixed")).findFirst().orElseThrow();
+                require(synced.attachments().getFirst().quality().equals("mythic")
+                                && synced.attachments().get(1).background().equals("#327A65"),
+                        "Mail item quality/background were lost over the mailbox snapshot network codec");
                 game.setScreen(new MailboxScreen(null, "receipt_mixed"));
             }
             case 4 -> {
@@ -83,7 +103,7 @@ final class MailboxReceiptRegression {
                 if (!(game.screen instanceof QuestRewardPopupScreen)) return false;
                 require(field(game.screen, "selectedReward") == null
                                 && field(game.screen, "rewards").equals(List.of(
-                                new QuestDefinition.Reward("item", "minecraft:diamond", 1))),
+                                new QuestDefinition.Reward("item", "minecraft:diamond", 1, "mythic", ""))),
                         "Mail receipt included silent, hidden or non-item rewards");
                 capture(game, "mailbox-mixed-item-receipt");
                 game.setScreen((Screen) field(game.screen, "parent"));
@@ -176,6 +196,12 @@ final class MailboxReceiptRegression {
     private static void button(Minecraft game, String id) {
         game.screen.children().stream().filter(StyledButton.class::isInstance).map(StyledButton.class::cast)
                 .filter(button -> button.styleId().equals(id)).findFirst().orElseThrow().onPress();
+    }
+    @SuppressWarnings("unchecked")
+    private static StyledChoiceButton<String> choice(Minecraft game, String id) {
+        return (StyledChoiceButton<String>) game.screen.children().stream()
+                .filter(StyledChoiceButton.class::isInstance).map(StyledChoiceButton.class::cast)
+                .filter(button -> button.styleId().equals(id)).findFirst().orElseThrow();
     }
     private static void capture(Minecraft game, String name) throws Exception {
         try (var image = Screenshot.takeScreenshot(game.getMainRenderTarget())) {

@@ -109,8 +109,23 @@ public final class QuestConditionsScreen extends AnimatedQuestScreen {
             int indent = Math.min(row.depth() * 10, Math.max(0, w - 240));
             int lx = x + indent, rw = w - indent, y = 68 + index * 48 - scroll;
             int firstWidget = children().size();
+            List<List<String>> conditionGroups = List.of(
+                    List.of("confirm"),
+                    List.of("item_hold", "item_submit", "item_acquire"),
+                    List.of("kill"),
+                    List.of("block_break", "block_interact", "dimension", "region", "location"),
+                    List.of("advancement", "stage", "quest", "unlock", "lock"),
+                    List.of("event", "script"),
+                    List.of("all", "any", "count", "ratio"));
+            List<String> typeOptions = conditionGroups.stream().flatMap(List::stream).toList();
+            Map<String, String> conditionOptionGroups = new LinkedHashMap<>();
+            for (int group = 0; group < conditionGroups.size(); group++)
+                for (String type : conditionGroups.get(group))
+                    conditionOptionGroups.put(type, List.of("manual", "inventory", "combat", "world",
+                            "quest", "events", "logic").get(group));
+            List<String> specialGroups = conditionGroups.getLast();
             addRenderableWidget(new StyledChoiceButton<>(lx, y, rw - 86, 20, text("conditions.type"),
-                    QuestConditions.TYPES, draft.type, value -> text("condition_type." + value),
+                    typeOptions, draft.type, value -> text("condition_type." + value),
                     value -> {
                         draft.type = value;
                         if (!draft.group()) draft.children.clear();
@@ -118,7 +133,8 @@ public final class QuestConditionsScreen extends AnimatedQuestScreen {
                                 : value.equals("dimension") ? "minecraft:overworld" : "";
                         draft.count = "1";
                         init();
-                    }, styles, "condition-type-" + index)).active = pending == null;
+                    }, styles, "condition-type-" + index)
+                    .groupedOptions(conditionOptionGroups).distinctOptions(specialGroups)).active = pending == null;
             button("condition-child-" + index, "+", "conditions.child", x + w - 80, y, 24, () -> {
                 draft.children.add(new Draft(new Trigger("confirm", "", 1)));
                 init();

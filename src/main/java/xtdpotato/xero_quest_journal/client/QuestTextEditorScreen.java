@@ -3,19 +3,26 @@ package xtdpotato.xero_quest_journal.client;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.MultiLineEditBox;
+import net.minecraft.client.gui.components.MultilineTextField;
 import net.minecraft.client.gui.components.Tooltip;
+import net.minecraft.client.gui.components.Whence;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.Style;
 import org.lwjgl.glfw.GLFW;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.ArrayDeque;
+import java.util.Arrays;
 import java.util.Deque;
 import java.util.function.Consumer;
 
 /** Edits a property draft, not the quest source file. */
 public final class QuestTextEditorScreen extends AnimatedQuestScreen {
     private static final int LIMIT = 16384;
+    // Vanilla exposes no selection API, so locate its private model by type instead of mapped names.
+    private static final Field TEXT_FIELD = textFieldAccessor();
     private final Screen parent;
     private final Consumer<String> saved;
     private final int characterLimit;
@@ -141,9 +148,75 @@ public final class QuestTextEditorScreen extends AnimatedQuestScreen {
 
     private void insert(String open, String close) {
         String value = editor.getValue();
-        if (value.length() + open.length() + close.length() > characterLimit) return;
-        editor.setValue(value + open + close);
+        MultilineTextField input = textField();
+        if (input.hasSelection()) {
+            int[] range = selectedRange(input, value);
+            int start = range[0];
+            int end = range[1];
+            String selected = value.substring(start, end);
+            String replacement = open + selected + close;
+            if (value.length() + replacement.length() - selected.length() > characterLimit) return;
+            String formatted = value.substring(0, start) + replacement + value.substring(end);
+            editor.setValue(formatted);
+            selectRange(input, start + open.length(), start + open.length() + selected.length());
+        } else {
+            if (value.length() + open.length() + close.length() > characterLimit) return;
+            int cursor = value.length() + open.length();
+            editor.setValue(value + open + close);
+            input.seekCursor(Whence.ABSOLUTE, cursor);
+        }
         setFocused(editor);
+    }
+
+    private static Field textFieldAccessor() {
+        Field field = Arrays.stream(MultiLineEditBox.class.getDeclaredFields())
+                .filter(candidate -> candidate.getType() == MultilineTextField.class)
+                .findFirst().orElseThrow(() -> new ExceptionInInitializerError(
+                        "Cannot find the text model used by MultiLineEditBox"));
+        field.setAccessible(true);
+        return field;
+    }
+
+    private MultilineTextField textField() {
+        try {
+            return (MultilineTextField) TEXT_FIELD.get(editor);
+        } catch (IllegalAccessException exception) {
+            throw new IllegalStateException("Cannot access the rich-text editor selection", exception);
+        }
+    }
+
+    private static int[] selectedRange(MultilineTextField input, String value) {
+        String selected = input.getSelectedText();
+        for (Method method : MultilineTextField.class.getDeclaredMethods()) {
+            if (method.getParameterCount() != 0 || !method.getReturnType().isRecord()) continue;
+            try {
+                method.setAccessible(true);
+                Object range = method.invoke(input);
+                var components = method.getReturnType().getRecordComponents();
+                if (components.length != 2) continue;
+                Method begin = components[0].getAccessor();
+                Method finish = components[1].getAccessor();
+                begin.setAccessible(true);
+                finish.setAccessible(true);
+                int start = (int) begin.invoke(range);
+                int end = (int) finish.invoke(range);
+                if (start >= 0 && end <= value.length() && end - start == selected.length()
+                        && value.regionMatches(start, selected, 0, selected.length())) {
+                    return new int[]{start, end};
+                }
+            } catch (ReflectiveOperationException exception) {
+                throw new IllegalStateException("Cannot read the rich-text editor selection", exception);
+            }
+        }
+        throw new IllegalStateException("Cannot locate the rich-text editor selection range");
+    }
+
+    private static void selectRange(MultilineTextField input, int start, int end) {
+        input.setSelecting(false);
+        input.seekCursor(Whence.ABSOLUTE, start);
+        input.setSelecting(true);
+        input.seekCursor(Whence.ABSOLUTE, end);
+        input.setSelecting(false);
     }
 
     private void save() {

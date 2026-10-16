@@ -49,6 +49,7 @@ final class CreationRegression {
                 if (!pending.isDone() || !language.isDone()) return false;
                 pending.join();
                 language.join();
+                verifySuggestionTrash(game);
                 require(QuestText.describe(new xtdpotato.xero_quest_journal.core.model.QuestDefinition.Trigger(
                                 "event", "template_graph_only", 1)).getString().equals("\u5b8c\u6210\u4efb\u52a1\u76ee\u6807"),
                         "Graph-only template objective was not localized");
@@ -118,8 +119,29 @@ final class CreationRegression {
                 fields(game).getFirst().setValue("minecraft:diamond");
                 click(game, find(game, "icon-filter"));
                 require(buttons(game, "icon-entry").size() > 0, "Item ID search failed");
+                require(find(game, "icon-sort") instanceof StyledChoiceButton<?>
+                                && find(game, "icon-sort-order") != null,
+                        "Fullscreen icon picker is missing sort controls");
+                String iconBeforeBrowse = (String) field(form(), "icon");
                 click(game, find(game, "icon-entry"));
-                require(field(form(), "icon").equals("minecraft:diamond"), "Item picker selected wrong item");
+                require(field(form(), "icon").equals(iconBeforeBrowse),
+                        "Browsing an icon applied it before confirmation");
+                require(field(field(journal, "iconPicker"), "manual").equals("minecraft:diamond"),
+                        "Item picker did not stage the selected item");
+                require(find(game, "icon-preview").active, "Selected icon did not enable fullscreen preview");
+                click(game, find(game, "icon-preview"));
+                require(game.screen.getClass().getSimpleName().equals("QuestIconPreviewScreen"),
+                        "Fullscreen icon preview did not open");
+                capture(game, "creation-icon-preview");
+                game.screen.mouseScrolled(game.screen.width / 2.0, game.screen.height / 2.0, 0, 2);
+                require((double) field(game.screen, "targetZoom") > 1,
+                        "Preview wheel did not smoothly zoom the selected icon");
+                click(game, find(game, "icon-preview-back"));
+                require(game.screen == journal && field(field(journal, "iconPicker"), "manual")
+                                .equals("minecraft:diamond"),
+                        "Returning from preview lost the staged selection");
+                click(game, find(game, "icon-apply"));
+                require(field(form(), "icon").equals("minecraft:diamond"), "Item picker apply did not commit selection");
                 click(game, find(game, "choose-icon"));
                 manual(game, TEXTURE);
                 require(field(form(), "icon").equals(TEXTURE), "Icon not set");
@@ -235,6 +257,21 @@ final class CreationRegression {
                 int pageY = find(game, "icon-previous").getY();
                 require(buttons(game, "icon-entry").stream().allMatch(b -> b.getBottom() <= pageY), "Grid overlaps pages");
                 click(game, find(game, "icon-entry"));
+                require(((String) field(form(), "description")).isBlank()
+                                && field(field(journal, "iconPicker"), "manual").equals(TEXTURE),
+                        "Selecting a texture committed before the Apply action");
+                click(game, find(game, "icon-preview"));
+                require(game.screen.getClass().getSimpleName().equals("QuestIconPreviewScreen"),
+                        "Texture fullscreen preview did not open");
+            }
+            case 8 -> {
+                capture(game, "creation-icon-preview");
+                game.screen.mouseScrolled(game.screen.width / 2.0, game.screen.height / 2.0, 0, 2);
+                require((double) field(game.screen, "targetZoom") > 1,
+                        "Texture preview zoom transition did not start");
+                click(game, find(game, "icon-preview-back"));
+                require(game.screen == journal, "Preview did not return to the picker");
+                click(game, find(game, "icon-apply"));
                 require(field(form(), "description").equals(TEXTURE)
                         && field(form(), "icon").equals(""), "Image picker wrote icon instead of content");
                 click(game, find(game, "choose-image"));
@@ -258,7 +295,7 @@ final class CreationRegression {
                 require(field(form(), "background").equals("minecraft:textures/block/stone.png")
                         && field(form(), "description").equals(TEXTURE), "Background changed content");
             }
-            case 8 -> {
+            case 9 -> {
                 capture(game, "creation-background");
                 click(game, find(game, "create"));
                 var saved = LayoutStore.load("journal").elements().get(imageId);
@@ -272,9 +309,12 @@ final class CreationRegression {
                 game.options.guiScale().set(1);
                 game.resizeDisplay();
             }
-            case 9 -> {
+            case 10 -> {
                 capture(game, "creation-picker-wide");
                 click(game, find(game, "icon-none"));
+                require(field(form(), "description").equals(TEXTURE),
+                        "Choosing Blank committed before pressing Apply");
+                click(game, find(game, "icon-apply"));
                 require(field(form(), "description").equals(""), "Clear not applied");
                 click(game, find(game, "cancel"));
                 return true;
@@ -284,6 +324,39 @@ final class CreationRegression {
         stage++;
         wait = 15;
         return false;
+    }
+
+    private static void verifySuggestionTrash(Minecraft game) throws Exception {
+        var picker = new QuestValuePickerScreen(null, "Regression suggestions",
+                "creation_trash_" + GROUP, () -> List.of(
+                new QuestValuePickerScreen.Option("candidate_a", "Candidate A"),
+                new QuestValuePickerScreen.Option("candidate_b", "Candidate B")), "", ignored -> {});
+        game.setScreen(picker);
+        click(game, find(game, "value-picker-trash"));
+        require(game.screen instanceof QuestSuggestionTrashScreen,
+                "Suggestion recycle bin did not open from the picker footer");
+        click(game, find(game, "trash-select-all"));
+        require(((Set<?>) field(game.screen, "selected")).size() == 2,
+                "Recycle bin select-all did not select every visible candidate");
+        click(game, find(game, "trash-invert"));
+        require(((Set<?>) field(game.screen, "selected")).isEmpty(),
+                "Recycle bin invert did not clear an all-selected list");
+        click(game, find(game, "trash-invert"));
+        click(game, find(game, "trash-delete"));
+        require(game.screen.getClass().getSimpleName().equals("QuestConfirmScreen"),
+                "Recycle bin deletion skipped confirmation");
+        click(game, find(game, "overflow-cancel"));
+        require(((List<?>) field(picker, "filtered")).size() == 2,
+                "Canceling recycle-bin confirmation removed suggestions");
+        click(game, find(game, "trash-cancel"));
+        require(game.screen == picker, "Closing recycle bin did not return to the picker");
+        click(game, find(game, "value-picker-trash"));
+        click(game, find(game, "trash-select-all"));
+        click(game, find(game, "trash-delete"));
+        click(game, find(game, "overflow-confirm"));
+        require(((List<?>) field(picker, "filtered")).isEmpty(),
+                "Confirmed recycle-bin deletion left suggestions visible");
+        game.setScreen(null);
     }
 
     private static void select(Minecraft game, String button, String field, String value) throws Exception {

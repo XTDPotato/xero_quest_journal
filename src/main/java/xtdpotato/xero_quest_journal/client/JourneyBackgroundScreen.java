@@ -23,7 +23,7 @@ final class JourneyBackgroundScreen extends AnimatedQuestScreen {
     private String error = "";
 
     private static final class Draft {
-        String start, source, type, scale, x, y, music;
+        String start, source, type, scale, x, y, music, mode;
 
         Draft(JourneyBackdrop value) {
             start = Integer.toString(value.startX());
@@ -33,12 +33,13 @@ final class JourneyBackgroundScreen extends AnimatedQuestScreen {
             x = Integer.toString(value.offsetX());
             y = Integer.toString(value.offsetY());
             music = value.music();
+            mode = value.mode();
         }
 
         JourneyBackdrop value() {
             return new JourneyBackdrop(Integer.parseInt(start.strip()), source, type,
                     Double.parseDouble(scale.strip()), Integer.parseInt(x.strip()),
-                    Integer.parseInt(y.strip()), music);
+                    Integer.parseInt(y.strip()), music, mode);
         }
     }
 
@@ -155,6 +156,24 @@ final class JourneyBackgroundScreen extends AnimatedQuestScreen {
         addRenderableWidget(new StyledButton(fieldX + half + 4, buttonY, half, 19,
                 Component.translatable("gui.cancel"), ignored -> onClose(),
                 styles, "journey-cancel", "toolbar-button"));
+        addRenderableWidget(new EditorIconButton(x + w - 32, y + 2, text("visual_background"),
+                () -> {
+                    try {
+                        JourneyBackdrop value = draft.value();
+                        minecraft.setScreen(new HotEventBackgroundScreen(this,
+                                new xtdpotato.xero_quest_journal.core.model.HotEventCanvas(
+                                        value.source(), "", List.of(), true, java.util.Map.of(), value.type(),
+                                        value.scale(), Math.clamp(value.offsetX(), -10000, 10000),
+                                        Math.clamp(value.offsetY(), -10000, 10000), value.mode(), value.music()),
+                                next -> {
+                                    draft.source = next.backgroundImage(); draft.type = next.backgroundType();
+                                    draft.scale = Double.toString(next.backgroundScale());
+                                    draft.x = Integer.toString(next.backgroundOffsetX());
+                                    draft.y = Integer.toString(next.backgroundOffsetY());
+                                    draft.mode = next.backgroundMode(); draft.music = next.backgroundMusic();
+                                }, text("edit_backgrounds")));
+                    } catch (IllegalArgumentException invalid) { error = text("invalid").getString(); }
+                }, styles, "journey-background-visual", "visual"));
     }
 
     private void field(int x, int y, int w, String key, String value, int max,

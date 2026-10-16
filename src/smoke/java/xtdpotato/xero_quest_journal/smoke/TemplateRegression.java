@@ -34,6 +34,22 @@ final class TemplateRegression {
                 if (game.screen != null) return false;
                 pending = CompletableFuture.runAsync(() -> {
                     var author = game.getSingleplayerServer().getPlayerList().getPlayer(game.player.getUUID());
+                    var progressExample = QuestTemplateStore.all().stream()
+                            .filter(value -> value.id().equals("tutorial_progress_label")).findFirst().orElseThrow();
+                    require(progressExample.elements().stream().anyMatch(element ->
+                                    element.kind().equals("quest_progress")
+                                            && element.attributes().getOrDefault("displayText", "").equals("收集进度")),
+                            "Progress-name teaching template has no configured progress label");
+                    var locateExample = QuestTemplateStore.all().stream()
+                            .filter(value -> value.id().equals("tutorial_shared_locate")).findFirst().orElseThrow();
+                    var locateControl = locateExample.elements().stream()
+                            .filter(element -> element.id().equals("locate_share")).findFirst().orElseThrow();
+                    var locateGraph = new com.google.gson.Gson().fromJson(
+                            locateControl.attributes().get("eventGraph"),
+                            xtdpotato.xero_quest_journal.core.model.TriggerGraph.class);
+                    require(locateGraph.nodes().stream().anyMatch(node -> node.type().equals("locate_structure")
+                                    && node.get("storeVariable", "").equals("globe.located_structure")),
+                            "Locate teaching template does not save to the shared structure variable");
                     template = new QuestTemplate(ID, "Commission test", "Shared template", "item", "",
                             "minecraft:oak_log", 16, "minecraft:diamond", 2, "manual", "",
                             testElements());
@@ -217,6 +233,15 @@ final class TemplateRegression {
     }
 
     private static void validateLayout() {
+        var defaults = QuestTemplateStore.defaultElements();
+        var defaultBody = defaults.stream().filter(element -> element.id().equals("body"))
+                .findFirst().orElseThrow();
+        var defaultChildren = defaults.stream().filter(element -> element.parent().equals(defaultBody.id())).toList();
+        require(!defaultChildren.isEmpty()
+                        && defaultChildren.getLast().id().equals("rewards")
+                        && defaultChildren.getLast().kind().equals("quest_rewards"),
+                "Default task rewards are not the final control at the bottom of the detail layout");
+
         var state = new LayoutEditorState();
         TemplateLayout.apply(state, "a", template, 20, 40);
         TemplateLayout.apply(state, "b", template, 20, 40);

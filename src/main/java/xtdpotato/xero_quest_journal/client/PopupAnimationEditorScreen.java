@@ -25,7 +25,7 @@ final class PopupAnimationEditorScreen extends AnimatedQuestScreen {
     private String message = "";
 
     PopupAnimationEditorScreen(Screen parent) {
-        super(label("animation.editor"));
+        super(label("animation.title"));
         this.parent = parent;
         loadFields();
     }
@@ -33,59 +33,74 @@ final class PopupAnimationEditorScreen extends AnimatedQuestScreen {
     private static Component label(String key, Object... args) {
         return Component.translatable("screen.xero_quest_journal.config." + key, args);
     }
-    private int panelWidth() { return Math.min(820, width - 24); }
-    private int panelHeight() { return Math.min(480, height - 24); }
-    private int left() { return (width - panelWidth()) / 2; }
+    private int trackingGutter() { return width >= 800 ? Math.min(320, Math.max(280, width * 30 / 100)) : 0; }
+    private int panelWidth() { return Math.max(1, Math.min(920, width - trackingGutter() - 16)); }
+    private int panelHeight() { return Math.max(1, Math.min(620, height - 24)); }
+    private int left() { return trackingGutter() == 0 ? (width - panelWidth()) / 2 : trackingGutter() + 8; }
     private int top() { return (height - panelHeight()) / 2; }
-    private int trackLeft() { return left() + 24; }
-    private int trackRight() { return left() + panelWidth() - 24; }
-    private int trackY() { return top() + 86; }
-    private int previewTop() { return top() + 132; }
-    private int controlsTop() { return top() + panelHeight() - 106; }
-    private int footerY() { return top() + panelHeight() - 35; }
+    private int inset() { return Math.min(20, Math.max(8, (panelWidth() - 1) / 2)); }
+    private int trackLeft() { return left() + inset(); }
+    private int trackRight() { return left() + panelWidth() - inset(); }
+    private int trackY() { return top() + 82; }
+    private int previewTop() { return top() + 128; }
+    private int controlsTop() { return top() + panelHeight() - 190; }
+    private int footerY() { return top() + panelHeight() - 31; }
+    private int fieldWidth() { return Math.max(1, (panelWidth() - inset() * 2 - 16) / 3); }
+    private int fieldX(int column) { return left() + inset() + column * (fieldWidth() + 8); }
 
     @Override protected boolean isModalScreen() { return true; }
     @Override protected Viewport popupBounds() { return viewport(left(), top(), left() + panelWidth(), top() + panelHeight()); }
+    @Override protected Viewport modalScrimBounds() { return viewport(left(), 0, width, height); }
+    @Override protected boolean preserveTrackingHudBehind() { return true; }
     @Override protected void renderModalBackground(GuiGraphics g, float delta) {
         if (parent instanceof AnimatedQuestScreen animated) animated.renderContents(g, -10000, -10000, delta);
         else if (parent != null) parent.render(g, -10000, -10000, delta);
+        QuestHudRenderer.render(g);
     }
 
     @Override protected void init() {
         clearWidgets();
-        int x = left(), w = panelWidth(), fieldY = controlsTop() + 30;
-        int gap = 6, fieldW = (w - 48 - gap * 5) / 6;
-        String[] values = {timeValue, scaleValue, xValue, yValue, rotationValue, opacityValue};
-        String[] keys = {"animation.time", "animation.scale", "animation.move_x", "animation.move_y",
-                "animation.rotation", "animation.opacity"};
-        for (int i = 0; i < values.length; i++) {
-            int px = x + 24 + i * (fieldW + gap);
-            EditBox box = new EditBox(font, px, fieldY, fieldW, 20, label(keys[i]));
-            box.setMaxLength(12);
-            box.setValue(values[i] == null ? "" : values[i]);
-            final int index = i;
-            box.setResponder(value -> setField(index, value));
-            addRenderableWidget(box);
-        }
-        addRenderableWidget(new StyledChoiceButton<>(x + 24, fieldY + 28, 178, 20,
+        int fieldW = fieldWidth();
+        addField(0, timeValue, "animation.time", fieldX(0), controlsTop() + 12, fieldW);
+        addField(1, scaleValue, "animation.scale", fieldX(1), controlsTop() + 12, fieldW);
+        addField(5, opacityValue, "animation.opacity", fieldX(2), controlsTop() + 12, fieldW);
+        addField(2, xValue, "animation.move_x", fieldX(0), controlsTop() + 52, fieldW);
+        addField(3, yValue, "animation.move_y", fieldX(1), controlsTop() + 52, fieldW);
+        addField(4, rotationValue, "animation.rotation", fieldX(2), controlsTop() + 52, fieldW);
+
+        int actionY = controlsTop() + 88;
+        int gap = 6, cellW = Math.max(1, (panelWidth() - inset() * 2 - gap * 2) / 3);
+        int x = left() + inset();
+        addRenderableWidget(new StyledChoiceButton<>(x, actionY, cellW, 22,
                 label("animation.easing"), List.of("smooth", "linear", "ease_in", "ease_out"),
                 selectedFrame().easing(), value -> label("animation.easing." + value), value -> {
                     commitFields();
+                    if (!message.isEmpty()) return;
                     replace(selectedFrame().easing(value));
                     loadFields();
                 }, styles, "popup-easing"));
-        addRenderableWidget(new StyledButton(x + 216, fieldY + 28, 106, 20, label("animation.add_keyframe"),
-                ignored -> addKeyframe(), styles, "popup-add-keyframe"));
-        var remove = addRenderableWidget(new StyledButton(x + 328, fieldY + 28, 120, 20,
+        addRenderableWidget(new StyledButton(x + cellW + gap, actionY, cellW, 22,
+                label("animation.add_keyframe"), ignored -> addKeyframe(), styles, "popup-add-keyframe"));
+        var remove = addRenderableWidget(new StyledButton(x + (cellW + gap) * 2, actionY, cellW, 22,
                 label("animation.remove_keyframe"), ignored -> removeKeyframe(), styles, "popup-remove-keyframe"));
         remove.active = selected > 0 && selected < frames.size() - 1;
-        addRenderableWidget(new StyledButton(x + w - 218, footerY(), 92, 22,
-                Component.translatable("gui.cancel"), ignored -> onClose(), styles, "popup-animation-cancel"));
-        addRenderableWidget(new StyledButton(x + w - 118, footerY(), 94, 22,
-                label("animation.save"), ignored -> save(), styles, "popup-animation-save"));
-        addRenderableWidget(new StyledButton(x + 24, footerY(), 116, 22,
+        int footerW = Math.max(1, (panelWidth() - inset() * 2 - 12) / 3);
+        int footerX = left() + inset();
+        addRenderableWidget(new StyledButton(footerX, footerY(), footerW, 22,
                 label(playing ? "animation.pause_preview" : "animation.preview"),
                 ignored -> togglePreview(), styles, "popup-animation-preview"));
+        addRenderableWidget(new StyledButton(footerX + footerW + 6, footerY(), footerW, 22,
+                Component.translatable("gui.cancel"), ignored -> onClose(), styles, "popup-animation-cancel"));
+        addRenderableWidget(new StyledButton(footerX + (footerW + 6) * 2, footerY(), footerW, 22,
+                label("animation.save"), ignored -> save(), styles, "popup-animation-save"));
+    }
+
+    private void addField(int index, String value, String key, int x, int y, int width) {
+        EditBox box = new EditBox(font, x, y, width, 20, label(key));
+        box.setMaxLength(12);
+        box.setValue(value == null ? "" : value);
+        box.setResponder(next -> setField(index, next));
+        addRenderableWidget(box);
     }
 
     private PopupAnimationProfile.Keyframe selectedFrame() { return frames.get(selected); }
@@ -206,35 +221,63 @@ final class PopupAnimationEditorScreen extends AnimatedQuestScreen {
 
     @Override protected void renderContents(GuiGraphics g, int mouseX, int mouseY, float delta) {
         int x = left(), y = top(), w = panelWidth(), h = panelHeight();
+        int pad = inset();
         g.fill(x, y, x + w, y + h, 0xFF242A34);
-        g.fill(x, y, x + w, y + 34, 0xFF333D4B);
-        g.drawString(font, title, x + 18, y + 11, 0xFFF3D48B, false);
-        g.drawString(font, label("animation.timeline"), x + 20, y + 49, 0xFFD4DCE7, false);
+        g.fill(x, y, x + w, y + 40, 0xFF333D4B);
+        g.fill(x, y + 39, x + w, y + 40, 0xFF66768A);
+        g.drawString(font, label("animation.title"), x + pad, y + 13, 0xFFF3D48B, false);
+        g.drawString(font, label("animation.timeline"), x + pad, y + 51, 0xFFD4DCE7, false);
         int ty = trackY();
         g.fill(trackLeft(), ty, trackRight(), ty + 3, 0xFF596576);
         for (int i = 0; i <= 4; i++) {
             int tx = timelineX(i / 4.0);
             g.fill(tx, ty - 3, tx + 1, ty + 7, 0xFF8793A4);
-            g.drawCenteredString(font, Integer.toString(i * 25) + "%", tx, ty + 11, 0xFFADB8C8);
+            String percent = Integer.toString(i * 25) + "%";
+            int labelX = Math.clamp(tx - font.width(percent) / 2, trackLeft(), trackRight() - font.width(percent));
+            g.drawString(font, percent, labelX, ty + 12, 0xFFADB8C8, false);
         }
         for (int i = 0; i < frames.size(); i++) {
             int tx = timelineX(frames.get(i).time());
             int color = i == selected ? 0xFFFFD071 : 0xFFE3E9F2;
-            g.fill(tx - 4, ty - 5, tx + 5, ty + 6, color);
-            if (i == selected) g.drawCenteredString(font, Integer.toString(i + 1), tx, ty - 18, 0xFFF3D48B);
+            g.fill(tx - 3, ty - 5, tx + 4, ty + 6, color);
+            if (i == selected) {
+                String frame = label("animation.frame", i + 1, frames.size()).getString();
+                int frameX = Math.clamp(tx - font.width(frame) / 2, trackLeft(), trackRight() - font.width(frame));
+                g.drawString(font, frame, frameX, ty - 21, 0xFFF3D48B, false);
+            }
         }
         int px = timelineX(playhead);
         g.fill(px, ty - 8, px + 1, ty + 8, 0xFFFF8276);
 
-        int previewX = x + 24, previewY = previewTop(), previewW = w - 48, previewH = controlsTop() - previewY - 8;
+        int previewX = x + pad, previewY = previewTop(), previewW = w - pad * 2;
+        int previewH = Math.max(1, controlsTop() - previewY - 25);
+        g.drawString(font, label("animation.preview"), previewX, previewY - 15, 0xFFB8C7D9, false);
         g.fill(previewX, previewY, previewX + previewW, previewY + previewH, 0xFF1B2028);
         g.renderOutline(previewX, previewY, previewW, previewH, 0xFF586677);
         drawPreview(g, previewX, previewY, previewW, previewH, currentProfile().sample(playhead));
-        g.drawString(font, label("animation.time_percent", Math.round(playhead * 100)),
-                x + 24, controlsTop() + 3, 0xFFB8C7D9, false);
+        String time = label("animation.time_percent", Math.round(playhead * 100)).getString();
+        g.drawString(font, time, previewX, previewY + previewH + 7, 0xFFB8C7D9, false);
+        g.fill(x + pad, controlsTop() - 4, x + w - pad, controlsTop() - 3, 0xFF465261);
+        String[] fieldKeys = {"animation.time", "animation.scale", "animation.opacity",
+                "animation.move_x", "animation.move_y", "animation.rotation"};
+        for (int i = 0; i < fieldKeys.length; i++) {
+            int column = i % 3;
+            int rowY = controlsTop() + (i < 3 ? 0 : 40);
+            g.drawString(font, label(fieldKeys[i]), fieldX(column), rowY,
+                    i < 3 ? 0xFFE7CF9D : 0xFFB8C7D9, false);
+        }
         super.renderContents(g, mouseX, mouseY, delta);
-        if (!message.isEmpty())
-            g.drawString(font, font.plainSubstrByWidth(message, w - 48), x + 350, footerY() + 7, 0xFFFF8E83, false);
+        int statusY = controlsTop() + 115;
+        int statusHeight = Math.max(16, footerY() - statusY - 4);
+        g.fill(x + pad, statusY, x + w - pad, statusY + statusHeight,
+                message.isEmpty() ? 0xFF29323D : 0xFF482C34);
+        g.renderOutline(x + pad, statusY, w - pad * 2, statusHeight,
+                message.isEmpty() ? 0xFF465261 : 0xFFB96267);
+        Component status = message.isEmpty()
+                ? label("animation.valid") : Component.literal(message);
+        g.drawString(font, font.plainSubstrByWidth(status.getString(), w - pad * 2 - 12),
+                x + pad + 6, statusY + Math.max(2, (statusHeight - font.lineHeight) / 2),
+                message.isEmpty() ? 0xFFB8C7D9 : 0xFFFF9A91, false);
     }
 
     private void drawPreview(GuiGraphics g, int x, int y, int w, int h, PopupAnimationProfile.Transform transform) {
@@ -242,16 +285,20 @@ final class PopupAnimationEditorScreen extends AnimatedQuestScreen {
         double cx = x + w / 2.0 + transform.x(), cy = y + h / 2.0 + transform.y();
         g.pose().pushPose();
         g.pose().translate(cx, cy, 0);
-        g.pose().mulPose(com.mojang.math.Axis.ZP.rotationDegrees((float) transform.rotation()));
+        if (transform.rotation() != 0)
+            g.pose().mulPose(com.mojang.math.Axis.ZP.rotationDegrees((float) transform.rotation()));
         g.pose().scale((float) scale, (float) scale, 1);
-        int boxW = Math.min(280, w - 64), boxH = Math.min(86, h - 24);
+        int boxW = Math.min(280, Math.max(1, w - 64)), boxH = Math.min(86, Math.max(1, h - 24));
         int alpha = (int) Math.round(transform.opacity() * 255);
         int a = alpha << 24;
-        g.fill(-boxW / 2, -boxH / 2, boxW / 2, boxH / 2, a | 0xFFF7F4EC);
-        g.renderOutline(-boxW / 2, -boxH / 2, boxW, boxH, a | 0x00E5C87F);
-        g.fill(-boxW / 2 + 5, -boxH / 2 + 5, boxW / 2 - 5, -boxH / 2 + 7, a | 0x00FFE3AC);
+        int left = -boxW / 2, top = -boxH / 2;
+        g.fill(left, top, left + boxW, top + boxH, a | 0x00303A48);
+        g.renderOutline(left, top, boxW, boxH, a | 0x00D8BB7A);
+        g.fill(left, top, left + 4, top + boxH, a | 0x00D8BB7A);
+        g.fill(left + 12, top + 12, left + boxW - 12, top + 14, a | 0x00F3D48B);
         var preview = label("animation.preview_sample");
-        g.drawCenteredString(font, preview, 0, -font.lineHeight / 2, a | 0x00465166);
+        g.drawCenteredString(font, preview, 0, top + boxH / 2 - font.lineHeight / 2,
+                a | 0x00E8EDF2);
         g.pose().popPose();
     }
 

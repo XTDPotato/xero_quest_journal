@@ -27,6 +27,7 @@ import java.util.function.BiConsumer;
 
 /** Reward-only drafts never replace task conditions or completion snapshots. */
 public final class QuestRewardsScreen extends AnimatedQuestScreen {
+    private static final int ROWS_TOP = 106;
     @Override protected int animationHeaderBottom() { return 68; }
     @Override protected int animationFooterTop() { return height - 56; }
 
@@ -96,10 +97,11 @@ public final class QuestRewardsScreen extends AnimatedQuestScreen {
     public static QuestRewardsScreen mail(Screen parent, List<MailboxRuntime.Attachment> initial,
                                           java.util.function.Consumer<List<MailboxRuntime.Attachment>> saved) {
         var screen = new QuestRewardsScreen(parent, initial.stream()
-                .map(a -> new QuestDefinition.Reward(a.type(), a.item(), a.count())).toList(),
+                .map(a -> new QuestDefinition.Reward(
+                        a.type(), a.item(), a.count(), a.quality(), a.background())).toList(),
                 "manual", (values, mode) -> {}, true);
         screen.mailSaved = saved;
-        screen.rowHeight = 72;
+        screen.rowHeight = 126;
         for (int i = 0; i < initial.size(); i++) {
             screen.rewards.get(i).hidden = initial.get(i).hidden();
             screen.rewards.get(i).hidePopup = initial.get(i).hidePopup();
@@ -108,20 +110,23 @@ public final class QuestRewardsScreen extends AnimatedQuestScreen {
     }
 
     private int rowHeight = 48;
-    private int rows() { return Math.max(1, (height - 132) / rowHeight); }
-    private int panelWidth() { return Math.min(480, width - 24); }
+    private int rows() { return Math.max(1, (height - ROWS_TOP - 58) / rowHeight); }
+    private int panelWidth() { return Math.max(1, Math.min(1320, width - 40)); }
     private int left() { return (width - panelWidth()) / 2; }
-    private Viewport rowsViewport() { return new Viewport(left(), 74, left() + panelWidth(), 74 + rows() * rowHeight); }
+    private Viewport rowsViewport() {
+        return new Viewport(left(), ROWS_TOP, left() + panelWidth(), ROWS_TOP + rows() * rowHeight);
+    }
     @Override protected Viewport widgetViewport(AbstractWidget widget) {
         return rowWidgets.contains(widget) ? rowsViewport() : null;
     }
     private int thumbHeight() { return Math.max(10, rows() * rowHeight * rows() / Math.max(1, rewards.size())); }
     private int thumbTop() {
-        return 74 + (rows() * rowHeight - thumbHeight()) * scroll / Math.max(1, (rewards.size() - rows()) * rowHeight);
+        return ROWS_TOP + (rows() * rowHeight - thumbHeight())
+                * scroll / Math.max(1, (rewards.size() - rows()) * rowHeight);
     }
 
     private void scrollTo(double y) {
-        motion.jump((y - 74 - thumbOffset) * Math.max(0, (rewards.size() - rows()) * rowHeight)
+        motion.jump((y - ROWS_TOP - thumbOffset) * Math.max(0, (rewards.size() - rows()) * rowHeight)
                 / Math.max(1, rows() * rowHeight - thumbHeight()));
         moveRows();
     }
@@ -131,18 +136,16 @@ public final class QuestRewardsScreen extends AnimatedQuestScreen {
         clearWidgets();
         rowWidgets.clear();
         styles = ButtonStyleSheet.load();
-        rowHeight = rewards.stream().anyMatch(d -> d.type.equals("effect"))
-                ? (mailSaved == null ? 72 : 96)
-                : mailSaved == null && rewards.stream().anyMatch(d -> d.type.equals("item")) ? 72 : 48;
-        if (mailSaved != null) rowHeight = Math.max(rowHeight, 72);
+        rowHeight = mailSaved != null ? 126
+                : rewards.stream().anyMatch(d -> d.type.equals("effect") || d.type.equals("item")) ? 100 : 76;
         int x = left(), w = panelWidth();
         motion.limit((rewards.size() - rows()) * rowHeight);
         motion.jump(scroll);
         scroll = motion.pixels();
-        if (!customNode) addRenderableWidget(new StyledChoiceButton<>(x, 32, Math.max(100, w - 30), 20,
+        if (!customNode) addRenderableWidget(new StyledChoiceButton<>(x, 40, Math.max(80, w - 34), 22,
                 text("create.reward_mode"), List.of("default", "manual", "automatic"), mode,
                 value -> text("reward_mode." + value), value -> mode = value, styles, "rewards-mode")).active = pending == null;
-        button("rewards-add", "+", "add_rewards", x + w - 24, 32, 24, () -> {
+        button("rewards-add", "+", "add_rewards", x + w - 26, 40, 26, () -> {
             rewards.add(new Draft(new QuestDefinition.Reward("item", "minecraft:diamond", 1)));
             scroll = Math.max(0, rewards.size() - rows()) * rowHeight;
             init();
@@ -150,9 +153,11 @@ public final class QuestRewardsScreen extends AnimatedQuestScreen {
         for (int row = 0; row < rewards.size(); row++) {
             int index = row;
             Draft draft = rewards.get(index);
-            int y = 74 + index * rowHeight - scroll;
+            int y = ROWS_TOP + index * rowHeight - scroll;
             int firstWidget = children().size();
-            addRenderableWidget(new StyledChoiceButton<>(x + 24, y, Math.max(80, w - 84), 20,
+            int actionLeft = x + w - 58;
+            int typeWidth = Math.max(90, Math.min(260, actionLeft - x - 42));
+            addRenderableWidget(new StyledChoiceButton<>(x + 34, y + 8, typeWidth, 22,
                     text("rewards.type"), itemsOnly ? List.of("item")
                             : mailSaved != null ? QuestRewards.TYPES.stream().filter(type -> !type.equals("mail")).toList()
                             : QuestRewards.TYPES, draft.type, value -> text("reward_type." + value),
@@ -168,19 +173,19 @@ public final class QuestRewardsScreen extends AnimatedQuestScreen {
                     }, styles, "rewards-type-" + index,
                     value -> icon(value, defaultTarget(value)))).active = pending == null;
             if (draft.type.equals("item")) {
-                var picker = button("rewards-pick-" + index, "...", "item_picker.title", x + w - 54, y, 24,
+                var picker = button("rewards-pick-" + index, "...", "item_picker.title", actionLeft, y + 8, 24,
                         () -> minecraft.setScreen(QuestScreen.pickResource(this, draft.item, true,
                                 value -> draft.item = value)));
                 picker.active &= pending == null;
             } else if (draft.type.equals("loot")) {
-                button("rewards-pick-" + index, "...", "loot.title", x + w - 54, y, 24,
+                button("rewards-pick-" + index, "...", "loot.title", actionLeft, y + 8, 24,
                         () -> minecraft.setScreen(new QuestLootScreen(this, draft.item,
                                 value -> {
                                     draft.item = value;
                                     init();
                                 })));
             } else if (draft.type.equals("mail")) {
-                button("rewards-pick-" + index, "...", "mailbox.template_pick", x + w - 54, y, 24,
+                button("rewards-pick-" + index, "...", "mailbox.template_pick", actionLeft, y + 8, 24,
                         () -> {
                             ClientMailbox.requestTemplates();
                             minecraft.setScreen(new QuestValuePickerScreen(this,
@@ -192,7 +197,7 @@ public final class QuestRewardsScreen extends AnimatedQuestScreen {
                         });
             } else {
                 if (draft.type.equals("unlock") || draft.type.equals("lock")) {
-                    button("rewards-pick-" + index, "\u2637", "task_picker.title", x + w - 54, y, 24,
+                    button("rewards-pick-" + index, "\u2637", "task_picker.title", actionLeft, y + 8, 24,
                             () -> minecraft.setScreen(new QuestTaskPickerScreen(this, draft.item, questId,
                                     ids -> {
                                         draft.item = String.join(", ", ids);
@@ -200,14 +205,22 @@ public final class QuestRewardsScreen extends AnimatedQuestScreen {
                                     })));
                 } else if (draft.type.equals("command") || draft.type.equals("function")
                         || draft.type.equals("script")) {
-                    var edit = new EditorIconButton(x + w - 54, y,
+                    var edit = new EditorIconButton(actionLeft, y + 8,
                             text("rewards.edit_source"), () -> editSource(draft),
                             styles, "rewards-edit-source-" + index, "edit");
                     edit.active = pending == null;
                     addRenderableWidget(edit);
                 }
             }
-            var item = new SuggestedEditBox(this, font, x + 24, y + 22, Math.max(32, w - 120), 20,
+            button("rewards-remove-" + index, "\u00d7", "delete", x + w - 28, y + 8, 24, () -> {
+                rewards.remove(index);
+                init();
+            });
+            int countWidth = Math.max(68, Math.min(100, w / 8));
+            int countX = x + w - countWidth - 40;
+            int targetX = x + 34;
+            int targetWidth = Math.max(48, countX - targetX - 8);
+            var item = new SuggestedEditBox(this, font, targetX, y + 36, targetWidth, 22,
                     text("rewards.target"), draft.type);
             if (draft.type.equals("item") || draft.type.equals("unlock") || draft.type.equals("lock")) item.withoutMenu();
             item.setMaxLength(8192);
@@ -215,14 +228,15 @@ public final class QuestRewardsScreen extends AnimatedQuestScreen {
             item.setResponder(value -> draft.item = value);
             item.setEditable(pending == null && !sourceReward(draft.type));
             addRenderableWidget(item);
-            EditBox count = new SuggestedEditBox(this, font, x + w - 90, y + 22, 60, 20, text("create.reward_count"), "count");
+            EditBox count = new SuggestedEditBox(this, font, countX, y + 36, countWidth, 22,
+                    text("create.reward_count"), "count");
             count.setMaxLength(7);
             count.setValue(draft.count);
             count.setResponder(value -> draft.count = value);
             count.setEditable(pending == null);
             addRenderableWidget(count);
             if (draft.type.equals("effect")) {
-                var level = new SuggestedEditBox(this, font, x + 24, y + 46, 65, 20,
+                var level = new SuggestedEditBox(this, font, x + 34, y + 64, 76, 20,
                         text("rewards.effect_level"), "count");
                 level.setHint(text("rewards.effect_level"));
                 level.setTooltip(Tooltip.create(text("rewards.effect_level")));
@@ -231,12 +245,12 @@ public final class QuestRewardsScreen extends AnimatedQuestScreen {
                 level.setResponder(value -> draft.level = value);
                 addRenderableWidget(level);
                 addRenderableWidget(Checkbox.builder(text("rewards.effect_particles"), font)
-                        .pos(x + 104, y + 46).selected(draft.particles)
+                        .pos(x + 122, y + 64).selected(draft.particles)
                         .onValueChange((box, value) -> draft.particles = value).build());
             }
-            if (draft.type.equals("item") && mailSaved == null) {
+            if (draft.type.equals("item")) {
                 int qualityWidth = qualityWidth(w);
-                addRenderableWidget(new StyledChoiceButton<>(x + 24, y + 44, qualityWidth, 20,
+                addRenderableWidget(new StyledChoiceButton<>(x + 34, y + 64, qualityWidth, 20,
                         text("rewards.quality"), QuestRewardQuality.VALUES, draft.quality,
                         value -> text("rewards.quality." + (value.isBlank() ? "auto" : value)),
                         value -> {
@@ -244,29 +258,27 @@ public final class QuestRewardsScreen extends AnimatedQuestScreen {
                             draft.background = "";
                             init();
                         }, styles, "rewards-quality-" + index)).active = pending == null;
-                int colorX = colorX(x, w);
-                int colorWidth = Math.max(60, x + w - 24 - colorX);
-                var background = new SuggestedEditBox(this, font, colorX, y + 44,
-                        Math.max(44, colorWidth - 16), 20, text("rewards.background"), "color");
-                background.setMaxLength(7);
-                background.setHint(text("rewards.background"));
-                background.setValue(draft.background);
-                background.setTooltip(Tooltip.create(text("rewards.background")));
-                background.setResponder(value -> draft.background = value);
-                background.setEditable(pending == null);
-                addRenderableWidget(background);
+                if (mailSaved == null) {
+                    int colorX = colorX(x, w);
+                    int colorWidth = Math.max(60, x + w - 40 - colorX);
+                    var background = new SuggestedEditBox(this, font, colorX, y + 64,
+                            Math.max(44, colorWidth - 16), 20, text("rewards.background"), "color");
+                    background.setMaxLength(7);
+                    background.setHint(text("rewards.background"));
+                    background.setValue(draft.background);
+                    background.setTooltip(Tooltip.create(text("rewards.background")));
+                    background.setResponder(value -> draft.background = value);
+                    background.setEditable(pending == null);
+                    addRenderableWidget(background);
+                }
             }
-            button("rewards-remove-" + index, "\u00d7", "delete", x + w - 24, y, 24, () -> {
-                rewards.remove(index);
-                init();
-            });
             if (mailSaved != null) {
                 addRenderableWidget(Checkbox.builder(text("mailbox.reward_visible"), font)
-                        .pos(x + 24, y + (draft.type.equals("effect") ? 70 : 46))
+                        .pos(x + 34, y + 94)
                         .maxWidth((w - 54) / 2).selected(!draft.hidden)
                         .onValueChange((box, value) -> { draft.hidden = !value; init(); }).build());
                 var popup = addRenderableWidget(Checkbox.builder(text("mailbox.reward_popup"), font)
-                        .pos(x + 24 + (w - 24) / 2, y + (draft.type.equals("effect") ? 70 : 46))
+                        .pos(x + w / 2, y + 94)
                         .maxWidth((w - 54) / 2)
                         .selected(!draft.hidden && !draft.hidePopup && (draft.type.equals("item") || draft.type.equals("loot")))
                         .onValueChange((box, value) -> draft.hidePopup = !value).build());
@@ -298,7 +310,7 @@ public final class QuestRewardsScreen extends AnimatedQuestScreen {
     }
 
     private static int qualityWidth(int panelWidth) { return Math.min(136, Math.max(112, panelWidth / 3)); }
-    private static int colorX(int left, int panelWidth) { return left + 24 + qualityWidth(panelWidth) + 8; }
+    private static int colorX(int left, int panelWidth) { return left + 34 + qualityWidth(panelWidth) + 10; }
 
     private void editSource(Draft draft) {
         try {
@@ -385,7 +397,8 @@ public final class QuestRewardsScreen extends AnimatedQuestScreen {
                 if (mailSaved != null) mailSaved.accept(rewards.stream().map(draft -> {
                     var reward = draft.value();
                     return new MailboxRuntime.Attachment(reward.type(), reward.item(),
-                            reward.count(), false, draft.hidden, draft.hidePopup);
+                            reward.count(), false, draft.hidden, draft.hidePopup,
+                            reward.quality(), reward.background());
                 }).toList());
                 else draftSaved.accept(values, mode);
                 minecraft.setScreen(parent);
@@ -450,7 +463,7 @@ public final class QuestRewardsScreen extends AnimatedQuestScreen {
         if (clickChoicePopup(x, y, button)) return true;
         if (button == 0 && pending == null && rewards.size() > rows()
                 && x >= left() + panelWidth() && x < left() + panelWidth() + 9
-                && y >= 74 && y < 74 + rows() * rowHeight) {
+                && y >= ROWS_TOP && y < ROWS_TOP + rows() * rowHeight) {
             scrollbarDragging = true;
             thumbOffset = y >= thumbTop() && y < thumbTop() + thumbHeight()
                     ? y - thumbTop() : thumbHeight() / 2.0;
@@ -509,12 +522,12 @@ public final class QuestRewardsScreen extends AnimatedQuestScreen {
         super.renderContents(g, x, y, tick);
         int left = left(), w = panelWidth();
         if (mailSaved == null) {
-            int colorX = colorX(left, w), colorWidth = Math.max(60, left + w - 24 - colorX);
+            int colorX = colorX(left, w), colorWidth = Math.max(60, left + w - 40 - colorX);
             g.enableScissor(rowsViewport().left(), rowsViewport().top(), rowsViewport().right(), rowsViewport().bottom());
             for (int row = scroll / rowHeight; row < Math.min(rewards.size(), scroll / rowHeight + rows() + 1); row++) {
                 var draft = rewards.get(row);
                 if (!draft.type.equals("item") || draft.background.isBlank()) continue;
-                int top = 74 + row * rowHeight - scroll + 44;
+                int top = ROWS_TOP + row * rowHeight - scroll + 64;
                 int swatch = Math.max(8, Math.min(12, colorWidth - 4));
                 int color;
                 try { color = 0xFF000000 | Integer.parseInt(draft.background.strip().substring(1), 16); }
@@ -524,19 +537,24 @@ public final class QuestRewardsScreen extends AnimatedQuestScreen {
             }
             g.disableScissor();
         }
-        g.drawCenteredString(font, title, width / 2, 12, 0xFFFFFFFF);
-        g.drawString(font, text("rewards.target"), left + 24, 60, 0xFFCCD5DE);
-        g.drawString(font, text("create.count"), left + w - 90, 60, 0xFFCCD5DE);
+        g.drawString(font, title, left + 12, 12, RewardEditorTheme.TEXT);
+        g.drawString(font, text(customNode ? "rewards.scope_graph" : "rewards.scope_task"),
+                left + 12, 72, RewardEditorTheme.MUTED);
+        g.drawString(font, text("rewards.target"), left + 34, ROWS_TOP - 17, RewardEditorTheme.MUTED);
+        g.drawString(font, text("create.count"), left + w - 142, ROWS_TOP - 17, RewardEditorTheme.MUTED);
         g.enableScissor(rowsViewport().left(), rowsViewport().top(), rowsViewport().right(), rowsViewport().bottom());
         for (int row = scroll / rowHeight; row < Math.min(rewards.size(), scroll / rowHeight + rows() + 1); row++) {
             var draft = rewards.get(row);
-            QuestIcons.render(g, icon(draft.type, draft.item), left + 2, 76 + row * rowHeight - scroll, 16);
+            int rowY = ROWS_TOP + row * rowHeight - scroll;
+            g.drawString(font, Component.literal(String.format(java.util.Locale.ROOT, "%02d", row + 1)),
+                    left + 12, rowY + rowHeight - 16, RewardEditorTheme.MUTED);
         }
-        if (rewards.isEmpty()) g.drawString(font, text("rewards.empty"), left, 82, 0xFFABB8C3);
+        if (rewards.isEmpty()) g.drawString(font, text("rewards.empty"), left + 14, ROWS_TOP + 16,
+                RewardEditorTheme.MUTED);
         g.disableScissor();
         if (rewards.size() > rows()) {
             int track = rows() * rowHeight;
-            g.fill(left + w + 3, 74, left + w + 6, 74 + track, 0xFF303741);
+            g.fill(left + w + 3, ROWS_TOP, left + w + 6, ROWS_TOP + track, 0xFF303741);
             g.fill(left + w + 3, thumbTop(), left + w + 6, thumbTop() + thumbHeight(), 0xFF9DB4D2);
         }
         if (error != null) g.drawString(font, font.plainSubstrByWidth(text(error).getString(), w),
@@ -550,7 +568,18 @@ public final class QuestRewardsScreen extends AnimatedQuestScreen {
 
     @Override
     public void renderBackground(GuiGraphics g, int x, int y, float tick) {
-        backdrop(g, 0xF01C2026);
+        backdrop(g, 0xF0181D23);
+        int left = left(), width = panelWidth();
+        RewardEditorTheme.panel(g, left, 4, width, 84,
+                customNode ? RewardEditorTheme.GOLD : RewardEditorTheme.GREEN);
+        var viewport = rowsViewport();
+        for (int row = scroll / rowHeight; row < Math.min(rewards.size(), scroll / rowHeight + rows() + 1); row++) {
+            int top = ROWS_TOP + row * rowHeight - scroll + 3;
+            if (top + rowHeight - 6 < viewport.top() || top > viewport.bottom()) continue;
+            Draft draft = rewards.get(row);
+            RewardEditorTheme.entry(g, left, top, width, rowHeight - 6,
+                    draft.type, true, false);
+        }
     }
 
     @Override public void onClose() { if (pending == null) closeTo(parent); }

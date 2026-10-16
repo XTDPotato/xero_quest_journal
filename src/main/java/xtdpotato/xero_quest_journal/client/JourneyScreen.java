@@ -1,8 +1,10 @@
 package xtdpotato.xero_quest_journal.client;
 
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import org.lwjgl.glfw.GLFW;
 import xtdpotato.xero_quest_journal.core.model.JourneyBackdrop;
 import xtdpotato.xero_quest_journal.core.model.JourneyAppearance;
@@ -17,6 +19,8 @@ public final class JourneyScreen extends AnimatedQuestScreen {
     private static final int CARD_WIDTH = 168, CARD_HEIGHT = 112, STEP = 230;
     private static final double MIN_TIMELINE_ZOOM = 0.5, MAX_TIMELINE_ZOOM = 1.5;
     private static final int BACKGROUND = 0xFF303541;
+    private static final ResourceLocation PROGRESS_MARKER = ResourceLocation.fromNamespaceAndPath(
+            "xero_quest_journal", "textures/gui/journey_progress_marker.png");
     private static final String UNASSIGNED_CHAPTER = "__journey_unassigned";
     private final Screen parent;
     private final String mediaOwner = "journey-" + UUID.randomUUID();
@@ -43,6 +47,7 @@ public final class JourneyScreen extends AnimatedQuestScreen {
     private double limitScale = -1;
     private int chapterIndex, columns, branchRows;
     private int navigationChapter = -1;
+    private String pendingChapterEvent = "";
     private long frameTime;
     private double dragX, dragY, dragScrollX, dragScrollY;
     private double timelineZoom = 1;
@@ -163,10 +168,13 @@ public final class JourneyScreen extends AnimatedQuestScreen {
         clearWidgets();
         if (!canStyle()) { editing = false; return; }
         var styles = ButtonStyleSheet.load();
-        var toggle = addRenderableWidget(new EditorIconButton(width - 92, 10, label("edit_layout"),
+        var toggle = addRenderableWidget(new EditorIconButton(width - 62, 10, label("edit_layout"),
                 () -> { editing = !editing; wireFrom = ""; menu.clear(); initTools(); },
-                styles, "journey-edit-layout", editing ? "close" : "grid"));
+                styles, "journey-edit-layout", editing ? "close" : "edit"));
+        toggle.setTooltip(Tooltip.create(label("edit_layout")));
         toggle.active = pending == null;
+        if (editing) addRenderableWidget(new EditorIconButton(width - 92, 10, label("appearance"),
+                this::editAppearance, styles, "journey-appearance", "grid")).active = pending == null;
         if (editing && canEditChapter(chapterIndex)) {
             addRenderableWidget(new EditorIconButton(width - 122, 10, label("edit_backgrounds"),
                     this::editBackgrounds, styles, "journey-edit-backgrounds", "minecraft:painting")).active = pending == null;
@@ -233,6 +241,28 @@ public final class JourneyScreen extends AnimatedQuestScreen {
         var value = chapters.get(chapter);
         minecraft.setScreen(new JourneyBackgroundScreen(this, value.backgrounds(), backgrounds ->
                 saveChapter(chapter, memberIds(chapter), value.timeline(), backgrounds)));
+    }
+
+    private void editAppearance() {
+        if (!canEditChapter(chapterIndex) || pending != null) return;
+        int index = chapterIndex;
+        var chapter = chapters.get(index);
+        var editor = new JourneyAppearanceScreen(this, chapter.journeyAppearance(), value -> {
+            pending = ClientQuestProgress.saveJourney(chapter,
+                    new xtdpotato.xero_quest_journal.core.network.QuestJourneyNetwork.Draft(
+                            memberIds(index), chapter.timeline(), chapter.backgrounds(), null, null, value));
+            saveError = "";
+            initTools();
+        }).chapterContext(chapter, sections.get(index).quests());
+        minecraft.setScreen(editor);
+    }
+
+    private void editChapter(String component) {
+        if (!canEditChapter(chapterIndex) || pending != null) return;
+        int index = chapterIndex;
+        var chapter = chapters.get(index);
+        minecraft.setScreen(new JourneyChapterEditorScreen(this, chapter, memberIds(index), component,
+                draft -> { pending = ClientQuestProgress.saveJourney(chapter, draft); initTools(); }));
     }
 
     private void loadQuests() {
@@ -403,6 +433,7 @@ public final class JourneyScreen extends AnimatedQuestScreen {
         if (navigationChapter >= 0) {
             if (Math.abs(timelineX.position() - timelineX.target()) > .5) return;
             navigationChapter = -1;
+            finishChapterEvent();
         }
         double probe = timelineX.position() + viewWidth() * .30;
         activateChapter(chapterAt(probe + .5 - 64));
@@ -410,6 +441,7 @@ public final class JourneyScreen extends AnimatedQuestScreen {
 
     private void activateChapter(int index) {
         if (index == chapterIndex) return;
+        if (navigationChapter < 0) sendChapterEvent(index, false);
         long now = System.nanoTime();
         tabMotions.get(chapters.get(chapterIndex).id()).target(false, now, motionMillis());
         chapterIndex = index;
@@ -418,17 +450,31 @@ public final class JourneyScreen extends AnimatedQuestScreen {
         ensureSelectedTab();
         updateBackdrop();
         initTools();
+        if (navigationChapter < 0) sendChapterEvent(index, true);
     }
 
     private int motionMillis() { return animationMillis() == 0 ? 0 : 240; }
     private void selectChapter(int index) {
         if (index < 0 || index >= chapters.size() || index == chapterIndex) return;
         cancelPointer();
+        sendChapterEvent(index, false);
+        pendingChapterEvent = chapters.get(index).id();
         navigationChapter = index;
         timelineX.to(chapterPosition(index));
         if (animationMillis() == 0) timelineX.jump(timelineX.target());
         activateChapter(index);
         followTimeline();
+    }
+    private void sendChapterEvent(int index, boolean after) {
+        String id = chapters.get(index).id();
+        if (UNASSIGNED_CHAPTER.equals(id) || minecraft.getConnection() == null) return;
+        net.neoforged.neoforge.network.PacketDistributor.sendToServer(
+                new xtdpotato.xero_quest_journal.core.network.QuestJourneyNetwork.ChapterSwitch(id, after));
+    }
+    private void finishChapterEvent() {
+        if (pendingChapterEvent.isBlank()) return;
+        if (chapters.get(chapterIndex).id().equals(pendingChapterEvent)) sendChapterEvent(chapterIndex, true);
+        pendingChapterEvent = "";
     }
 
     private double scale() {
@@ -437,9 +483,14 @@ public final class JourneyScreen extends AnimatedQuestScreen {
     }
     private double viewWidth() { return width / scale(); }
     private double viewHeight() { return (bottom() - top()) / scale(); }
-    private int top() { return width < 420 ? 77 : 57; }
+    private int top() { return width < 420 ? 98 : 60; }
     private int bottom() { return height - 23; }
     private int lineY() { return (int) Math.max(CARD_HEIGHT + 28, viewHeight() * .58); }
+    private double timelineProgress() {
+        double range = timelineX.maximum() - timelineX.minimum();
+        return range <= 0 ? 0 : Math.clamp(
+                (timelineX.position() - timelineX.minimum()) / range, 0, 1);
+    }
     private JourneyTimeline.Position position(QuestSlot slot) {
         if (slot.quest().id().equals(nodeDrag) && slot.chapter() == nodeChapter && previewPosition != null)
             return previewPosition;
@@ -558,8 +609,8 @@ public final class JourneyScreen extends AnimatedQuestScreen {
                 0, 0, 1, 1, 1, true, true, false, 1, false, "");
         if (value.source().isBlank()) return;
         if (value.type().equals("video")) ClientMediaManager.renderVideo(graphics, mediaOwner, backdropKey,
-                value.source(), x, y, w, h, alpha, true, true, true, 0, "cover", "");
-        else ClientMediaManager.renderImageCover(graphics, value.source(), x, y, w, h, alpha);
+                value.source(), x, y, w, h, alpha, true, true, true, 0, value.mode(), "");
+        else ClientMediaManager.renderImageScaled(graphics, value.source(), x, y, w, h, alpha, value.mode());
     }
 
     @Override protected void renderContents(GuiGraphics graphics, int mouseX, int mouseY, float delta) {
@@ -573,15 +624,9 @@ public final class JourneyScreen extends AnimatedQuestScreen {
                 width < 420 ? Math.max(20, width - (canStyle() ? editing ? 195 : 135 : 115))
                         : tabsLeft() - 62, 0xFFF5E8CF, false);
         drawTabs(graphics);
+        drawTimelineProgress(graphics);
         icon(graphics, "close", "close", width - 31, 12, 21,
                 closeHeld ? 0xFFE3BE75 : 0xFFF5E8CF);
-        if (canStyle()) {
-            ToolIconRenderer.surface(graphics, width - 62, 12, 20, 20, atAppearance(mouseX, mouseY), 1);
-            ToolIconRenderer.icon(graphics, "edit", width - 62, 12, 20, 20, 1);
-            if (atAppearance(mouseX, mouseY))
-                graphics.renderTooltip(font, Component.translatable("screen.xero_quest_journal.journey.appearance"),
-                        mouseX, mouseY);
-        }
         if (chapters.isEmpty()) {
             graphics.drawCenteredString(font, Component.translatable("screen.xero_quest_journal.journey.empty"),
                     width / 2, height / 2, 0xFFF1E8D8);
@@ -611,10 +656,15 @@ public final class JourneyScreen extends AnimatedQuestScreen {
                 });
         if (!saveError.isBlank()) graphics.drawString(font,
                 Component.translatable("screen.xero_quest_journal.action." + saveError), 12, height - 24, 0xFFFF8888);
-        if (!hovered.isBlank() && menu.isEmpty() && nodeDrag.isBlank() && wireFrom.isBlank()
-                && !dragging && !draggingTabs && !draggingScrollbar && !inputBlocked()) {
-            var quest = ClientQuestDefinitions.find(hovered);
-            if (quest != null) graphics.renderTooltip(font, QuestText.tooltip(quest), mouseX, mouseY);
+        if (canStyle() && atAppearance(mouseX, mouseY) && menu.isEmpty()) {
+            graphics.flush();
+            com.mojang.blaze3d.systems.RenderSystem.clear(org.lwjgl.opengl.GL11.GL_DEPTH_BUFFER_BIT,
+                    net.minecraft.client.Minecraft.ON_OSX);
+            graphics.pose().pushPose();
+            graphics.pose().translate(0, 0, 1000);
+            graphics.renderTooltip(font, label("edit_layout"), mouseX, mouseY);
+            graphics.flush();
+            graphics.pose().popPose();
         }
     }
 
@@ -659,6 +709,23 @@ public final class JourneyScreen extends AnimatedQuestScreen {
                 tabs.position() > .5 ? 0xFFF5E8CF : 0x668B8495);
         icon(graphics, "next", "@next", right + 8, y + 10, 10,
                 tabs.position() < tabs.maximum() - .5 ? 0xFFF5E8CF : 0x668B8495);
+    }
+
+    private void drawTimelineProgress(GuiGraphics graphics) {
+        double range = timelineX.maximum() - timelineX.minimum();
+        if (chapters.isEmpty() || range <= 0) return;
+        int left = tabsLeft(), right = tabsRight(), y = tabsTop() + 36;
+        int markerX = left + (int) Math.round((right - left) * timelineProgress());
+        graphics.fill(left, y, right, y + 2, 0xA9909AA5);
+        graphics.fill(left, y, markerX, y + 2, 0xFFFFE6AE);
+        for (int chapter = 1; chapter < sections.size(); chapter++) {
+            double progress = Math.clamp(chapterPosition(chapter) / range, 0, 1);
+            int tickX = left + (int) Math.round((right - left) * progress);
+            graphics.fill(tickX, y - 2, tickX + 1, y + 4,
+                    progress <= timelineProgress() ? 0xFFE8D4A5 : 0x997C8792);
+        }
+        graphics.blit(PROGRESS_MARKER, markerX - 6, y - 11, 12, 24,
+                0, 0, 32, 64, 32, 64);
     }
 
     private String chapterIcon(int index) {
@@ -716,7 +783,7 @@ public final class JourneyScreen extends AnimatedQuestScreen {
             JourneyAppearanceRenderer.text(graphics, font, chapterStyle.get("chapter"), chapter.name(),
                     sx + 100, y - 28, 138, 0xFFF5E8CF, true);
             JourneyAppearanceRenderer.icon(graphics, chapterStyle.get("marker"), "@marker",
-                    sx + 97, y - 3, 6, 6, 0xFFF5E8CF, false);
+                    sx + 89, y - 11, 22, 22, 0xFFFFFFFF, false);
             if (sections.get(i).quests().isEmpty())
                 graphics.drawString(font, label("no_quests"), sx + 140, y - 4, 0xFFF1E8D8, false);
         }
@@ -834,6 +901,7 @@ public final class JourneyScreen extends AnimatedQuestScreen {
                 direction < 0 ? tabsLeft() - 18 : tabsRight() + 8, tabsTop() + 10, 10);
     }
     private void cancelPointer() {
+        pendingChapterEvent = "";
         if (navigationChapter >= 0) timelineX.to(timelineX.position());
         navigationChapter = -1;
         dragging = draggingTabs = draggingScrollbar = draggingVerticalScrollbar
@@ -890,6 +958,9 @@ public final class JourneyScreen extends AnimatedQuestScreen {
             }
         }
         if (canEditChapter(chapterIndex)) {
+            entries.add(Map.entry("edit_chapter_icon", () -> editChapter("icon")));
+            entries.add(Map.entry("edit_chapter_name", () -> editChapter("text")));
+            entries.add(Map.entry("appearance", this::editAppearance));
             entries.add(Map.entry("tasks", this::chooseTasks));
             entries.add(Map.entry("edit_backgrounds", this::editBackgrounds));
         }
@@ -902,7 +973,24 @@ public final class JourneyScreen extends AnimatedQuestScreen {
             menu.add(new StyledButton(menuX, menuY + i * 22, w, 22, label(entry.getKey()), ignored -> {
                 menu.clear();
                 if (canStyle() && pending == null) entry.getValue().run();
-            }, styles, "journey-menu-" + entry.getKey(), "context"));
+            }, styles, "journey-menu-" + entry.getKey(), "context") {
+                @Override protected void renderContent(GuiGraphics g, ButtonStyle style, int color) {
+                    String key = entry.getKey();
+                    String icon = switch (key) {
+                        case "edit_chapter_icon", "edit_backgrounds" -> "item";
+                        case "edit_chapter_name", "properties", "appearance" -> "edit";
+                        case "connect" -> "visual";
+                        case "disconnect" -> "unlink";
+                        case "remove_task" -> "delete";
+                        default -> "add";
+                    };
+                    g.fill(getX() + 2, getY() + 3, getX() + 4, getBottom() - 3,
+                            key.equals("remove_task") ? 0xFFE58D80 : 0xFFB9CDAB);
+                    JournalNavButton.drawIcon(g, icon, getX() + 8, getY() + 4, 14, 0xFFDFCD9D);
+                    g.drawString(font, font.plainSubstrByWidth(getMessage().getString(), Math.max(1, getWidth() - 34)),
+                            getX() + 28, getY() + (getHeight() - font.lineHeight) / 2, color, false);
+                }
+            });
         }
     }
 
@@ -915,7 +1003,13 @@ public final class JourneyScreen extends AnimatedQuestScreen {
         }
         if (super.mouseClicked(x, y, button)) return true;
         if (editing && pending != null) return true;
-        if (editing && button == 1 && inContent(x, y)) { openMenu(x, y); return true; }
+        if (editing && button == 1 && (inContent(x, y) || inTabs(x, y))) {
+            int tab = tabAt(x, y);
+            if (tab >= 0 && tab < chapters.size()) activateChapter(tab);
+            else if (inContent(x, y) && questAt(x, y).isBlank())
+                activateChapter(chapterAt(x / scale() + timelineX.position()));
+            openMenu(x, y); return true;
+        }
         if (button != 0) return false;
         cancelPointer();
         if (atAppearance(x, y)) { appearanceHeld = true; return true; }
@@ -1042,13 +1136,8 @@ public final class JourneyScreen extends AnimatedQuestScreen {
             boolean open = atAppearance(x, y);
             cancelPointer();
             if (open) {
-                var editor = new JourneyAppearanceScreen(this);
-                if (!chapters.isEmpty()) {
-                    var chapter = chapters.get(chapterIndex);
-                    editor.preview("chapter", chapter.icon().isBlank() ? "guide" : chapter.icon(), chapter.name())
-                            .preview("tab", "", chapter.name());
-                }
-                minecraft.setScreen(editor);
+                editing = !editing;
+                wireFrom = ""; menu.clear(); initTools();
             }
             return true;
         }
@@ -1076,7 +1165,10 @@ public final class JourneyScreen extends AnimatedQuestScreen {
         String clicked = questAt(x, y);
         boolean open = !dragged && !clicked.isBlank() && clicked.equals(pressedQuest);
         pressedQuest = "";
-        if (open) closeTo(QuestScreen.task(null, clicked));
+        if (open) {
+            selectedQuest = clicked;
+            minecraft.setScreen(new JourneyQuestPopupScreen(this, clicked));
+        }
         return true;
     }
     @Override public boolean mouseScrolled(double x, double y, double horizontal, double vertical) {
@@ -1111,6 +1203,11 @@ public final class JourneyScreen extends AnimatedQuestScreen {
     @Override public void onClose() { cancelPointer(); closeTo(parent); }
     @Override public void mouseMoved(double x, double y) { pointerX = x; pointerY = y; super.mouseMoved(x, y); }
     @Override public void removed() {
+        if (navigationChapter >= 0) {
+            timelineX.jump(timelineX.target());
+            navigationChapter = -1;
+            finishChapterEvent();
+        }
         cancelPointer();
         ClientMediaManager.release(mediaOwner);
         backdropFrame.close(); backdropSnapshot.close(); backdropIncoming.close();

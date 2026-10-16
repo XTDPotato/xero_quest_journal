@@ -100,6 +100,8 @@ public final class QuestNetwork {
                 (payload, context) -> QuestClientInbox.accept(payload));
         registrar.playToClient(OpenScreenPayload.TYPE, OpenScreenPayload.STREAM_CODEC,
                 (payload, context) -> QuestClientInbox.accept(payload));
+        registrar.playToClient(LocatedQuestPayload.TYPE, LocatedQuestPayload.STREAM_CODEC,
+                (payload, context) -> QuestClientInbox.accept(payload));
         registrar.playToClient(EditModePayload.TYPE, EditModePayload.STREAM_CODEC,
                 (payload, context) -> xtdpotato.xero_quest_journal.client.ClientEditMode.set(payload.enabled()));
     }
@@ -282,6 +284,7 @@ public final class QuestNetwork {
         try {
             sendSnapshotChunks(player, context);
             QuestControlNetwork.send(player);
+            QuestControlNetwork.sendVariables(player);
             QuestUiThemeNetwork.send(player);
             QuestDailyNetwork.send(player);
         } catch (IllegalArgumentException tooLarge) {
@@ -886,7 +889,8 @@ public final class QuestNetwork {
                             List<MailboxRuntime.Attachment> values = new ArrayList<>(attachments);
                             for (int j = 0; j < attachments; j++) {
                                 values.add(new MailboxRuntime.Attachment(buffer.readUtf(32), buffer.readUtf(8192),
-                                        buffer.readVarInt(), buffer.readBoolean(), buffer.readBoolean(), buffer.readBoolean()));
+                                        buffer.readVarInt(), buffer.readBoolean(), buffer.readBoolean(), buffer.readBoolean(),
+                                        buffer.readUtf(16), buffer.readUtf(7)));
                             }
                             messages.add(new MailboxRuntime.View(id, sender, recipient, subject, body, createdAt, expiresAt,
                                     read, starred, icon, treasured, archived, treasureNew, treasureUnseen,
@@ -927,6 +931,8 @@ public final class QuestNetwork {
                                 buffer.writeBoolean(attachment.claimed());
                                 buffer.writeBoolean(attachment.hidden());
                                 buffer.writeBoolean(attachment.hidePopup());
+                                buffer.writeUtf(attachment.quality(), 16);
+                                buffer.writeUtf(attachment.background(), 7);
                             }
                         }
                     }
@@ -1035,7 +1041,8 @@ public final class QuestNetwork {
                         List<MailboxRuntime.Attachment> attachments = new ArrayList<>();
                         for (int i = 0; i < size; i++)
                             attachments.add(new MailboxRuntime.Attachment(buffer.readUtf(32), buffer.readUtf(8192),
-                                    buffer.readVarInt(), false, buffer.readBoolean(), buffer.readBoolean()));
+                                    buffer.readVarInt(), false, buffer.readBoolean(), buffer.readBoolean(),
+                                    buffer.readUtf(16), buffer.readUtf(7)));
                         return new MailboxSendPayload(request, recipient, id, sender, subject, body, icon, treasured,
                                 expiresIn, gameTime, attachments, banner, targetTaskId, timing);
                     }
@@ -1060,6 +1067,8 @@ public final class QuestNetwork {
                             buffer.writeVarInt(attachment.count());
                             buffer.writeBoolean(attachment.hidden());
                             buffer.writeBoolean(attachment.hidePopup());
+                            buffer.writeUtf(attachment.quality(), 16);
+                            buffer.writeUtf(attachment.background(), 7);
                         }
                     }
                 };
@@ -1290,7 +1299,8 @@ public final class QuestNetwork {
                         int size = checkedSize(buffer.readVarInt(), 128000, "mail receipt");
                         List<QuestDefinition.Reward> items = new ArrayList<>(size);
                         for (int i = 0; i < size; i++)
-                            items.add(new QuestDefinition.Reward("item", buffer.readUtf(8192), buffer.readVarInt()));
+                            items.add(new QuestDefinition.Reward("item", buffer.readUtf(8192), buffer.readVarInt(),
+                                    buffer.readUtf(16), buffer.readUtf(7)));
                         return new MailboxActionResultPayload(request, result, items);
                     }
 
@@ -1302,6 +1312,8 @@ public final class QuestNetwork {
                         for (var item : payload.items()) {
                             buffer.writeUtf(item.item(), 8192);
                             buffer.writeVarInt(item.count());
+                            buffer.writeUtf(item.quality(), 16);
+                            buffer.writeUtf(item.background(), 7);
                         }
                     }
                 };
@@ -1336,6 +1348,36 @@ public final class QuestNetwork {
 
         @Override
         public Type<OpenScreenPayload> type() {
+            return TYPE;
+        }
+    }
+
+    public record LocatedQuestPayload(String questId, String location) implements CustomPacketPayload {
+        public static final Type<LocatedQuestPayload> TYPE = new Type<>(
+                ResourceLocation.fromNamespaceAndPath(XeroQuestJournal.MOD_ID, "located_quest"));
+        public static final StreamCodec<RegistryFriendlyByteBuf, LocatedQuestPayload> STREAM_CODEC =
+                new StreamCodec<>() {
+                    @Override
+                    public LocatedQuestPayload decode(RegistryFriendlyByteBuf buffer) {
+                        return new LocatedQuestPayload(buffer.readUtf(256), buffer.readUtf(512));
+                    }
+
+                    @Override
+                    public void encode(RegistryFriendlyByteBuf buffer, LocatedQuestPayload payload) {
+                        buffer.writeUtf(payload.questId(), 256);
+                        buffer.writeUtf(payload.location(), 512);
+                    }
+                };
+
+        public LocatedQuestPayload {
+            questId = questId == null ? "" : questId;
+            location = location == null ? "" : location;
+            if (questId.isBlank() || questId.length() > 256 || location.length() > 512)
+                throw new IllegalArgumentException("Invalid located quest payload");
+        }
+
+        @Override
+        public Type<LocatedQuestPayload> type() {
             return TYPE;
         }
     }

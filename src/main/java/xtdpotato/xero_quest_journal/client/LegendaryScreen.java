@@ -120,8 +120,21 @@ public final class LegendaryScreen extends AnimatedQuestScreen {
         advance();
         backdrop(g, 0xFF34414A);
         String customBackground = ClientPreferences.get().legendaryBackground;
-        ClientMediaManager.renderImageCover(g, customBackground.isBlank()
-                ? ClientQuestProgress.overviewImage() : customBackground, 0, 0, width, height, 1);
+        String background = customBackground.isBlank() ? ClientQuestProgress.overviewImage() : customBackground;
+        int bw = (int) Math.round(width * ClientPreferences.get().legendaryBackgroundScale);
+        int bh = (int) Math.round(height * ClientPreferences.get().legendaryBackgroundScale);
+        int bx = (width - bw) / 2 + ClientPreferences.get().legendaryBackgroundOffsetX;
+        int by = (height - bh) / 2 + ClientPreferences.get().legendaryBackgroundOffsetY;
+        if (ClientPreferences.get().legendaryBackgroundType.equals("video"))
+            ClientMediaManager.renderVideo(g, "legendary-gallery", "background", background, bx, by, bw, bh, 1,
+                    true, true, true, 0, ClientPreferences.get().legendaryBackgroundMode, "");
+        else
+            ClientMediaManager.renderImageScaled(g, background, bx, by, bw, bh, 1,
+                    ClientPreferences.get().legendaryBackgroundMode);
+        if (!ClientPreferences.get().legendaryBackgroundMusic.isBlank())
+            ClientMediaManager.renderAudio(g, "legendary-gallery", "background-music",
+                    ClientPreferences.get().legendaryBackgroundMusic, 0, 0, 1, 1, 1,
+                    true, true, false, 1, false, "");
         g.fill(0, 0, width, height, 0x5A202532);
         g.fill(0, 0, width, top(), 0xB51D2332);
         g.fill(0, bottom(), width, height, 0x54202732);
@@ -354,6 +367,11 @@ public final class LegendaryScreen extends AnimatedQuestScreen {
         return super.keyPressed(key, scan, modifiers);
     }
     @Override public void onClose() { closeTo(parent); }
-    @Override public void removed() { held = panelDrag = false; frameTime = 0; super.removed(); }
+    @Override public void removed() {
+        held = panelDrag = false;
+        frameTime = 0;
+        ClientMediaManager.release("legendary-gallery");
+        super.removed();
+    }
     @Override public boolean isPauseScreen() { return false; }
 }

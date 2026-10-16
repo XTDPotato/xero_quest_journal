@@ -24,6 +24,7 @@ final class AuthoringDocumentationRegression {
     private static final String ID = "docs_js_demo";
     private static final String[] TABS = {"general", "motion", "notifications", "appearance", "tasks", "tools"};
     private static int stage, wait, tabIndex;
+    private static long tabStartedAt;
     private static CompletableFuture<?> pending;
     private static CompletableFuture<Void> language;
     private static QuestConfigScreen settings;
@@ -37,6 +38,7 @@ final class AuthoringDocumentationRegression {
         MailArrivalToast.clear();
         QuestUnlockToast.clear();
         XeroToast.clear();
+        if (game.screen instanceof AnimatedQuestScreen animated && animated.inputBlocked()) return false;
         if (game.player == null || game.level == null || --wait > 0) return false;
         if (pending != null) {
             if (!pending.isDone()) return false;
@@ -73,6 +75,7 @@ final class AuthoringDocumentationRegression {
             case 2 -> {
                 capture(game, "settings-general-zh-1920");
                 ClientEditMode.set(true);
+                tabStartedAt = System.nanoTime();
                 button(settings, "config-tab-motion").onPress();
                 require((double) call(field(settings, "tabMotion"), "position") == 0,
                         "Settings tab transition did not start");
@@ -80,6 +83,8 @@ final class AuthoringDocumentationRegression {
                 wait = 5;
             }
             case 3 -> {
+                if ((double) call(field(settings, "tabMotion"), "position") != 1
+                        && System.nanoTime() - tabStartedAt < 500_000_000L) return false;
                 require((double) call(field(settings, "tabMotion"), "position") == 1, "100ms tab did not settle");
                 capture(game, "settings-motion-zh-1920");
                 tabIndex = 2;
@@ -87,6 +92,7 @@ final class AuthoringDocumentationRegression {
                 wait = 5;
             }
             case 4 -> {
+                if ((double) call(field(settings, "tabMotion"), "position") != 1) return false;
                 capture(game, "settings-" + TABS[tabIndex] + "-zh-1920");
                 if (++tabIndex < TABS.length) {
                     button(settings, "config-tab-" + TABS[tabIndex]).onPress();
@@ -112,7 +118,7 @@ final class AuthoringDocumentationRegression {
                 var done = button(settings, "done");
                 require(settings.getChildAt(done.getX() + 3, done.getY() + 3).orElse(null) == done,
                         "Settings footer intercepted by scrolled body");
-                var last = button(settings, "inventory-y-more");
+                var last = button(settings, "inventory-placement");
                 require(last.getY() + last.getHeight() <= (int) call(settings, "bodyBottom"),
                         "Final personal setting is unreachable");
                 desktop(game);
@@ -242,6 +248,12 @@ final class AuthoringDocumentationRegression {
             }
             case 18 -> {
                 capture(game, "overview-authoring-zh-1920");
+            }
+            case 19 -> {
+                if (!AuthoringInteractionRegression.tick(game)) return false;
+            }
+            case 20 -> {
+                if (!DocumentationGalleryRegression.tick(game)) return false;
                 game.setScreen(null);
                 return true;
             }
@@ -302,6 +314,7 @@ final class AuthoringDocumentationRegression {
         require("FALSE".equals(QuestControlData.get(player).properties(player, QuestRepository.find("docs_branch"), "button").get("value")),
                 "Successful once-only predicate did not route false on retry");
         exportInterfaces(player, context);
+        AuthoringInteractionRegression.runtime(player);
         QuestProgressData.get(player.server).focused(player.getUUID(), "");
     }
     private static void checkGraph(ServerPlayer player, String source, String expected, boolean once) throws Exception {

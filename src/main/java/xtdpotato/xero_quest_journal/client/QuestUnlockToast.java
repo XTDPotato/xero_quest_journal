@@ -6,7 +6,6 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import xtdpotato.xero_quest_journal.core.model.QuestDefinition;
 import xtdpotato.xero_quest_journal.core.model.QuestListAccent;
-import xtdpotato.xero_quest_journal.core.runtime.QuestLocation;
 
 /** Top-left, type-accented banner for a newly unlocked task. */
 public final class QuestUnlockToast {
@@ -79,14 +78,19 @@ public final class QuestUnlockToast {
 
     public static void trackCurrent() {
         String id = currentQuestId();
-        if (id.isBlank()) return;
+        if (id.isBlank()) {
+            QuestHudRenderer.replayTrackedCoordinateAnimation();
+            return;
+        }
         QuestDefinition quest = ClientQuestDefinitions.find(id);
         if (quest == null) {
             dismissCurrent();
             return;
         }
-        if (quest.trackable() && location(quest) != null) {
-            ClientQuestProgress.toggleTracking(id);
+        if (quest.trackable() && QuestHudRenderer.location(quest) != null) {
+            ClientQuestProgress.toggleTracking(id).thenAccept(result -> {
+                if (result.equals("tracked")) QuestHudRenderer.playCoordinateTrackAnimation(id);
+            });
             dismissCurrent();
         } else {
             Minecraft game = Minecraft.getInstance();
@@ -98,26 +102,6 @@ public final class QuestUnlockToast {
     private static float smooth(float value) {
         float t = Math.clamp(value, 0, 1);
         return t * t * (3 - 2 * t);
-    }
-
-    private static QuestLocation location(QuestDefinition quest) {
-        for (var trigger : quest.triggers()) {
-            QuestLocation result = location(trigger);
-            if (result != null) return result;
-        }
-        return null;
-    }
-
-    private static QuestLocation location(QuestDefinition.Trigger trigger) {
-        if (trigger.type().equals("location")) {
-            QuestLocation target = QuestLocation.parse(trigger.item());
-            if (target != null) return target;
-        }
-        for (var child : trigger.children()) {
-            QuestLocation result = location(child);
-            if (result != null) return result;
-        }
-        return null;
     }
 
     public static void render(GuiGraphics graphics) {
@@ -235,7 +219,7 @@ public final class QuestUnlockToast {
             graphics.pose().popPose();
         }
         String key = QuestKeyMappings.TRACK_TASK.getTranslatedKeyMessage().getString();
-        Component hint = Component.translatable(quest.trackable() && location(quest) != null
+        Component hint = Component.translatable(quest.trackable() && QuestHudRenderer.location(quest) != null
                 ? "screen.xero_quest_journal.unlock_toast.track_hint"
                 : "screen.xero_quest_journal.unlock_toast.open_hint", key);
         if (hintIn > 0) graphics.drawString(game.font, game.font.plainSubstrByWidth(hint.getString(), maxTextWidth),

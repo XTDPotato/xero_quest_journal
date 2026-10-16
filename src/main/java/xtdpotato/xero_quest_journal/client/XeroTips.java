@@ -14,7 +14,6 @@ public final class XeroTips {
     private static final Deque<Component> pending = new ArrayDeque<>();
     private static final Deque<Component> history = new ArrayDeque<>();
     private static final UiMotion motion = new UiMotion(false, System.nanoTime());
-    private static final UiCompositor compositor = new UiCompositor();
 
     private XeroTips() {
     }
@@ -42,12 +41,11 @@ public final class XeroTips {
         history.clear();
         message = null;
         motion.target(false, System.nanoTime(), 0);
-        compositor.close();
     }
 
     private static void advance() {
         long now = System.nanoTime();
-        int duration = AnimatedQuestScreen.animationMillis();
+        int duration = AnimatedQuestScreen.popupAnimationMillis();
         motion.advance(now, duration);
         if (message != null && now >= expiresAt && motion.visible()) motion.target(false, now, duration);
         if (message != null && !motion.visible() && motion.settled()) message = null;
@@ -61,7 +59,6 @@ public final class XeroTips {
     public static void render(GuiGraphics graphics) {
         advance();
         if (message == null) {
-            compositor.close();
             return;
         }
         if (Minecraft.getInstance().player == null) {
@@ -77,14 +74,6 @@ public final class XeroTips {
         // Anchor the bottom rather than the first line: wrapped messages grow upward,
         // staying clear of health, hunger, experience and the hotbar even during entry.
         int y = Math.max(4, screenHeight - height - 54);
-        Runnable draw = () -> StatusToastRenderer.draw(graphics, game.font, layout, screenWidth / 2, y);
-        if (motion.settled()) {
-            compositor.close();
-            draw.run();
-        } else {
-            compositor.capture(graphics, draw);
-            compositor.band(graphics, screenWidth, screenHeight, y, y + height,
-                    6 * (1 - motion.eased()), motion.eased());
-        }
+        StatusToastRenderer.drawAnimated(graphics, game.font, layout, screenWidth / 2, y, motion.position());
     }
 }

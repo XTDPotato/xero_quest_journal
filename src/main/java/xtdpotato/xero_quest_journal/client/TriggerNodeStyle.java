@@ -65,8 +65,9 @@ final class TriggerNodeStyle {
             case "event" -> Kind.EVENT;
             case "context" -> Kind.QUERY;
             case "js", "variable" -> Kind.LOGIC;
-            case "set_variable", "set_context" -> Kind.VALUE;
-            case "set_property", "reset_property", "set_theme", "set_overview_background" -> Kind.CONTROL;
+            case "set_variable", "calculate_variable", "set_context" -> Kind.VALUE;
+            case "set_property", "reset_property", "set_theme", "set_overview_background",
+                    "set_hot_event_background" -> Kind.CONTROL;
             case "delay" -> Kind.FLOW;
             case "locate_structure", "locate_biome", "teleport", "enter_structure" -> Kind.TRAVEL;
             case "kubejs_call", "kubejs_script" -> Kind.SCRIPT;
@@ -83,10 +84,11 @@ final class TriggerNodeStyle {
         if (category.startsWith("mail")) return Kind.MAIL;
         if (category.startsWith("kubejs")) return Kind.SCRIPT;
         return switch (category) {
-            case "control_properties", "set_property", "reset_property", "set_theme", "set_overview_background" ->
+            case "control_properties", "set_property", "reset_property", "set_theme",
+                    "set_overview_background", "set_hot_event_background" ->
                     Kind.CONTROL;
             case "logic", "condition", "script_condition", "variable" -> Kind.LOGIC;
-            case "set_variable", "set_context" -> Kind.VALUE;
+            case "set_variable", "calculate_variable", "set_context" -> Kind.VALUE;
             case "location", "locate_structure", "locate_biome", "teleport", "enter_structure" -> Kind.TRAVEL;
             case "delay" -> Kind.FLOW;
             case "reward" -> Kind.REWARD;

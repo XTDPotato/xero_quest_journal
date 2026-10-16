@@ -86,8 +86,11 @@ final class MailBannerTrackingRegression {
                     require(findView(player, ID + "_variable").bannerRemainingSeconds() == 7200, "Variable initial value lost");
                     QuestControlData.get(player).setVariable(player, variableId, "3600");
                     require(findView(player, ID + "_variable").bannerRemainingSeconds() == 3600, "Variable live value not used");
-                    QuestControlData.get(player).setVariable(player, variableId, "invalid");
-                    require(findView(player, ID + "_variable").bannerRemainingSeconds() == -1, "Invalid variable caused unsafe time");
+                    boolean rejectedNonNumeric = false;
+                    try { QuestControlData.get(player).setVariable(player, variableId, "invalid"); }
+                    catch (IllegalArgumentException expected) { rejectedNonNumeric = true; }
+                    require(rejectedNonNumeric && findView(player, ID + "_variable").bannerRemainingSeconds() == 3600,
+                            "Numeric variable accepted invalid text or changed the active banner");
                     QuestControlData.get(player).setVariable(player, variableId, "3600");
                     MailboxRuntime.sendIfAbsent(player, ID + "_game", "Xero", "Game time", "Body", 0, false, "", true,
                             List.of(), IMAGE, TASK, new MailBannerTiming("countdown", 3600, true, ""));

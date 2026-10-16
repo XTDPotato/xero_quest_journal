@@ -55,6 +55,8 @@ public final class ControlProperties {
     }
     public static boolean applicable(String kind, String key) {
         if (!DEFAULTS.containsKey(key)) return false;
+        if (key.equals("displayText"))
+            return List.of("audio", "video", "structure_enter", "quest_progress", "quest_objective").contains(kind);
         if (key.startsWith("buttonImage") || key.equals("textColorHover") || key.equals("textColorPressed"))
             return button(kind);
         if (key.equals("value")) return !List.of("linear", "relative").contains(kind);
@@ -66,8 +68,8 @@ public final class ControlProperties {
                     "quest_description", "quest_progress", "quest_status", "quest_type", "quest_objective",
                     "quest_place").contains(kind);
         if (key.equals("scaleType")) return List.of("image", "video").contains(kind);
-        if (List.of("autoplay", "loop", "muted", "volume", "displayText").contains(key))
-            return List.of("audio", "video").contains(kind) || key.equals("displayText") && kind.equals("structure_enter");
+        if (List.of("autoplay", "loop", "muted", "volume").contains(key))
+            return List.of("audio", "video").contains(kind);
         if (key.equals("showControls")) return kind.equals("audio");
         if (key.startsWith("entry")) return kind.equals("quest_entry_text");
         return true;

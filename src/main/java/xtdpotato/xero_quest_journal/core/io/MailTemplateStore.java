@@ -69,7 +69,8 @@ public final class MailTemplateStore {
                 "subject", draft.subject(), "body", draft.body(), "icon", draft.icon()));
         if (draft.attachments().size() > 128 || draft.attachments().stream().anyMatch(a -> a == null
                 || a.type().equals("mail") || a.count() < 1
-                || !QuestRewards.valid(new QuestDefinition.Reward(a.type(), a.item(), a.count()))))
+                || !QuestRewards.valid(new QuestDefinition.Reward(
+                a.type(), a.item(), a.count(), a.quality(), a.background()))))
             throw new IllegalArgumentException("Invalid mail attachments");
     }
 

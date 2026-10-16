@@ -2,7 +2,9 @@
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $documents = @("README.md", "docs/guide.md", "docs/commands.md", "docs/javascript.md",
-    "docs/trigger-conditions.md", "docs/images/README.md", "docs/奖励与条件配置.md")
+    "docs/trigger-conditions.md", "docs/visual-graph-and-inventory-shortcuts.md",
+    "docs/images/README.md", "docs/奖励与条件配置.md", "docs/interface-gallery.md",
+    "docs/background-and-journey-editor.md", "docs/release-verification-2026-10-16.md")
 foreach ($relative in $documents) {
     $file = Join-Path $repoRoot $relative
     $content = Get-Content -LiteralPath $file -Raw -Encoding utf8

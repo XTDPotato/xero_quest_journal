@@ -60,6 +60,10 @@ final class JourneyRegression {
                 fixture = new CompletableFuture<>();
                 game.getSingleplayerServer().execute(() -> {
                     try {
+                        var player = game.getSingleplayerServer().getPlayerList().getPlayer(game.player.getUUID());
+                        player.server.getCommands().getDispatcher().execute(
+                                "xero_quest edit_mode " + player.getGameProfile().getName() + " true",
+                                player.server.createCommandSourceStack());
                         Path group = QuestRepository.root().resolve("group_" + ID);
                         Files.createDirectories(group);
                         Files.writeString(group.resolve("group_manifest.json"),
@@ -201,9 +205,13 @@ final class JourneyRegression {
                 journey.mouseReleased(tx, ty, 0);
                 require((int) field(journey, "chapterIndex") == selected, "Tab swipe triggered click");
                 invoke(field(journey, "tabs"), "jump", new Class<?>[]{double.class}, 0.);
+                double timelineProgressBeforeTabWheel = (double) invoke(journey, "timelineProgress");
                 journey.mouseScrolled(tx, ty, 0, -2);
                 require((double) field(field(journey, "tabs"), "target") > scroll("tabs"),
                         "Tabs do not smooth-scroll");
+                require(Math.abs((double) invoke(journey, "timelineProgress")
+                                - timelineProgressBeforeTabWheel) < .001,
+                        "Tab-strip scrolling incorrectly changed the timeline progress marker");
                 double wheelX = journey.width / 2.0, wheelY = journey.height / 2.0;
                 double worldXBeforeWheel = scroll("timelineX") + wheelX / (double) invoke(journey, "scale");
                 double worldYBeforeWheel = scroll("timelineY")
@@ -226,6 +234,15 @@ final class JourneyRegression {
                 require(((JourneyBackdrop) field(journey, "backdrop")).source().equals(IMAGE_B),
                         "Scroll did not switch backdrop");
                 require(scroll("tabs") > 0, "Tab strip did not scroll");
+                var horizontal = field(journey, "timelineX");
+                double horizontalRange = (double) invoke(horizontal, "maximum")
+                        - (double) invoke(horizontal, "minimum");
+                double expectedProgress = horizontalRange <= 0 ? 0
+                        : Math.clamp((scroll("timelineX") - (double) invoke(horizontal, "minimum"))
+                        / horizontalRange, 0, 1);
+                require(Math.abs((double) invoke(journey, "timelineProgress") - expectedProgress) < .001
+                                && expectedProgress > 0,
+                        "Timeline progress marker did not follow horizontal content scrolling");
                 capture(game, "journey-scrolled");
                 selectTab(SECOND);
                 require(journey.visibleQuestCount() == 1
@@ -298,10 +315,16 @@ final class JourneyRegression {
                 invoke(field(journey, "timelineX"), "jump", new Class<?>[]{double.class}, savedX);
                 journey.mouseClicked(x, y, 0);
                 journey.mouseReleased(x, y, 0);
-                require(game.screen instanceof QuestScreen, "Task did not activate on inside release");
+                require(game.screen.getClass().getSimpleName().equals("JourneyQuestPopupScreen"),
+                        "Journey task click did not open the details popup");
                 game.screen.onClose();
-                require(game.screen == null, "Closing journey task details did not return to the game");
-                game.setScreen(journey);
+                require(game.screen == journey, "Closing task popup did not restore the journey");
+                journey.mouseClicked(x, y, 0);
+                journey.mouseReleased(x, y, 0);
+                button(game.screen, "journey-quest-popup-open").onPress();
+                require(game.screen instanceof QuestScreen, "Popup navigation did not open the quest journal");
+                game.screen.onClose();
+                require(game.screen == journey, "Closing task journal did not return to the journey");
                 journey.onClose();
                 wait = 5;
             }

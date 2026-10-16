@@ -45,6 +45,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
+import java.util.List;
 import java.util.Set;
 
 import java.nio.file.Files;
@@ -80,6 +81,7 @@ public final class ClientSmokeTest {
     private static int emeraldBefore;
     private static String trackingTestId;
     private static boolean lootEditorOpened;
+    private static boolean lootQualityVerified;
     private static int lootEditorWait;
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
@@ -163,6 +165,8 @@ public final class ClientSmokeTest {
                     Files.writeString(OUTPUT.resolve("tracking-hud-result.txt"),
                             "PASS: four default tracking HUD emblems, list/HUD configuration consistency,"
                                     + " blank/unrelated cover icons, explicit style overrides, custom tracked image,"
+                                    + " new normal-terrain world structure locate, server-to-client located coordinates,"
+                                    + " world marker projection and V animation replay cooldown;"
                                     + " 1920x1080 and compact screenshots, and HUD hide/show preference;"
                                     + " camera-basis left/right/up/front/behind across yaw/pitch and reversed view;"
                                     + " mail banner template/reward/JSON/NBT/network/edit round-trips, click/release/task/back;"
@@ -204,6 +208,32 @@ public final class ClientSmokeTest {
                                         .equalize(new int[]{1, 1, 1}, new boolean[]{true, true, true}),
                                 new int[]{34, 33, 33}),
                         "Initial loot weight remainder was not deterministic");
+                if (!lootQualityVerified) {
+                    var server = game.getSingleplayerServer();
+                    var author = server.getPlayerList().getPlayer(game.player.getUUID());
+                    String lootId = "loot_quality_" + System.currentTimeMillis();
+                    var entry = new xtdpotato.xero_quest_journal.core.model.LootDefinition.Entry(
+                            "quality-entry", "item", "minecraft:diamond", 1, 100, "always", true,
+                            "epic", "#327A65");
+                    var table = new xtdpotato.xero_quest_journal.core.model.LootDefinition(
+                            lootId, "Quality fixture", xtdpotato.xero_quest_journal.core.model.LootDefinition.Mode.RANDOM,
+                            1, "", List.of(entry));
+                    try {
+                        xtdpotato.xero_quest_journal.core.io.QuestLootStore.save(author, table);
+                        var loaded = xtdpotato.xero_quest_journal.core.io.QuestLootStore.find(lootId);
+                        require(loaded != null && loaded.entries().getFirst().equals(entry),
+                                "Loot item quality/background did not survive table save/load");
+                        var frozen = xtdpotato.xero_quest_journal.core.runtime.QuestRewards.freeze(author,
+                                List.of(new xtdpotato.xero_quest_journal.core.model.QuestDefinition.Reward(
+                                        "loot", lootId, 1)));
+                        require(frozen.equals(List.of(new xtdpotato.xero_quest_journal.core.model.QuestDefinition.Reward(
+                                        "item", "minecraft:diamond", 1, "epic", "#327A65"))),
+                                "Loot selection did not preserve item quality/background");
+                    } finally {
+                        xtdpotato.xero_quest_journal.core.io.QuestLootStore.delete(author, lootId);
+                    }
+                    lootQualityVerified = true;
+                }
                 if (!lootEditorOpened) {
                     game.setScreen(new xtdpotato.xero_quest_journal.client.QuestLootScreen(game.screen));
                     lootEditorOpened = true;
@@ -212,10 +242,16 @@ public final class ClientSmokeTest {
                 if (++lootEditorWait < 12) return;
                 require(game.getWindow().getWidth() >= 1600 && game.getWindow().getHeight() >= 900,
                         "Loot editor regression did not run at desktop size");
+                require(game.screen.children().stream().anyMatch(child ->
+                                child instanceof net.minecraft.client.gui.components.AbstractWidget widget
+                                        && widget instanceof xtdpotato.xero_quest_journal.client.StyledChoiceButton<?>
+                                        && ((xtdpotato.xero_quest_journal.client.StyledChoiceButton<?>) widget)
+                                        .styleId().equals("loot-entry-quality-0")),
+                        "Loot item editor did not expose its quality selector");
                 capture(game, "loot-editor-desktop");
                 Files.createDirectories(OUTPUT);
                 Files.writeString(OUTPUT.resolve("loot-table-result.txt"),
-                        "PASS: 100-point slider redistribution, disabled entry preservation, deterministic remainder allocation, and desktop-sized loot editor launch.\n");
+                        "PASS: 100-point slider redistribution, disabled entry preservation, deterministic remainder allocation, loot quality/background table round-trip and freeze, quality selector, and desktop-sized loot editor launch.\n");
                 Files.copy(OUTPUT.resolve("loot-table-result.txt"), OUTPUT.resolve("result.txt"),
                         java.nio.file.StandardCopyOption.REPLACE_EXISTING);
                 finished = true;
@@ -229,7 +265,9 @@ public final class ClientSmokeTest {
                     Files.writeString(OUTPUT.resolve("result.txt"),
                             "PASS: real script examples and predicate result types, graph true/false/once/error behavior, "
                                     + "syntax-only editor validation, draft retention, JS inspector bounds, complete command export, "
-                                    + "six full-screen settings tabs and 100ms tab timing, Chinese 1920x1080 screenshots.\n");
+                                    + "six full-screen settings tabs and 100ms tab timing, node quick editing/full-content display, "
+                                    + "pinyin field menus, hold-drag owner-preserving variables, anchored independent inventory entries, "
+                                    + "Chinese 1920x1080 screenshots.\n");
                     finished = true;
                     game.stop();
                 }
@@ -396,6 +434,10 @@ public final class ClientSmokeTest {
                                     + "chapter task picker, empty membership, dragged positions and display-only connections,\n"
                                     + "server permission/conflict validation, catalog round-trip,\n"
                                     + "chapter background/music switch and playback release,\n"
+                                    + "chapter-only appearance isolation, full-scene multiple selection,\n"
+                                    + "live width/height/ratio handles, framed chapter markers,\n"
+                                    + "background mode/music graph execution, gallery draft save, chapter switch events,\n"
+                                    + "click-opened quest details with explicit navigation,\n"
                                     + "distinct icons, finite line endpoints, overscroll rebound,\n"
                                     + "desktop/compact editor geometry, loot toolbar and hot-event exit icon.\n");
                     Files.copy(OUTPUT.resolve("journey-editing-result.txt"), OUTPUT.resolve("result.txt"),
@@ -771,9 +813,11 @@ public final class ClientSmokeTest {
                             "Xero-Smoke-" + System.currentTimeMillis(),
                             new LevelSettings("Xero Smoke Test", GameType.CREATIVE, false, Difficulty.PEACEFUL,
                                     true, new GameRules(), WorldDataConfiguration.DEFAULT),
-                            new WorldOptions(42L, false, false),
+                            new WorldOptions(42L, Boolean.getBoolean("xero.trackingHudTest"), false),
                             registries -> registries.registryOrThrow(Registries.WORLD_PRESET)
-                                    .getHolderOrThrow(WorldPresets.FLAT).value().createWorldDimensions(),
+                                    .getHolderOrThrow(Boolean.getBoolean("xero.trackingHudTest")
+                                            ? WorldPresets.NORMAL : WorldPresets.FLAT)
+                                    .value().createWorldDimensions(),
                             new TitleScreen());
                     return;
                 }

@@ -25,7 +25,7 @@ import java.util.function.Consumer;
 
 /** Authoring screen for reusable weighted loot tables. */
 public final class QuestLootScreen extends AnimatedQuestScreen {
-    private static final int ENTRY_HEIGHT = 94;
+    private static final int ENTRY_HEIGHT = 128;
     private static final int TABLE_ROW_HEIGHT = 30;
     private final Screen parent;
     private final Consumer<String> selectedCallback;
@@ -156,7 +156,7 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
 
     private int tableViewportTop() { return 66; }
     private int tableViewportBottom() { return Math.max(tableViewportTop() + 44, height - 12); }
-    private int rowsViewportTop() { return 174; }
+    private int rowsViewportTop() { return 188; }
     private int rowsViewportBottom() { return Math.max(rowsViewportTop() + ENTRY_HEIGHT, height - 62); }
     private int tableMaxScroll() {
         return Math.max(0, tables.size() * TABLE_ROW_HEIGHT - (tableViewportBottom() - tableViewportTop()));
@@ -328,6 +328,8 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
             pushUndo();
             draft.type = value;
             draft.item = defaultTarget(value);
+            draft.quality = "";
+            draft.background = "";
             init();
         }, styles, "loot-entry-type-" + index));
         int pickerWidth = draft.type.equals("item") ? 24 : 0;
@@ -397,6 +399,27 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
                 }, styles, "loot-remove-" + index);
         remove.setTooltip(Tooltip.create(text("loot.remove")));
         addRenderableWidget(remove);
+
+        if (draft.type.equals("item")) {
+            int qualityWidth = Math.min(150, Math.max(104, rowWidth / 3));
+            addRenderableWidget(new StyledChoiceButton<>(x + 20, y + 78, qualityWidth, 20,
+                    text("rewards.quality"), xtdpotato.xero_quest_journal.core.model.QuestRewardQuality.VALUES,
+                    draft.quality.isBlank() ? "auto" : draft.quality,
+                    value -> text("rewards.quality." + value),
+                    value -> { pushUndo(); draft.quality = value.equals("auto") ? "" : value; },
+                    styles, "loot-entry-quality-" + index));
+            int backgroundX = x + 20 + qualityWidth + 8;
+            int backgroundWidth = Math.max(60, x + rowWidth - backgroundX - 8);
+            SuggestedEditBox background = new SuggestedEditBox(this, font, backgroundX, y + 78,
+                    backgroundWidth, 20, text("rewards.background"), "loot.background." + index);
+            background.withoutMenu();
+            background.setMaxLength(7);
+            background.setHint(text("rewards.background"));
+            background.setValue(draft.background);
+            background.setTooltip(Tooltip.create(text("rewards.background")));
+            background.setResponder(value -> { if (!draft.background.equals(value)) pushUndo(); draft.background = value; });
+            addRenderableWidget(background);
+        }
 
         children().subList(firstWidget, children().size()).stream()
                 .filter(AbstractWidget.class::isInstance).map(AbstractWidget.class::cast).forEach(entryWidgets::add);
@@ -674,14 +697,14 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
         int divider = leftPanel();
         int x = editorLeft();
         int w = editorWidth();
-        g.fill(divider, 0, divider + 1, height, 0xFF303943);
-        renderEntrySurfaces(g, x);
         super.renderContents(g, mouseX, mouseY, delta);
+        g.drawString(font, text("loot.library"), 14, 52, RewardEditorTheme.TEXT);
         if (width < 640) g.drawString(font,
                 font.plainSubstrByWidth(title.getString(), Math.max(1, leftPanel() - 24)), 12, 42, 0xFFFFFFFF, false);
-        else g.drawCenteredString(font, title, width / 2, 10, 0xFFFFFFFF);
-        g.drawString(font, text("loot.id"), x, 31, 0xFFCCD5DE);
-        g.drawString(font, text("loot.name"), x + w / 2 + 4, 31, 0xFFCCD5DE);
+        else g.drawString(font, title, x, 10, RewardEditorTheme.TEXT);
+        g.drawString(font, text("loot.id"), x, 31, RewardEditorTheme.MUTED);
+        g.drawString(font, text("loot.name"), x + w / 2 + 4, 31, RewardEditorTheme.MUTED);
+        g.drawString(font, text("loot.entry_section"), x, 174, RewardEditorTheme.TEXT);
         g.enableScissor(x, rowsViewportTop(), width - 20, rowsViewportBottom());
         List<Integer> filtered = filteredEntries();
         for (int row = 0; row < filtered.size(); row++) {
@@ -695,6 +718,11 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
             int sliderWidth = Math.min(210, Math.max(92, Math.max(180, w - 12) / 4));
             int conditionX = mode == LootDefinition.Mode.CHOICE ? x + 142 : x + 154 + sliderWidth + 12;
             g.drawString(font, text("loot.condition"), conditionX, y + 37, 0xFFB9C4CE);
+            if (draft.type.equals("item")) {
+                g.drawString(font, text("rewards.quality"), x + 20, y + 67, RewardEditorTheme.MUTED);
+                g.drawString(font, text("rewards.background"), x + 28 + Math.min(150, Math.max(104, Math.max(180, w - 12) / 3)),
+                        y + 67, RewardEditorTheme.MUTED);
+            }
         }
         g.disableScissor();
         if (filtered.isEmpty()) g.drawString(font, entries.isEmpty() ? text("loot.empty") : text("loot.no_matches"),
@@ -729,8 +757,8 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
             int y = rowsViewportTop() + row * ENTRY_HEIGHT - entryMotion.pixels();
             if (y + ENTRY_HEIGHT < rowsViewportTop() || y > rowsViewportBottom()) continue;
             Draft draft = entries.get(index);
-            g.fill(x, y + 4, width - 22, y + ENTRY_HEIGHT - 4, 0xA51A2027);
-            g.fill(x, y + 4, x + 2, y + ENTRY_HEIGHT - 4, draft.enabled ? 0xFF9EB5D3 : 0xFF58616A);
+            RewardEditorTheme.entry(g, x, y + 4, Math.max(1, width - x - 22),
+                    ENTRY_HEIGHT - 8, draft.type, draft.enabled, false);
         }
         g.disableScissor();
     }
@@ -860,7 +888,14 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
 
     @Override
     public void renderBackground(GuiGraphics g, int x, int y, float delta) {
-        backdrop(g, 0xF01C2026);
+        backdrop(g, 0xF0181D23);
+        int divider = leftPanel();
+        int editorX = editorLeft();
+        RewardEditorTheme.panel(g, 4, 4, divider - 8, height - 8, RewardEditorTheme.GOLD);
+        RewardEditorTheme.panel(g, divider + 5, 4, Math.max(1, width - divider - 9), 170,
+                RewardEditorTheme.GREEN);
+        g.fill(divider, 12, divider + 1, height - 12, 0x66566370);
+        renderEntrySurfaces(g, editorX);
     }
 
     @Override
@@ -891,6 +926,8 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
         String weight;
         String condition;
         boolean enabled;
+        String quality;
+        String background;
 
         Draft(LootDefinition.Entry entry) {
             id = entry.id();
@@ -900,6 +937,8 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
             weight = Integer.toString(entry.weight());
             condition = entry.condition();
             enabled = entry.enabled();
+            quality = entry.quality();
+            background = entry.background();
         }
 
         Draft(Draft other) {
@@ -910,11 +949,13 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
             weight = other.weight;
             condition = other.condition;
             enabled = other.enabled;
+            quality = other.quality;
+            background = other.background;
         }
 
         LootDefinition.Entry value() {
             return new LootDefinition.Entry(id, type, item, Integer.parseInt(count.strip()),
-                    Integer.parseInt(weight.strip()), condition, enabled);
+                    Integer.parseInt(weight.strip()), condition, enabled, quality, background);
         }
     }
 

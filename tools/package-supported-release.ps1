@@ -1,4 +1,4 @@
-param([string]$Preview = "preview.4")
+param([string]$Preview = "preview.5")
 $ErrorActionPreference = "Stop"
 if ($Preview -notmatch '^preview\.[0-9]+$') { throw "Expected preview.N" }
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -21,7 +21,10 @@ foreach ($target in $targets) {
         $metadata = if ($target.Loader -eq "fabric") { "fabric.mod.json" }
             elseif ($target.Loader -eq "forge") { "META-INF/mods.toml" } else { "META-INF/neoforge.mods.toml" }
         if (!$jar.GetEntry($metadata)) { throw "Wrong loader metadata: $source" }
-        foreach ($class in @("client/ScriptEditorScreenBase", "core/model/QuestScriptReference")) {
+        foreach ($class in @("client/ScriptEditorScreenBase", "core/model/QuestScriptReference",
+                "client/JourneyAppearanceScreen", "client/JourneyPreviewScene", "client/JourneyQuestPopupScreen",
+                "client/QuestSearchFilterScreen", "client/CoordinateTrackAnimation",
+                "core/runtime/QuestVariableMath")) {
             if (!$jar.GetEntry("xtdpotato/xero_quest_journal/$class.class")) {
                 throw "Authoring changes are absent from $source"
             }

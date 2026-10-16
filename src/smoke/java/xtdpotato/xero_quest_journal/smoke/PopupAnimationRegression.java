@@ -2,6 +2,7 @@ package xtdpotato.xero_quest_journal.smoke;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import xtdpotato.xero_quest_journal.client.AnimatedQuestScreen;
 import xtdpotato.xero_quest_journal.core.QuestConfig;
@@ -20,17 +21,58 @@ final class PopupAnimationRegression {
     private static xtdpotato.xero_quest_journal.client.MailComposeScreen composer;
     private static FastModal fastModal;
     private static long contextStartFrame;
+    private static boolean editorPreviewDone;
+    private static Screen animationEditor;
 
     private PopupAnimationRegression() {}
 
     static boolean tick(Minecraft game) throws Exception {
         if (--wait > 0) return false;
+        if (stage == 0 && !editorPreviewDone) {
+            if (animationEditor == null) {
+                var type = Class.forName("xtdpotato.xero_quest_journal.client.PopupAnimationEditorScreen");
+                var constructor = type.getDeclaredConstructor(Screen.class);
+                constructor.setAccessible(true);
+                animationEditor = (Screen) constructor.newInstance((Screen) null);
+                game.setScreen(animationEditor);
+                wait = 8;
+                return false;
+            }
+            verifyEditorLayout(animationEditor);
+            capture(game, "popup-animation-editor-redesigned");
+            game.setScreen(null);
+            animationEditor = null;
+            editorPreviewDone = true;
+            wait = 2;
+            return false;
+        }
         switch (stage) {
             case 0 -> {
                 ClientPreferencesReset.reset();
                 originalPopupDuration = xtdpotato.xero_quest_journal.client.ClientPreferences.get()
                         .popupAnimationMillis;
                 var preferences = xtdpotato.xero_quest_journal.client.ClientPreferences.get();
+                var defaultCurve = xtdpotato.xero_quest_journal.client.PopupAnimationProfile.defaults();
+                var firstFrame = defaultCurve.sample(0);
+                var lastFrame = defaultCurve.sample(1);
+                require(firstFrame.scale() < 1 && firstFrame.opacity() == 0
+                                && firstFrame.x() == 0 && firstFrame.y() == 0 && firstFrame.rotation() == 0
+                                && lastFrame.scale() == 1 && lastFrame.opacity() == 1
+                                && lastFrame.x() == 0 && lastFrame.y() == 0 && lastFrame.rotation() == 0,
+                        "Default popup curve must use only scale and opacity");
+                var oldDefault = new xtdpotato.xero_quest_journal.client.PopupAnimationProfile(java.util.List.of(
+                        new xtdpotato.xero_quest_journal.client.PopupAnimationProfile.Keyframe(
+                                0, .88, 0, 8, -2, 0, "smooth"),
+                        new xtdpotato.xero_quest_journal.client.PopupAnimationProfile.Keyframe(
+                                1, 1, 0, 0, 0, 1, "smooth")));
+                var migrated = new xtdpotato.xero_quest_journal.client.ClientPreferences();
+                migrated.popupAnimation = oldDefault;
+                var validate = xtdpotato.xero_quest_journal.client.ClientPreferences.class
+                        .getDeclaredMethod("validate");
+                validate.setAccessible(true);
+                validate.invoke(migrated);
+                require(migrated.popupAnimation.equals(defaultCurve),
+                        "Legacy default popup curve was not migrated");
                 require(new xtdpotato.xero_quest_journal.client.ClientPreferences().popupAnimationMillis == 100,
                         "Popup default is not 100ms");
                 preferences.popupAnimationMillis = 100;
@@ -344,6 +386,36 @@ final class PopupAnimationRegression {
         java.nio.file.Files.createDirectories(path.getParent());
         try (var image = net.minecraft.client.Screenshot.takeScreenshot(game.getMainRenderTarget())) {
             image.writeToFile(path);
+        }
+    }
+
+    private static void verifyEditorLayout(Screen editor) throws Exception {
+        require(editor.getTitle().getString().startsWith("Popup Menu")
+                        || editor.getTitle().getString().startsWith("弹出菜单"),
+                "Animation editor title is untranslated: " + editor.getTitle().getString());
+        require(editor instanceof AnimatedQuestScreen animated && animated.showsTrackingHudBehind(),
+                "Animation editor does not preserve the tracking HUD");
+        var scrimMethod = AnimatedQuestScreen.class.getDeclaredMethod("modalScrimBounds");
+        scrimMethod.setAccessible(true);
+        Object scrim = scrimMethod.invoke(editor);
+        var left = scrim.getClass().getDeclaredMethod("left");
+        left.setAccessible(true);
+        require((int) left.invoke(scrim) > 0, "Animation editor scrim covers the tracking column");
+
+        var widgets = editor.children().stream()
+                .filter(net.minecraft.client.gui.components.AbstractWidget.class::isInstance)
+                .map(net.minecraft.client.gui.components.AbstractWidget.class::cast).toList();
+        for (int i = 0; i < widgets.size(); i++) {
+            var a = widgets.get(i);
+            require(a.getX() >= 0 && a.getY() >= 0 && a.getRight() <= editor.width
+                            && a.getBottom() <= editor.height,
+                    "Animation editor control exceeds the viewport: " + i);
+            for (int j = i + 1; j < widgets.size(); j++) {
+                var b = widgets.get(j);
+                boolean intersects = a.getX() < b.getRight() && a.getRight() > b.getX()
+                        && a.getY() < b.getBottom() && a.getBottom() > b.getY();
+                require(!intersects, "Animation editor controls overlap: " + i + " / " + j);
+            }
         }
     }
 

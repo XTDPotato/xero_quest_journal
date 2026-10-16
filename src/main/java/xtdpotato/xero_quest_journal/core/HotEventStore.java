@@ -100,7 +100,8 @@ public final class HotEventStore {
         }
         current = new HotEventCanvas(current.backgroundImage(), start, List.copyOf(edges),
                 current.customized(), positions, current.backgroundType(), current.backgroundScale(),
-                current.backgroundOffsetX(), current.backgroundOffsetY(), new HashSet<>(ids));
+                current.backgroundOffsetX(), current.backgroundOffsetY(), current.backgroundMode(),
+                current.backgroundMusic(), new HashSet<>(ids));
         try {
             AtomicFiles.write(FILE, GSON.toJson(current), true);
         } catch (Exception failure) {
@@ -122,20 +123,32 @@ public final class HotEventStore {
     }
 
     public static boolean update(ServerPlayer author, HotEventCanvas next) {
+        if (author == null || !author.hasPermissions(2)) return false;
         synchronized (QuestRepository.class) {
             return updateWithRepositoryLock(author, next);
         }
     }
 
+    /** Trusted authored graphs may change presentation for ordinary players, not just operators. */
+    public static boolean applyBackground(ServerPlayer player, String source, String type, String mode,
+                                          double scale, int x, int y, String music) {
+        synchronized (QuestRepository.class) {
+            var value = getWithRepositoryLock();
+            return updateWithRepositoryLock(player, new HotEventCanvas(source, value.startId(),
+                    value.connections(), true, value.positions(), type, scale, x, y, mode, music));
+        }
+    }
+
     private static synchronized boolean updateWithRepositoryLock(ServerPlayer author, HotEventCanvas next) {
         if (author == null || author.getServer() == null || !author.getServer().isSameThread()
-                || !author.hasPermissions(2) || next == null) return false;
+                || next == null) return false;
         if (!loaded) reload();
         reconcileCards();
         if (!validReferences(next)) return false;
         next = new HotEventCanvas(next.backgroundImage(), next.startId(), next.connections(),
                 next.customized(), next.positions(), next.backgroundType(), next.backgroundScale(),
-                next.backgroundOffsetX(), next.backgroundOffsetY(),
+                next.backgroundOffsetX(), next.backgroundOffsetY(), next.backgroundMode(),
+                next.backgroundMusic(),
                 current.knownCardIds() == null ? Set.of() : current.knownCardIds());
         try {
             AtomicFiles.write(FILE, GSON.toJson(next), true);

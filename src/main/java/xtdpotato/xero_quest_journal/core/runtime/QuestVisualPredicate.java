@@ -3,6 +3,7 @@ package xtdpotato.xero_quest_journal.core.runtime;
 import net.minecraft.server.level.ServerPlayer;
 import xtdpotato.xero_quest_journal.core.model.TriggerGraph;
 import xtdpotato.xero_quest_journal.core.io.QuestVariableStore;
+import java.util.List;
 
 /** Bounded, data-only predicate used by visual JS nodes. */
 public final class QuestVisualPredicate {
@@ -37,10 +38,12 @@ public final class QuestVisualPredicate {
         String expectedVar = node.get("expectedVar" + suffix, "");
         if (field.startsWith("var:") && !allowed(field.substring(4), taskId)
                 || !expectedVar.isBlank() && !allowed(expectedVar, taskId)) return false;
-        String actual = field(player, field, event, target, taskId, controlId);
+        String actual = fieldFor(player, field, event, target, taskId, controlId,
+                node.get("fieldPlayer" + suffix, "@s"));
         String otherField = node.get("expectedField" + suffix, "");
         String expected = !expectedVar.isBlank() ? QuestControlData.get(player).variable(player, expectedVar)
-                : !otherField.isBlank() ? field(player, otherField, event, target, taskId, controlId)
+                : !otherField.isBlank() ? fieldFor(player, otherField, event, target, taskId, controlId,
+                        node.get("expectedPlayer" + suffix, "@s"))
                 : node.get("expected" + suffix, "");
         return compare(actual, node.get("operator" + suffix, "eq"), expected);
     }
@@ -60,6 +63,18 @@ public final class QuestVisualPredicate {
                                String taskId, String controlId) {
         String contextual = QuestGraphContext.get(name);
         if (contextual != null) return contextual;
+        return rawField(player, name, event, target, taskId, controlId);
+    }
+    public static String fieldFor(ServerPlayer player, String name, String event, String target,
+                                  String taskId, String controlId, String selector) {
+        if (!xtdpotato.xero_quest_journal.core.model.TriggerNodeLibrary.PLAYER_VALUES.contains(name)
+                || List.of("eventType", "eventTarget").contains(name)
+                || selector == null || selector.isBlank() || selector.equals("@s"))
+            return field(player, name, event, target, taskId, controlId);
+        return rawField(QuestContextTargets.resolve(player, selector), name, event, target, taskId, controlId);
+    }
+    private static String rawField(ServerPlayer player, String name, String event, String target,
+                                   String taskId, String controlId) {
         if (name.startsWith("var:")) return QuestControlData.get(player).variable(player, name.substring(4));
         return switch (name) {
             case "eventType" -> event;

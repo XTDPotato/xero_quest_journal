@@ -23,7 +23,7 @@ import java.util.concurrent.CompletableFuture;
 final class TaskGenerationRegression {
     private static CompletableFuture<Integer> command;
     private static CompletableFuture<Void> preservedFixture;
-    private static boolean started;
+    private static boolean started, fallbackVerified;
     private static int commandStage;
     private static boolean previewRequested;
     private static String previewTaskId = "";
@@ -41,6 +41,10 @@ final class TaskGenerationRegression {
     }
 
     static boolean tick(Minecraft game, boolean requireTactical) throws Exception {
+        if (!fallbackVerified) {
+            verifyMissingTranslationFallback();
+            fallbackVerified = true;
+        }
         if (previewRequested) {
             if (!(game.screen instanceof QuestScreen)) return false;
             Path output = Path.of("..", "build", "verification");
@@ -266,6 +270,34 @@ final class TaskGenerationRegression {
                         + "Second generation preserved hand-authored title, description and hot-event fields.\n");
         Files.writeString(output.resolve("result.txt"),
                 "PASS: generated task documents loaded and their model targets, names and icons were verified.\n");
+    }
+
+    private static void verifyMissingTranslationFallback() {
+        String titleKey = "missingmod.advancement.root";
+        String descriptionKey = titleKey + ".desc";
+        var untranslatedAdvancement = new QuestDefinition(
+                "auto_adv_missingmod_advancement_root", titleKey, descriptionKey, "world", "",
+                true, false, 0, null, titleKey, descriptionKey, "", "fallback-regression",
+                java.util.List.of(),
+                java.util.List.of(new QuestDefinition.Trigger("advancement", "missingmod:advancement/root", 1)),
+                java.util.List.of(), "default");
+        require(QuestText.title(untranslatedAdvancement).getString().equals("Missingmod Root"),
+                "Missing advancement language entry leaked its translation key into the task title");
+        require(QuestText.description(untranslatedAdvancement).getString().isBlank(),
+                "Missing advancement description language entry leaked its translation key");
+        String tooltip = QuestText.tooltip(untranslatedAdvancement).getString();
+        require(!tooltip.contains(titleKey) && !tooltip.contains(descriptionKey),
+                "Missing advancement language key leaked into its task tooltip");
+
+        var authoredFallback = new QuestDefinition(
+                "authored_fallback", "Hand Written Objective", "A readable fallback description.",
+                "world", "", true, false, 0, null, "missingmod.task.title", "missingmod.task.description",
+                "", "fallback-regression-authored", java.util.List.of(), java.util.List.of(),
+                java.util.List.of(), "default");
+        require(QuestText.title(authoredFallback).getString().equals("Hand Written Objective")
+                        && QuestText.description(authoredFallback).getString()
+                        .equals("A readable fallback description."),
+                "Readable authored fallback text was altered when its optional language entry was missing");
     }
 
     private static void checkRecipeReachability(net.minecraft.server.MinecraftServer server) throws Exception {

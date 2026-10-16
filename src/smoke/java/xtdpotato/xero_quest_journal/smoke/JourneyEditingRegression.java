@@ -26,6 +26,7 @@ final class JourneyEditingRegression {
     private static String music;
     private static Object oldPlayback;
     private static String originalParents;
+    private static boolean visualBackgroundChecked;
 
     static boolean tick(Minecraft game) throws Exception {
         if (--wait > 0) return false;
@@ -194,6 +195,20 @@ final class JourneyEditingRegression {
                         .count() == 6, "Background/music editor missing fields");
             }
             case 8 -> {
+                if (!visualBackgroundChecked) {
+                    button("journey-background-visual").onPress();
+                    require(game.screen.getClass().getSimpleName().equals("HotEventBackgroundScreen"),
+                            "Chapter background did not open the live visual editor");
+                    @SuppressWarnings("unchecked") var inputs = (Map<String, net.minecraft.client.gui.components.EditBox>)
+                            field(game.screen, "inputs");
+                    inputs.get("background_offset_x").setValue("13");
+                    ((StyledChoiceButton<String>) button("hot-background-mode")).select("contain");
+                    button("hot-background-save").onPress();
+                    require(game.screen.getClass().getSimpleName().equals("JourneyBackgroundScreen"),
+                            "Visual backdrop draft did not return to the chapter segments");
+                    visualBackgroundChecked = true;
+                    return false;
+                }
                 capture(game, "journey-background-music-editor");
                 button("journey-save").onPress();
             }
@@ -206,6 +221,9 @@ final class JourneyEditingRegression {
                             .filter(c -> c.id().equals(CHAPTER)).findFirst().orElseThrow();
                     require(network.timeline().equals(chapter.timeline()) && network.backgrounds().equals(chapter.backgrounds()),
                             "Journey metadata lost during catalog serialization");
+                    require(chapter.backgrounds().getFirst().mode().equals("contain")
+                                    && chapter.backgrounds().getFirst().offsetX() == 13,
+                            "Chapter visual backdrop edit did not persist its mode/offset");
                     player.getPersistentData().putBoolean(xtdpotato.xero_quest_journal.core.mailbox.MailboxRuntime.EDIT_MODE_KEY, false);
                     require(QuestAuthoring.editJourney(player, CHAPTER, network.fingerprint(),
                             new QuestJourneyNetwork.Draft(List.of(), JourneyTimeline.empty(), List.of()))
@@ -247,7 +265,9 @@ final class JourneyEditingRegression {
                     }
                     require(dark > 8, "Exit-edit icon rendered blank");
                 }
-                return true;
+            }
+            case 14 -> {
+                return PresentationInteractionRegression.tick(game, journey, CHAPTER, A, music);
             }
             default -> throw new AssertionError("Journey edit stage " + stage);
         }

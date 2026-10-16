@@ -124,6 +124,9 @@ public abstract class AnimatedQuestScreen extends Screen {
     protected boolean blurWorldBackground() { return false; }
     protected void renderBeforeBlur(GuiGraphics graphics, float delta) {}
     protected void renderModalBackground(GuiGraphics graphics, float delta) {}
+    protected Viewport modalScrimBounds() { return viewport(0, 0, width, height); }
+    protected boolean preserveTrackingHudBehind() { return false; }
+    public final boolean showsTrackingHudBehind() { return preserveTrackingHudBehind(); }
     protected final Viewport viewport(int left, int top, int right, int bottom) {
         return new Viewport(left, top, right, bottom);
     }
@@ -172,17 +175,20 @@ public abstract class AnimatedQuestScreen extends Screen {
         float alpha = motion.eased();
         int color = (backdrop & 0xFFFFFF) | Math.round((backdrop >>> 24) * alpha) << 24;
         graphics.fill(0, 0, width, height, color);
-        int top = Math.clamp(animationHeaderBottom(), 0, height);
-        int bottom = Math.clamp(animationFooterTop(), top, height);
         if (popupKey() != null) {
-            compositor.band(graphics, width, height, 0, height, -height / 3f * (1 - alpha), alpha);
+            compositor.full(graphics, width, height, alpha);
             lastPopup = popupKey();
             popupMotion.target(true, System.nanoTime(), 0);
         } else {
-            compositor.band(graphics, width, height, top, bottom, 0, alpha);
-            compositor.band(graphics, width, height, 0, top, -top * (1 - alpha), alpha);
-            compositor.band(graphics, width, height, bottom, height, (height - bottom) * (1 - alpha), alpha);
+            compositor.full(graphics, width, height, alpha);
         }
+    }
+
+    public static float controlEntranceOffset(int screenHeight, double controlCenterY, float progress) {
+        if (screenHeight <= 0) return 0;
+        float normalizedY = (float) (controlCenterY / screenHeight * 2 - 1);
+        float travel = Math.max(24, Math.min(40, screenHeight * 0.06F));
+        return normalizedY * travel * (1 - Math.clamp(progress, 0, 1));
     }
 
     private void renderModal(GuiGraphics graphics, int x, int y, float delta) {
@@ -195,7 +201,9 @@ public abstract class AnimatedQuestScreen extends Screen {
         // Keep the scrim above parent item depth, then composite an isolated panel over it.
         graphics.pose().pushPose();
         graphics.pose().translate(0, 0, 1000);
-        graphics.fill(0, 0, width, height, Math.round(0xB8 * alpha) << 24 | 0x181B23);
+        Viewport scrim = modalScrimBounds();
+        graphics.fill(scrim.left(), scrim.top(), scrim.right(), scrim.bottom(),
+                Math.round(0xB8 * alpha) << 24 | 0x181B23);
         graphics.flush();
         graphics.pose().popPose();
         capturing = true;
@@ -345,18 +353,27 @@ public abstract class AnimatedQuestScreen extends Screen {
         renderBackground(graphics, x, y, delta);
         // Include vanilla input backgrounds, cursors and selection in the viewport.
         for (var renderable : renderables) {
-            Viewport viewport = renderable instanceof AbstractWidget widget ? widgetViewport(widget) : null;
-            if (viewport == null) {
+            if (!(renderable instanceof AbstractWidget widget)) {
                 renderable.render(graphics, x, y, delta);
                 continue;
             }
-            if (!viewport.intersects((AbstractWidget) renderable)) continue;
-            graphics.enableScissor(viewport.left(), viewport.top(), viewport.right(), viewport.bottom());
+            Viewport viewport = widgetViewport(widget);
+            if (viewport != null && !viewport.intersects(widget)) continue;
+            float offsetY = motion.settled() ? 0
+                    : controlEntranceOffset(height, widget.getY() + widget.getHeight() / 2.0, motion.eased());
+            graphics.pose().pushPose();
+            graphics.pose().translate(0, offsetY, 0);
             try {
-                renderable.render(graphics, viewport.contains(x, y) ? x : -10000,
-                        viewport.contains(x, y) ? y : -10000, delta);
+                if (viewport != null)
+                    graphics.enableScissor(viewport.left(), viewport.top(), viewport.right(), viewport.bottom());
+                try {
+                    renderable.render(graphics, viewport == null || viewport.contains(x, y) ? x : -10000,
+                            viewport == null || viewport.contains(x, y) ? y : -10000, delta);
+                } finally {
+                    if (viewport != null) graphics.disableScissor();
+                }
             } finally {
-                graphics.disableScissor();
+                graphics.pose().popPose();
             }
         }
     }

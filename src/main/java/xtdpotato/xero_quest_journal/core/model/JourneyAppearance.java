@@ -32,7 +32,14 @@ public record JourneyAppearance(Map<String, Element> elements) {
 
     public record Element(String icon, int iconOffsetX, int iconOffsetY, Float iconScale,
                           int textOffsetX, int textOffsetY, Float textScale,
-                          Boolean iconVisible, Boolean textVisible, String text, String background, String textColor) {
+                          Boolean iconVisible, Boolean textVisible, String text, String background, String textColor,
+                          Integer iconWidth, Integer iconHeight, Integer textWidth, Integer textHeight) {
+        public Element(String icon, int iconOffsetX, int iconOffsetY, Float iconScale,
+                       int textOffsetX, int textOffsetY, Float textScale,
+                       Boolean iconVisible, Boolean textVisible, String text, String background, String textColor) {
+            this(icon, iconOffsetX, iconOffsetY, iconScale, textOffsetX, textOffsetY, textScale,
+                    iconVisible, textVisible, text, background, textColor, 0, 0, 0, 0);
+        }
         public Element(String icon, int iconOffsetX, int iconOffsetY, Float iconScale,
                        int textOffsetX, int textOffsetY, Float textScale,
                        Boolean iconVisible, Boolean textVisible, String text, String background) {
@@ -50,6 +57,11 @@ public record JourneyAppearance(Map<String, Element> elements) {
             text = text == null ? "" : text;
             background = background == null ? "" : background.strip();
             textColor = textColor == null ? "" : textColor.strip();
+            iconWidth = iconWidth == null ? 0 : iconWidth; iconHeight = iconHeight == null ? 0 : iconHeight;
+            textWidth = textWidth == null ? 0 : textWidth; textHeight = textHeight == null ? 0 : textHeight;
+            if (iconWidth < 0 || iconHeight < 0 || textWidth < 0 || textHeight < 0
+                    || iconWidth > 2048 || iconHeight > 2048 || textWidth > 2048 || textHeight > 2048)
+                throw new IllegalArgumentException("Invalid journey element size");
             if (!textColor.isBlank() && !textColor.matches("#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?"))
                 throw new IllegalArgumentException("Invalid journey text color");
             if (text.length() > 256 || background.length() > 2048

@@ -4,6 +4,8 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.MultiLineEditBox;
+import net.minecraft.client.gui.components.MultilineTextField;
+import net.minecraft.client.gui.components.Whence;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Style;
 import org.lwjgl.glfw.GLFW;
@@ -102,6 +104,16 @@ final class MailBodyEditorRegression {
                 require(editor().getValue().equals("Text<b></b>"), "Rich editor undo did not work");
                 rich.keyPressed(GLFW.GLFW_KEY_Y, 0, GLFW.GLFW_MOD_CONTROL);
                 require(editor().getValue().equals(RICH), "Rich editor redo did not work");
+                editor().setValue("Alpha Beta Gamma");
+                select(editor(), 6, 10);
+                button("layout.rich_bold").onPress();
+                require(editor().getValue().equals("Alpha <b>Beta</b> Gamma"),
+                        "Bold tool did not wrap the selected text");
+                require(selectedText(editor()).equals("Beta"), "Formatting did not preserve the selection");
+                button("layout.rich_italic").onPress();
+                require(editor().getValue().equals("Alpha <b><i>Beta</i></b> Gamma"),
+                        "Italic tool did not wrap the preserved selection");
+                require(selectedText(editor()).equals("Beta"), "Second format lost the selected text");
                 editor().setValue("x".repeat(8192));
                 button("layout.rich_bold").onPress();
                 require(editor().getValue().length() == 8192, "Style tool exceeded the mail limit");
@@ -203,10 +215,29 @@ final class MailBodyEditorRegression {
     }
     private static MultiLineEditBox body() throws Exception { return (MultiLineEditBox) field(composer, "body"); }
     private static MultiLineEditBox editor() throws Exception { return (MultiLineEditBox) field(rich, "editor"); }
+    private static void select(MultiLineEditBox box, int start, int end) throws Exception {
+        var input = (MultilineTextField) field(box, "textField");
+        input.setSelecting(false);
+        input.seekCursor(Whence.ABSOLUTE, start);
+        input.setSelecting(true);
+        input.seekCursor(Whence.ABSOLUTE, end);
+        input.setSelecting(false);
+    }
+    private static String selectedText(MultiLineEditBox box) throws Exception {
+        return ((MultilineTextField) field(box, "textField")).getSelectedText();
+    }
     private static Object field(Object target, String name) throws Exception {
-        var field = target.getClass().getDeclaredField(name);
-        field.setAccessible(true);
-        return field.get(target);
+        Class<?> type = target.getClass();
+        while (type != null) {
+            try {
+                var field = type.getDeclaredField(name);
+                field.setAccessible(true);
+                return field.get(target);
+            } catch (NoSuchFieldException ignored) {
+                type = type.getSuperclass();
+            }
+        }
+        throw new NoSuchFieldException(name);
     }
     private static StyledButton button(String id) {
         Screen screen = Minecraft.getInstance().screen;

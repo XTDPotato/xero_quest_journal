@@ -104,7 +104,10 @@ public final class QuestEventGraphs {
                 }
             }
         } finally { executing = false; }
-        if (changed) QuestControlNetwork.send(player);
+        if (changed) {
+            QuestControlNetwork.send(player);
+            QuestControlNetwork.sendVariables(player);
+        }
     }
     public static boolean visible(ServerPlayer player, QuestDefinition quest, QuestPresentation.Control control) {
         var controls = xtdpotato.xero_quest_journal.core.QuestTemplateStore.presentation(quest).controls();
@@ -163,6 +166,8 @@ public final class QuestEventGraphs {
                     String id = node.get("variable", "");
                     if (!QuestVisualPredicate.allowed(id, binding.quest.id()))
                         throw new IllegalArgumentException("Variable outside task scope");
+                    var definition = xtdpotato.xero_quest_journal.core.io.QuestVariableStore.find(id);
+                    if (definition == null) throw new IllegalArgumentException("Unknown variable");
                     String from = node.get("sourceVariable", "");
                     if (!from.isBlank() && !QuestVisualPredicate.allowed(from, binding.quest.id()))
                         throw new IllegalArgumentException("Source variable outside task scope");
@@ -170,6 +175,33 @@ public final class QuestEventGraphs {
                             : QuestVisualPredicate.field(player, node.get("sourceField", ""), event, target,
                             binding.quest.id(), binding.control.id()) : QuestControlData.get(player).variable(player, from);
                     QuestControlData.get(player).setVariable(player, id, value);
+                    changed = true;
+                    if (definition.teamShared()) QuestControlNetwork.sendTeam(player);
+                }
+                case "calculate_variable" -> {
+                    String id = node.get("variable", "");
+                    if (!QuestVisualPredicate.allowed(id, binding.quest.id()))
+                        throw new IllegalArgumentException("Variable outside task scope");
+                    var definition = xtdpotato.xero_quest_journal.core.io.QuestVariableStore.find(id);
+                    if (definition == null || !definition.numeric())
+                        throw new IllegalArgumentException("Calculator target must be numeric");
+                    String operation = node.get("operation", "add");
+                    String operandVariable = node.get("operandVariable", "");
+                    if (xtdpotato.xero_quest_journal.core.runtime.QuestVariableMath.unary(operation))
+                        operandVariable = "";
+                    String operand = operandVariable.isBlank() ? node.get("operand", "0")
+                            : QuestControlData.get(player).variable(player, operandVariable);
+                    if (!operandVariable.isBlank()) {
+                        var other = xtdpotato.xero_quest_journal.core.io.QuestVariableStore.find(operandVariable);
+                        if (!QuestVisualPredicate.allowed(operandVariable, binding.quest.id())
+                                || other == null || !other.numeric())
+                            throw new IllegalArgumentException("Calculator operand must be numeric");
+                    }
+                    String result = QuestVariableMath.evaluate(operation,
+                            QuestControlData.get(player).variable(player, id), operand);
+                    QuestControlData.get(player).setVariable(player, id, result);
+                    changed = true;
+                    if (definition.teamShared()) QuestControlNetwork.sendTeam(player);
                 }
                 case "activate" -> {
                     String id = node.get("target", "").isBlank() ? binding.quest.id() : node.get("target", "");
@@ -207,6 +239,12 @@ public final class QuestEventGraphs {
                 case "set_context" -> setGameContext(player, node);
                 case "set_property", "reset_property" -> {
                     String property = node.get("property", "visibility"), value = node.get("value", "visible");
+                    String valueVariable = node.get("valueVariable", "");
+                    if (node.type().equals("set_property") && !valueVariable.isBlank()) {
+                        if (!QuestVisualPredicate.allowed(valueVariable, binding.quest.id()))
+                            throw new IllegalArgumentException("Property variable outside task scope");
+                        value = QuestControlData.get(player).variable(player, valueVariable);
+                    }
                     if (node.type().equals("set_property")) validateProperty(property, value);
                     var targets = QuestControlTarget.of(node.data(), binding.quest.id(), binding.control.id());
                     var definitions = new ArrayList<QuestDefinition>();
@@ -245,6 +283,24 @@ public final class QuestEventGraphs {
                         state.overviewImage(player, source);
                         QuestUiThemeNetwork.send(player);
                     }
+                    if (once) state.markFired(player, binding.quest, key);
+                }
+                case "set_hot_event_background" -> {
+                    var state = QuestControlData.get(player);
+                    String key = binding.quest.progressKey() + "/" + binding.control.id()
+                            + "/" + node.id() + "/hot-event-background";
+                    boolean once = Boolean.parseBoolean(node.get("once", "true"));
+                    if (once && state.fired(player, binding.quest, key)) break;
+                    String source = node.get("source", "").strip();
+                    String type = node.get("type", "image");
+                    String mode = node.get("mode", "cover");
+                    double scale = Double.parseDouble(node.get("scale", "1"));
+                    int offsetX = Integer.parseInt(node.get("offsetX", "0"));
+                    int offsetY = Integer.parseInt(node.get("offsetY", "0"));
+                    String music = node.get("music", "").strip();
+                    if (!xtdpotato.xero_quest_journal.core.HotEventStore.applyBackground(
+                            player, source, type, mode, scale, offsetX, offsetY, music))
+                        throw new IllegalArgumentException("Unable to save hot-event background");
                     if (once) state.markFired(player, binding.quest, key);
                 }
                 case "set_theme" -> {
@@ -315,7 +371,10 @@ public final class QuestEventGraphs {
             try (var ignored = new QuestGraphContext(job.context())) {
                 boolean changed = execute(player, job.binding(), job.event(), job.target(),
                         job.next(), job.context());
-                if (changed) QuestControlNetwork.send(player);
+                if (changed) {
+                    QuestControlNetwork.send(player);
+                    QuestControlNetwork.sendVariables(player);
+                }
             } catch (Exception invalid) {
                 XeroQuestJournal.LOGGER.warn("Delayed control action failed: quest={}, control={}",
                         job.binding().quest().id(), job.binding().control().id(), invalid);
@@ -331,12 +390,24 @@ public final class QuestEventGraphs {
         if (scope.equals("player")) {
             var selector = net.minecraft.commands.arguments.EntityArgument.players()
                     .parse(new com.mojang.brigadier.StringReader(node.get("player", "@s")));
-            for (var target : selector.findPlayers(trigger.createCommandSourceStack())) {
+            for (var target : selector.findPlayers(trigger.createCommandSourceStack().withPermission(2))) {
                 switch (field) {
                     case "experienceLevel" -> target.giveExperienceLevels(
                             Integer.parseInt(value) - target.experienceLevel);
                     case "health" -> target.setHealth(Math.min(Float.parseFloat(value), target.getMaxHealth()));
+                    case "maxHealth" -> {
+                        var attribute = target.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MAX_HEALTH);
+                        if (attribute == null) throw new IllegalArgumentException("Player health attribute is missing");
+                        attribute.setBaseValue(Double.parseDouble(value));
+                        target.setHealth(Math.min(target.getHealth(), target.getMaxHealth()));
+                    }
                     case "foodLevel" -> target.getFoodData().setFoodLevel(Integer.parseInt(value));
+                    case "x", "y", "z" -> target.teleportTo(target.serverLevel(),
+                            field.equals("x") ? Double.parseDouble(value) : target.getX(),
+                            field.equals("y") ? Double.parseDouble(value) : target.getY(),
+                            field.equals("z") ? Double.parseDouble(value) : target.getZ(), target.getYRot(), target.getXRot());
+                    case "sneaking" -> target.setShiftKeyDown(Boolean.parseBoolean(value));
+                    case "sprinting" -> target.setSprinting(Boolean.parseBoolean(value));
                     default -> throw new IllegalArgumentException("Unsupported player variable");
                 }
             }

@@ -38,6 +38,15 @@ final class AnimationRegression {
                 require(Math.abs(motion.advance(500_000_000L, 1000) - .3) < .00001, "Reverse direction wrong");
                 motion.target(true, 500_000_000L, 0);
                 require(motion.position() == 1 && motion.settled(), "Zero-duration failed");
+                float topOffset = AnimatedQuestScreen.controlEntranceOffset(480, 30, 0);
+                float middleOffset = AnimatedQuestScreen.controlEntranceOffset(480, 240, 0);
+                float bottomOffset = AnimatedQuestScreen.controlEntranceOffset(480, 450, 0);
+                require(topOffset < 0 && bottomOffset > 0 && Math.abs(middleOffset) < .001,
+                        "Controls do not enter independently from the top and bottom");
+                require(AnimatedQuestScreen.controlEntranceOffset(480, 30, 1) == 0
+                                && Math.abs(topOffset) > Math.abs(
+                                AnimatedQuestScreen.controlEntranceOffset(480, 30, .5F)),
+                        "Control entrance did not settle smoothly toward its layout position");
                 ClientPreferences.get().reducedMotion = false;
                 QuestConfig.defaults().uiAnimationMillis = 1000;
                 journal = new QuestScreen();

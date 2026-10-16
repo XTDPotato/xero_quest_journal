@@ -42,7 +42,8 @@ public record MailDraft(String id, String sender, String subject, String body, S
         xtdpotato.xero_quest_journal.core.model.MailNodeSettings.validateValue("expiresIn", Long.toString(expiresIn));
         if (rewards.size() > 128) throw new IllegalArgumentException("Too many mail rewards");
         attachments = attachments == null ? rewards.stream()
-                .map(r -> new MailboxRuntime.Attachment(r.type(), r.item(), r.count(), false)).toList()
+                .map(r -> new MailboxRuntime.Attachment(r.type(), r.item(), r.count(), false,
+                        false, false, r.quality(), r.background())).toList()
                 : List.copyOf(attachments);
         if (attachments.size() > 128) throw new IllegalArgumentException("Too many mail attachments");
     }

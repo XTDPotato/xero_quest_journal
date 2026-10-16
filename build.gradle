@@ -45,6 +45,14 @@ repositories {
     maven { name = "TencentPublicMirror"; url = uri("https://mirrors.cloud.tencent.com/repository/maven-public") }
     maven { name = "NeoForged"; url = uri("https://maven.neoforged.net/releases") }
     mavenCentral()
+    exclusiveContent {
+        forRepository { maven { name = "XeroReiApi"; url = uri("https://maven.shedaniel.me") } }
+        filter { includeGroup("me.shedaniel"); includeGroup("me.shedaniel.cloth") }
+    }
+    exclusiveContent {
+        forRepository { maven { name = "XeroArchitecturyApi"; url = uri("https://maven.architectury.dev") } }
+        filter { includeGroup("dev.architectury") }
+    }
 }
 
 def mediaPlatform = providers.gradleProperty("media_platform").orElse(provider {
@@ -337,6 +345,9 @@ tasks.register("buildSelected") {
 }
 
 dependencies {
+    compileOnly("me.shedaniel:RoughlyEnoughItems-api-neoforge:16.0.799") { transitive = false }
+    compileOnly("me.shedaniel.cloth:basic-math:0.6.1") { transitive = false }
+    compileOnly("dev.architectury:architectury-neoforge:13.0.6") { transitive = false }
     implementation "net.neoforged:neoforge:${project.neoforge_version}"
     implementation 'org.jsoup:jsoup:1.18.3'
     smokeImplementation 'org.jsoup:jsoup:1.18.3'

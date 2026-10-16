@@ -1,13 +1,16 @@
 param(
     [string[]]$Modes = @("authoringDocsTest", "smokeTest", "controlGraphTest",
-        "animationTest", "popupAnimationTest", "rewardsTest", "runtimeTest")
+        "animationTest", "popupAnimationTest", "rewardsTest", "runtimeTest"),
+    [string[]]$ExtraMods = @()
 )
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $runDirectories = @{
     authoringDocsTest = "run-authoring-docs"; smokeTest = "run-smoke"
-    controlGraphTest = "run-control-graphs"; animationTest = "run-animation"
+    controlGraphTest = "run-control-graphs"; templateTest = "run-template"
+    trackingHudTest = "run-tracking-hud"; animationTest = "run-animation"
     popupAnimationTest = "run-popup-animation"; rewardsTest = "run-rewards"; runtimeTest = "run-runtime"
+    journeyEditingTest = "run-journey-editing"; journeyTest = "run-journey-continuous"
 }
 $verificationRoot = Join-Path $repoRoot "build/verification"
 $runId = Get-Date -Format "yyyyMMdd-HHmmss"
@@ -23,6 +26,14 @@ foreach ($mode in $Modes) {
     $startedAt = Get-Date
     Write-Host "RUN NeoForge 1.21.1 $mode"
     $runDirectory = "run-$mode-$runId"
+    if ($ExtraMods.Count -gt 0) {
+        foreach ($extraMod in $ExtraMods) {
+            if (!(Test-Path -LiteralPath $extraMod -PathType Leaf)) { throw "Optional test mod not found: $extraMod" }
+        }
+        $mods = Join-Path $repoRoot "$runDirectory/mods"
+        New-Item -ItemType Directory -Force -Path $mods | Out-Null
+        foreach ($extraMod in $ExtraMods) { Copy-Item -LiteralPath $extraMod -Destination $mods }
+    }
     Push-Location $repoRoot
     try {
         & .\gradlew.bat runClient "-P$mode" "-PneoSmokeRunDir=$runDirectory" *> (Join-Path $output "gradle.log")

@@ -24,6 +24,8 @@ public final class QuestClientInbox {
     private static final java.util.ArrayDeque<QuestNetwork.ToastPayload> toasts =
             new java.util.ArrayDeque<>();
     private static QuestNetwork.OpenScreenPayload openScreen;
+    private static final java.util.ArrayDeque<QuestNetwork.LocatedQuestPayload> locatedQuests =
+            new java.util.ArrayDeque<>();
     private static QuestUiThemeNetwork.State uiTheme;
     private static QuestDailyNetwork.State daily;
     private static final java.util.ArrayDeque<QuestNetwork.AutomaticClaimPayload> automaticClaims =
@@ -137,6 +139,16 @@ public final class QuestClientInbox {
         openScreen = payload;
     }
 
+    public static synchronized void accept(QuestNetwork.LocatedQuestPayload payload) {
+        locatedQuests.removeIf(existing -> existing.questId().equals(payload.questId()));
+        if (locatedQuests.size() >= 64) locatedQuests.removeFirst();
+        locatedQuests.addLast(payload);
+    }
+
+    public static synchronized QuestNetwork.LocatedQuestPayload takeLocatedQuest() {
+        return locatedQuests.pollFirst();
+    }
+
     public static synchronized void accept(QuestDailyNetwork.State payload) { daily = payload; }
     public static synchronized QuestDailyNetwork.State takeDaily() {
         var next = daily;
@@ -190,6 +202,7 @@ public final class QuestClientInbox {
     public static synchronized QuestNetwork.OpenScreenPayload takeOpenScreen() {
         var next = openScreen;
         openScreen = null;
+        locatedQuests.clear();
         return next;
     }
 

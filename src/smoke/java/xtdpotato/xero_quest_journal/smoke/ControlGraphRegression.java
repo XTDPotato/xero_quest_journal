@@ -29,6 +29,7 @@ import java.util.concurrent.CompletableFuture;
 final class ControlGraphRegression {
     private static final String ID = "graph_" + System.currentTimeMillis();
     private static final String GLOBAL = "globe.g" + System.currentTimeMillis();
+    private static final String TEAM_VARIABLE = "globe.team_score_" + System.currentTimeMillis();
     private static final String RENAMED = GLOBAL + "_new";
     private static final String ADAPTIVE_VARIABLE = GLOBAL + "_long_variable_name_that_must_remain_fully_visible";
     private static final String TASK_VARIABLE = ID + ".target";
@@ -79,11 +80,72 @@ final class ControlGraphRegression {
                 @SuppressWarnings("unchecked") var menu = (List<StyledButton>) field(journal, "menu");
                 require(menu.stream().anyMatch(b -> b.styleId().equals("context-graph.settings")), "Missing trigger context action");
                 menu.clear();
-                call(journal, "openTriggerGraph", new Class<?>[]{String.class}, control.id());
-                require(game.screen instanceof QuestTriggerGraphScreen, "Context trigger editor not opened");
-                editor = (QuestTriggerGraphScreen) game.screen;
+                call(journal, "contextMenu", new Class<?>[]{int.class, int.class, String.class},
+                        280, 120, "quest:" + ID);
+                @SuppressWarnings("unchecked") var taskMenu = (List<StyledButton>) field(journal, "menu");
+                @SuppressWarnings("unchecked") var groups = (List<String>) field(journal, "menuRowGroups");
+                require(taskMenu.size() == groups.size(), "Task context menu grouping metadata is misaligned");
+                require(groups.containsAll(List.of("task", "edit", "organize", "progress", "danger")),
+                        "Task context menu is missing one of its action groups: " + groups);
+                require(taskMenu.stream().allMatch(entry -> entry.getClass().getSimpleName()
+                                .equals("ContextMenuButton")),
+                        "Task context menu entries are missing their custom-drawn icons");
+                var prefs = ClientPreferences.get();
+                boolean previousFixed = prefs.fixedQuestContextMenuPosition;
+                int previousX = prefs.questContextMenuXPercent, previousY = prefs.questContextMenuYPercent;
+                prefs.fixedQuestContextMenuPosition = true;
+                prefs.questContextMenuXPercent = 75;
+                prefs.questContextMenuYPercent = 60;
+                call(journal, "contextMenu", new Class<?>[]{int.class, int.class, String.class},
+                        20, 20, "quest:" + ID);
+                taskMenu = (List<StyledButton>) field(journal, "menu");
+                int expectedX = 8 + Math.max(0, journal.width - taskMenu.getFirst().getWidth() - 16) * 75 / 100;
+                int visibleHeight = Math.min(journal.height - 16, taskMenu.size() * 20);
+                int expectedY = 8 + Math.max(0, journal.height - visibleHeight - 16) * 60 / 100;
+                require(taskMenu.getFirst().getX() == expectedX && taskMenu.getFirst().getY() == expectedY,
+                        "Fixed task context menu ignored configured screen position");
+                prefs.fixedQuestContextMenuPosition = previousFixed;
+                prefs.questContextMenuXPercent = previousX;
+                prefs.questContextMenuYPercent = previousY;
+                prefs.save();
+                call(journal, "contextMenu", new Class<?>[]{int.class, int.class, String.class},
+                        280, 120, "quest:" + ID);
+                issueCaptureStage = 6;
             }
             case 2 -> {
+                if (issueCaptureStage == 6) {
+                    capture(game, "task-context-menu");
+                    @SuppressWarnings("unchecked") var menu =
+                            (List<StyledButton>) field(journal, "menu");
+                    menu.clear();
+                    var preferences = ClientPreferences.get();
+                    boolean fixed = preferences.fixedQuestContextMenuPosition;
+                    preferences.fixedQuestContextMenuPosition = false;
+                    var settings = new QuestConfigScreen(journal);
+                    game.setScreen(settings);
+                    button(settings, "config-tab-tasks").onPress();
+                    @SuppressWarnings("unchecked") var position =
+                            (StyledChoiceButton<String>) settings.children().stream()
+                                    .filter(StyledChoiceButton.class::isInstance)
+                                    .map(StyledChoiceButton.class::cast)
+                                    .filter(choice -> choice.styleId().equals("quest-context-menu-position"))
+                                    .findFirst().orElseThrow();
+                    position.select("fixed");
+                    require(settings.children().stream().anyMatch(child -> child instanceof StyledButton styled
+                                    && styled.styleId().equals("quest-context-menu-x-value"))
+                                    && settings.children().stream().anyMatch(child -> child instanceof StyledButton styled
+                                    && styled.styleId().equals("quest-context-menu-y-value")),
+                            "Fixed-position settings did not expose both coordinate controls");
+                    preferences.fixedQuestContextMenuPosition = fixed;
+                    preferences.save();
+                    game.setScreen(journal);
+                    call(journal, "openTriggerGraph", new Class<?>[]{String.class}, control("button").id());
+                    require(game.screen instanceof QuestTriggerGraphScreen,
+                            "Context trigger editor not opened");
+                    editor = (QuestTriggerGraphScreen) game.screen;
+                    issueCaptureStage = 0;
+                    return false;
+                }
                 if (issueCaptureStage == 1) {
                     capture(game, "control-graph-mail-body-issue");
                     var mailNode = ((List<TriggerGraph.Node>) field(editor, "nodes")).stream()
@@ -520,13 +582,49 @@ final class ControlGraphRegression {
                 button(game.screen, "variable-cancel").onPress();
                 org.lwjgl.glfw.GLFW.glfwSetWindowSize(game.getWindow().getWindow(), 1280, 800);
                 game.resizeDisplay();
-                editor = new QuestTriggerGraphScreen(journal, TriggerGraph.empty(), ID, "button",
+                var calculator = node("calculator_preview", "calculate_variable", 0, 0,
+                        Map.of("variable", TEAM_VARIABLE, "operation", "power",
+                                "operandVariable", GLOBAL));
+                editor = new QuestTriggerGraphScreen(journal,
+                        new TriggerGraph(List.of(calculator), List.of()), ID, "button",
                         Map.of("button", presentation.controls().getFirst()), value -> saved = value);
                 game.setScreen(editor);
-                button(editor, "graph-add").onPress();
-                require(game.screen instanceof QuestNodeLibraryScreen, "Add button did not open categorized node library");
+                set(editor, "selected", calculator.id());
+                call(editor, "init", new Class<?>[0]);
+                require(editor.children().stream().anyMatch(child -> child instanceof StyledChoiceButton<?> choice
+                                && choice.styleId().equals("graph-math-operation")),
+                        "Calculator inspector is missing its operation selector");
+                require(editor.children().stream().anyMatch(child -> child instanceof StyledChoiceButton<?> choice
+                                && choice.styleId().equals("graph-math-operand")),
+                        "Calculator inspector is missing its variable operand selector");
+                require(!((List<?>) field(editor, "inspectorHints")).isEmpty(),
+                        "Calculator inspector is missing its live preview hint");
+                assertWidgets(editor);
+                issueCaptureStage = 4;
             }
             case 25 -> {
+                if (issueCaptureStage == 4) {
+                    capture(game, "graph-calculator-inspector");
+                    editor.mouseScrolled(editor.width - 8, editor.height / 2.0, 0, -20);
+                    issueCaptureStage = 5;
+                    return false;
+                }
+                if (issueCaptureStage == 5) {
+                    var hints = (List<?>) field(editor, "inspectorHints");
+                    Object preview = hints.getLast();
+                    int previewY = (int) field(preview, "y");
+                    require(previewY >= 56 && previewY + 54 <= editor.height - 42,
+                            "Calculator preview did not scroll fully into view: y=" + previewY);
+                    capture(game, "graph-calculator-inspector-preview");
+                    issueCaptureStage = 0;
+                    editor = new QuestTriggerGraphScreen(journal, TriggerGraph.empty(), ID, "button",
+                            Map.of("button", presentation.controls().getFirst()), value -> saved = value);
+                    game.setScreen(editor);
+                    button(editor, "graph-add").onPress();
+                    require(game.screen instanceof QuestNodeLibraryScreen,
+                            "Add button did not open categorized node library");
+                    return false;
+                }
                 capture(game, "node-library-player");
                 assertWidgets(game.screen);
                 require(TriggerNodeLibrary.CATEGORIES.containsAll(List.of("player_event", "player_value",
@@ -975,6 +1073,23 @@ final class ControlGraphRegression {
                             node("weather_action", "set_property", 150, 0,
                                     Map.of("control", "weather", "property", "value", "value", "Raining"))),
                             List.of(new TriggerGraph.Edge("weather_start", "weather_action", "next")))));
+            extended.add(new QuestPresentation.Control("progress", "quest_progress", "", 16, 250, 250, 18,
+                    "", Map.of(), TriggerGraph.empty()));
+            extended.add(new QuestPresentation.Control("math_action", "button", "Calculate", 0, 0, 100, 24,
+                    "", Map.of(), new TriggerGraph(List.of(
+                    node("math_start", "event", 0, 0, Map.of("event", "click")),
+                    node("math", "calculate_variable", 150, 0, Map.of("variable", TEAM_VARIABLE,
+                            "operation", "add", "operandVariable", TASK_VARIABLE)),
+                    node("math_display", "set_property", 320, 0, Map.of("control", "progress",
+                            "property", "displayText", "valueVariable", ID + ".progress_current"))),
+                    List.of(new TriggerGraph.Edge("math_start", "math", "next"),
+                            new TriggerGraph.Edge("math", "math_display", "next")))));
+            extended.add(new QuestPresentation.Control("rename_progress", "button", "Rename progress", 0, 0,
+                    120, 24, "", Map.of(), new TriggerGraph(List.of(
+                    node("rename_start", "event", 0, 0, Map.of("event", "click")),
+                    node("rename", "set_property", 150, 0, Map.of("control", "progress",
+                            "property", "displayText", "value", "Collected"))),
+                    List.of(new TriggerGraph.Edge("rename_start", "rename", "next")))));
             for (String kind : List.of("call", "script")) {
                 var actionData = kind.equals("call")
                         ? Map.of("function", "global.xeroQuestSmokeCall", "once", "true")
@@ -1015,6 +1130,10 @@ final class ControlGraphRegression {
                     "Adaptive-node variable was not created");
             require(QuestVariableStore.save(player, ID, "", TASK_VARIABLE, "5", false).successful(),
                     "Task variable was not created");
+            require(QuestVariableStore.save(player, ID, "", TEAM_VARIABLE, "2", "number", "team", false).successful(),
+                    "Team-shared numeric variable was not created");
+            require(!QuestVariableStore.save(player, ID, "", ID + ".bad_number", "not numeric",
+                    "number", "player", false).successful(), "Non-numeric initial value accepted for number variable");
             require(QuestVariableStore.save(player, ID + "_done", "", ID + "_done.score", "7", false).successful(),
                     "Task variable could not be added to an unauthored task canvas");
             require(!QuestRepository.find(ID + "_done").presentation().authored(),
@@ -1074,10 +1193,64 @@ final class ControlGraphRegression {
     private static void runtime(ServerPlayer p) {
         var quest = QuestRepository.find(ID);
         var data = QuestControlData.get(p);
+        require(QuestVariableMath.evaluate("add", "2", "3").equals("5"),
+                "Numeric addition failed");
+        require(QuestVariableMath.evaluate("sin", "0", "").equals("0"),
+                "Scientific unary function failed");
+        require(Math.abs(Double.parseDouble(QuestVariableMath.evaluate("to_degrees", Double.toString(Math.PI), ""))
+                - 180) < 1e-10, "Degree conversion failed");
+        reject(() -> QuestVariableMath.evaluate("divide", "1", "0"), "Division by zero accepted");
+        var teamDefinition = QuestVariableStore.find(TEAM_VARIABLE);
+        require(teamDefinition != null && teamDefinition.numeric() && teamDefinition.teamShared(),
+                "Typed team variable definition was lost");
+        String soloTeamKey = QuestControlData.teamKey(p);
+        data.setVariable(p, TEAM_VARIABLE, "2");
+        require(data.variable(p, TEAM_VARIABLE).equals("2"), "Team-shared initial value failed");
+        require(QuestControlData.teamKey(p).equals(soloTeamKey), "Team variable key changed unexpectedly");
+        CompoundTag savedControlData = data.save(new CompoundTag(), p.server.registryAccess());
+        require(savedControlData.getCompound("teams").getCompound(soloTeamKey)
+                        .getString(TEAM_VARIABLE).equals("2"),
+                "Team value was not persisted in world shared state");
+        var scoreboard = p.server.getScoreboard();
+        var previousTeam = scoreboard.getPlayersTeam(p.getScoreboardName());
+        String playerName = p.getScoreboardName();
+        if (previousTeam != null) scoreboard.removePlayerFromTeam(playerName, previousTeam);
+        String teamAName = "xa" + System.currentTimeMillis();
+        String teamBName = "xb" + System.currentTimeMillis();
+        var teamA = scoreboard.addPlayerTeam(teamAName);
+        var teamB = scoreboard.addPlayerTeam(teamBName);
+        scoreboard.addPlayerToTeam(playerName, teamA);
+        data.setVariable(p, TEAM_VARIABLE, "11");
+        require(data.variable(p, TEAM_VARIABLE).equals("11"), "Team variable did not use its scoreboard team");
+        scoreboard.removePlayerFromTeam(playerName, teamA);
+        scoreboard.addPlayerToTeam(playerName, teamB);
+        require(data.variable(p, TEAM_VARIABLE).equals("2"), "Another team observed a private team value");
+        scoreboard.removePlayerFromTeam(playerName, teamB);
+        scoreboard.addPlayerToTeam(playerName, teamA);
+        require(data.variable(p, TEAM_VARIABLE).equals("11"), "Returning team did not recover its shared value");
+        scoreboard.removePlayerFromTeam(playerName, teamA);
+        if (previousTeam != null) scoreboard.addPlayerToTeam(playerName, previousTeam);
+        scoreboard.removePlayerTeam(teamA);
+        scoreboard.removePlayerTeam(teamB);
+        var progressVariable = QuestVariableStore.find(ID + ".progress_current");
+        require(progressVariable != null && progressVariable.readOnly()
+                        && data.variable(p, progressVariable.id()).equals("0"),
+                "Task progress variable was not exposed as read-only runtime state");
+        reject(() -> data.setVariable(p, progressVariable.id(), "4"), "Read-only progress variable was mutable");
         p.removeTag("xero_graph_command");
         QuestEventGraphs.click(p, ID, "command_action");
         require(p.getTags().contains("xero_graph_command"),
                 "Command node did not resolve @s to the current player");
+        QuestEventGraphs.click(p, ID, "math_action");
+        require(data.variable(p, TEAM_VARIABLE).equals("7"),
+                "Visual calculator did not add a variable operand");
+        require(data.properties(p, quest, "progress").get("displayText").equals("0"),
+                "Progress control did not accept a read-only progress variable as its display name");
+        require(data.variable(p, ID + ".progress_required").equals("1"),
+                "Task required-count variable did not expose the required count");
+        QuestEventGraphs.click(p, ID, "rename_progress");
+        require(data.properties(p, quest, "progress").get("displayText").equals("Collected"),
+                "Graph could not change the displayed progress name");
         NeoForge.EVENT_BUS.post(new LivingEvent.LivingJumpEvent(p));
         var visual = node("visual", "js", 0, 0, Map.of("mode", "visual", "field", "eventType",
                 "operator", "eq", "expected", "jump", "logic", "and", "field2", "dimension",
@@ -1145,14 +1318,15 @@ final class ControlGraphRegression {
         require(QuestRuntime.setTaskProperty(p, ID, "hidden", true), "Task reset fixture property failed");
         data.set(p, quest, "button", "value", "Runtime override");
         data.set(p, quest, "button", "alpha", "0.25");
-        data.setVariable(p, ID + ".local", "Runtime task value");
-        data.setVariable(p, RENAMED, "Runtime global value");
+        data.setVariable(p, ID + ".local", "6.5");
+        data.setVariable(p, RENAMED, "12.5");
         require(QuestRuntime.resetTrusted(p, ID).equals("reset"), "Task reset did not report a reset");
         var resetQuest = QuestRepository.find(ID);
         require(!QuestRuntime.snapshot(p).get(ID).hidden(), "Task reset retained a task property override");
         require(data.properties(p, resetQuest, "button").isEmpty(), "Task reset retained control overrides");
         require(data.variable(p, ID + ".local").equals("6"), "Task reset retained task variable value");
-        require(data.variable(p, RENAMED).equals("Runtime global value"), "Task reset removed global variable value");
+        require(data.variable(p, RENAMED).equals("12.5"), "Task reset removed global variable value");
+        require(data.variable(p, TEAM_VARIABLE).equals("7"), "Task reset removed a team-shared variable value");
         require(QuestRuntime.snapshot(p).get(ID + "_done").completed(), "Task reset changed another task");
         QuestEventGraphs.fire(p, "jump", "");
         require(data.properties(p, resetQuest, "button").get("value").equals("Jumped"),

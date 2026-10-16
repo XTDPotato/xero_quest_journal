@@ -25,12 +25,56 @@ public final class QuestText {
     /** Compact rows keep their full, localized content available on pointer hover. */
     public static Component tooltip(QuestDefinition quest) {
         var result = title(quest).copy().withStyle(net.minecraft.ChatFormatting.GOLD);
+        var view = ClientQuestProgress.view(quest.id());
+        if (view != null) {
+            result.append(Component.literal("\n")
+                    .append(Component.translatable("screen.xero_quest_journal.tooltip.status"))
+                    .append(": ").append(ClientQuestProgress.status(quest.id()))
+                    .withStyle(net.minecraft.ChatFormatting.YELLOW));
+            result.append(Component.literal("\n")
+                    .append(Component.translatable("screen.xero_quest_journal.tooltip.progress"))
+                    .append(": " + view.current() + " / " + view.required())
+                    .withStyle(net.minecraft.ChatFormatting.AQUA));
+            if (view.stepCount() > 0) {
+                int step = view.completed() ? view.stepCount() : Math.min(view.step() + 1, view.stepCount());
+                result.append(Component.literal("\n")
+                        .append(Component.translatable("screen.xero_quest_journal.tooltip.step", step, view.stepCount()))
+                        .withStyle(net.minecraft.ChatFormatting.GRAY));
+            }
+        }
         String objective = objective(quest).getString().strip();
         String description = description(quest).getString().strip();
-        if (!objective.isBlank() && !objective.equals(result.getString()))
+        if (!objective.isBlank() && !objective.equals(title(quest).getString()))
             result.append(Component.literal("\n" + objective).withStyle(net.minecraft.ChatFormatting.WHITE));
         if (!description.isBlank() && !description.equals(objective))
             result.append(Component.literal("\n" + description).withStyle(net.minecraft.ChatFormatting.GRAY));
+        List<QuestDefinition.Reward> rewards = view != null && view.completed()
+                && !view.rewards().isEmpty() ? view.rewards() : quest.rewards();
+        if (!rewards.isEmpty()) {
+            result.append(Component.literal("\n")
+                    .append(Component.translatable("screen.xero_quest_journal.tooltip.rewards"))
+                    .withStyle(net.minecraft.ChatFormatting.GOLD));
+            int shown = Math.min(6, rewards.size());
+            for (int i = 0; i < shown; i++) {
+                var reward = rewards.get(i);
+                boolean stackReward = reward.type().equals("item") || reward.type().equals("loot_choice");
+                String name = stackReward
+                        ? QuestIcons.displayName(reward.item()).replaceAll(" \\([^)]*\\)$", "")
+                        : Component.translatable("screen.xero_quest_journal.reward_type." + reward.type()).getString();
+                if (!stackReward && !reward.item().isBlank()) name += ": " + reward.item();
+                String count = stackReward && reward.count() > 1 ? " ×" + reward.count() : "";
+                String quality = reward.quality().isBlank() || reward.quality().equals("auto") ? ""
+                        : " · " + Component.translatable(
+                                "screen.xero_quest_journal.rewards.quality." + reward.quality()).getString();
+                result.append(Component.literal("\n- " + name + count + quality)
+                        .withStyle(net.minecraft.ChatFormatting.WHITE));
+            }
+            if (rewards.size() > shown)
+                result.append(Component.literal("\n")
+                        .append(Component.translatable("screen.xero_quest_journal.tooltip.more_rewards",
+                                rewards.size() - shown))
+                        .withStyle(net.minecraft.ChatFormatting.GRAY));
+        }
         return result;
     }
 
@@ -242,7 +286,36 @@ public final class QuestText {
     }
 
     private static Component text(String key, String fallback) {
-        return key == null || key.isBlank() || !Language.getInstance().has(key)
-                ? Component.literal(fallback) : Component.translatable(key);
+        if (key != null && !key.isBlank() && Language.getInstance().has(key))
+            return Component.translatable(key);
+        if (fallback == null || fallback.isBlank()) return Component.empty();
+        if ((key == null || key.isBlank() || fallback.equals(key)) && translationKeyLike(fallback)) {
+            if (descriptionKey(key, fallback)) return Component.empty();
+            return Component.literal(prettyTranslationKey(fallback));
+        }
+        return Component.literal(fallback);
+    }
+
+    private static boolean translationKeyLike(String value) {
+        return value.matches("[a-z0-9_-]+(?:[.:/][a-z0-9_.:/-]+)+");
+    }
+
+    private static boolean descriptionKey(String key, String fallback) {
+        String value = key == null || key.isBlank() ? fallback : key;
+        return value.endsWith(".desc") || value.endsWith(".description")
+                || value.endsWith("_desc") || value.endsWith("_description");
+    }
+
+    private static String prettyTranslationKey(String key) {
+        String[] words = key.split("[.:/_-]+");
+        StringBuilder result = new StringBuilder();
+        for (String word : words) {
+            if (word.isBlank() || List.of("advancement", "advancements", "title", "desc", "description")
+                    .contains(word.toLowerCase(Locale.ROOT))) continue;
+            if (!result.isEmpty()) result.append(' ');
+            result.append(word.substring(0, 1).toUpperCase(Locale.ROOT))
+                    .append(word.substring(1));
+        }
+        return result.isEmpty() ? prettyId(key) : result.toString();
     }
 }

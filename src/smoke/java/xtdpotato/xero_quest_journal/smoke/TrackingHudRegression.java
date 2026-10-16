@@ -8,13 +8,21 @@ import net.neoforged.neoforge.network.PacketDistributor;
 import org.lwjgl.glfw.GLFW;
 import xtdpotato.xero_quest_journal.client.ClientPreferences;
 import xtdpotato.xero_quest_journal.client.ClientQuestProgress;
+import xtdpotato.xero_quest_journal.client.ClientControlState;
+import xtdpotato.xero_quest_journal.client.CoordinateTrackAnimation;
 import xtdpotato.xero_quest_journal.client.JournalListButton;
 import xtdpotato.xero_quest_journal.client.QuestHudRenderer;
 import xtdpotato.xero_quest_journal.client.QuestIcons;
+import xtdpotato.xero_quest_journal.client.QuestUnlockToast;
+import xtdpotato.xero_quest_journal.client.QuestMarkerProjection;
 import xtdpotato.xero_quest_journal.client.QuestScreen;
 import xtdpotato.xero_quest_journal.core.io.QuestRepository;
 import xtdpotato.xero_quest_journal.core.model.ListIconConfig;
+import xtdpotato.xero_quest_journal.core.model.TriggerGraph;
 import xtdpotato.xero_quest_journal.core.network.QuestNetwork;
+import xtdpotato.xero_quest_journal.core.runtime.QuestGraphContext;
+import xtdpotato.xero_quest_journal.core.runtime.QuestLocation;
+import xtdpotato.xero_quest_journal.core.runtime.QuestTravelActions;
 import xtdpotato.xero_quest_journal.core.runtime.QuestProgressData;
 
 import java.nio.charset.StandardCharsets;
@@ -42,6 +50,10 @@ final class TrackingHudRegression {
     private static int stage, wait, index;
     private static CompletableFuture<Void> work;
     private static boolean originalMotion, originalHud;
+    private static int originalMarkerScale;
+    private static volatile String locatedQuestId = "";
+    private static volatile String locatedPosition = "";
+    private static boolean locatedMarkerVerified;
 
     private record Fixture(String name, String type, String style, String cover, String trackedImage) {
         String id() { return "tracking_hud_" + name; }
@@ -61,8 +73,14 @@ final class TrackingHudRegression {
         Fixture fixture = FIXTURES.get(index);
         switch (stage) {
             case 0 -> {
+                verifyCoordinateAnimationCooldown();
+                require(game.level != null
+                                && !(game.getSingleplayerServer().overworld().getChunkSource().getGenerator()
+                                instanceof net.minecraft.world.level.levelgen.FlatLevelSource),
+                        "Coordinate locate experiment did not create a normal terrain world");
                 originalMotion = ClientPreferences.get().reducedMotion;
                 originalHud = ClientPreferences.get().trackingHud;
+                originalMarkerScale = ClientPreferences.get().trackingMarkerScalePercent;
                 ClientPreferences.get().reducedMotion = true;
                 ClientPreferences.get().trackingHud = true;
                 game.options.pauseOnLostFocus = false;
@@ -98,6 +116,51 @@ final class TrackingHudRegression {
                 work = CompletableFuture.runAsync(() -> {
                     var player = server.getPlayerList().getPlayer(game.player.getUUID());
                     QuestProgressData.get(server).trackOnly(player.getUUID(), fixture.id());
+                    if (index == 0 && !locatedMarkerVerified) {
+                        var quest = QuestRepository.find(fixture.id());
+                        require(quest != null, "Locate experiment quest is missing");
+                        var locate = new TriggerGraph.Node("locate", "locate_structure", 0, 0,
+                                Map.of("dimension", player.level().dimension().location().toString(),
+                                        "target", "minecraft:village_plains", "radius", "100",
+                                        "storeVariable", "globe.located_structure"));
+                        try (var context = new QuestGraphContext(Map.of())) {
+                            require(QuestTravelActions.execute(player, quest, "hud_locate_button", locate,
+                                            "button", "activate"),
+                                    "Real village locate failed in the new normal terrain world");
+                            locatedQuestId = quest.id();
+                            locatedPosition = String.join("|",
+                                    QuestGraphContext.get("locatedX"), QuestGraphContext.get("locatedY"),
+                                    QuestGraphContext.get("locatedZ"), QuestGraphContext.get("locatedDimension"));
+                            var stored = new Gson().fromJson(
+                                    xtdpotato.xero_quest_journal.core.runtime.QuestControlData.get(player)
+                                            .variable(player, "globe.located_structure"),
+                                    com.google.gson.JsonObject.class);
+                            require(stored.get("kind").getAsString().equals("structure")
+                                            && stored.get("target").getAsString().equals("minecraft:village_plains")
+                                            && stored.get("dimension").getAsString().equals(partsafe(locatedPosition, 3))
+                                            && Math.abs(stored.get("x").getAsDouble()
+                                            - Double.parseDouble(partsafe(locatedPosition, 0))) < .001
+                                            && Math.abs(stored.get("y").getAsDouble()
+                                            - Double.parseDouble(partsafe(locatedPosition, 1))) < .001
+                                            && Math.abs(stored.get("z").getAsDouble()
+                                            - Double.parseDouble(partsafe(locatedPosition, 2))) < .001,
+                                    "Shared locate variable did not preserve structure and coordinates");
+                            var sharedState = xtdpotato.xero_quest_journal.core.runtime.QuestControlData.get(player);
+                            require(sharedState.variable(player, "globe.located_structure_dimension")
+                                            .equals(partsafe(locatedPosition, 3))
+                                            && sharedState.variable(player, "globe.located_structure_id")
+                                            .equals("minecraft:village_plains")
+                                            && Math.abs(Double.parseDouble(sharedState.variable(player,
+                                            "globe.located_structure_x")) - Double.parseDouble(partsafe(locatedPosition, 0))) < .001
+                                            && Math.abs(Double.parseDouble(sharedState.variable(player,
+                                            "globe.located_structure_y")) - Double.parseDouble(partsafe(locatedPosition, 1))) < .001
+                                            && Math.abs(Double.parseDouble(sharedState.variable(player,
+                                            "globe.located_structure_z")) - Double.parseDouble(partsafe(locatedPosition, 2))) < .001,
+                                    "Dedicated shared structure or coordinate fields were not saved");
+                        } catch (Exception failure) {
+                            throw new IllegalStateException("Real structure locate experiment failed", failure);
+                        }
+                    }
                 }, server);
             }
             case 3 -> {
@@ -109,6 +172,53 @@ final class TrackingHudRegression {
                 if (!ClientQuestProgress.isTracked(fixture.id())
                         || ClientQuestProgress.trackedIds().size() != 1
                         || ClientQuestProgress.view(fixture.id()) == null) return false;
+                if (index == 0 && !locatedMarkerVerified) {
+                    QuestLocation location = QuestHudRenderer.locatedLocation(fixture.id());
+                    if (location == null) return false;
+                    String sharedOnClient = ClientControlState.variable("globe.located_structure");
+                    if (sharedOnClient == null || sharedOnClient.isBlank()) return false;
+                    var clientStructure = new Gson().fromJson(sharedOnClient, com.google.gson.JsonObject.class);
+                    require(clientStructure.get("target").getAsString().equals("minecraft:village_plains")
+                                    && clientStructure.get("dimension").getAsString()
+                                    .equals(game.level.dimension().location().toString()),
+                            "Team-shared locate value did not reach the client variable catalog");
+                    String[] parts = locatedPosition.split("\\|", -1);
+                    require(locatedQuestId.equals(fixture.id()) && parts.length == 4,
+                            "Locate result did not belong to the tracked task");
+                    require(location.kind().equals("coords") && location.resolved()
+                                    && location.dimension().equals(parts[3])
+                                    && location.dimension().equals(game.level.dimension().location().toString())
+                                    && Math.abs(location.x() - Double.parseDouble(parts[0])) < .001
+                                    && Math.abs(location.y() - Double.parseDouble(parts[1])) < .001
+                                    && Math.abs(location.z() - Double.parseDouble(parts[2])) < .001,
+                            "Client map marker does not match the real locate coordinates: " + location);
+                    QuestUnlockToast.clear();
+                    xtdpotato.xero_quest_journal.client.QuestCompletionToast.clear();
+                    game.setScreen(null);
+                    var markersField = QuestHudRenderer.class.getDeclaredField("markerSnapshot");
+                    markersField.setAccessible(true);
+                    boolean markerRendered = ((List<?>) markersField.get(null)).stream().anyMatch(marker -> {
+                        try {
+                            var questField = marker.getClass().getDeclaredMethod("questId");
+                            questField.setAccessible(true);
+                            return questField.invoke(marker).equals(fixture.id());
+                        } catch (ReflectiveOperationException failure) {
+                            throw new IllegalStateException(failure);
+                        }
+                    });
+                    if (!markerRendered) return false;
+                    require(markerRendered, "Located coordinates were not projected to a tracked HUD marker");
+                    QuestUnlockToast.trackCurrent();
+                    long animationNow = System.nanoTime();
+                    float animationProgress = QuestHudRenderer.coordinateTrackProgress(fixture.id(), animationNow);
+                    require(animationProgress > 0 && animationProgress < 1,
+                            "Pressing V did not start the located marker animation");
+                    QuestUnlockToast.trackCurrent();
+                    require(QuestHudRenderer.coordinateTrackProgress(fixture.id(), System.nanoTime()) < 1,
+                            "Repeated V press interrupted/restarted the active marker animation");
+                    capture(game, "tracking-hud-real-locate-normal-world");
+                    locatedMarkerVerified = true;
+                }
                 xtdpotato.xero_quest_journal.client.QuestUnlockToast.clear();
                 xtdpotato.xero_quest_journal.client.QuestCompletionToast.clear();
                 game.setScreen(null);
@@ -147,23 +257,27 @@ final class TrackingHudRegression {
                 return false;
             }
             case 7 -> {
+                game.setScreen(null);
                 checkHud(game, FIXTURES.getLast(), true);
                 capture(game, "tracking-hud-compact");
                 ClientPreferences.get().trackingHud = false;
             }
             case 8 -> {
+                game.setScreen(null);
                 checkHud(game, FIXTURES.getLast(), false);
                 resize(game, 1920, 1080);
                 ClientPreferences.get().trackingHud = true;
                 ClientPreferences.get().reducedMotion = false;
             }
             case 9 -> {
+                game.setScreen(null);
                 checkHud(game, FIXTURES.getLast(), true);
             }
             case 10 -> {
                 if (!MailBannerTrackingRegression.tick(game)) return false;
                 ClientPreferences.get().trackingHud = originalHud;
                 ClientPreferences.get().reducedMotion = originalMotion;
+                ClientPreferences.get().trackingMarkerScalePercent = originalMarkerScale;
                 return true;
             }
             default -> throw new AssertionError("Unknown tracking HUD stage " + stage);
@@ -171,6 +285,40 @@ final class TrackingHudRegression {
         stage++;
         wait = 15;
         return false;
+    }
+
+    private static String partsafe(String encoded, int index) {
+        String[] values = encoded.split("\\|", -1);
+        if (index < 0 || index >= values.length) throw new AssertionError("Invalid located coordinate tuple");
+        return values[index];
+    }
+
+    private static void verifyCoordinateAnimationCooldown() {
+        CoordinateTrackAnimation animation = new CoordinateTrackAnimation();
+        require(new ClientPreferences().trackingMarkerScalePercent == 50,
+                "Coordinate marker default scale is not 50 percent");
+        require(!QuestHudRenderer.beaconVisible(20) && QuestHudRenderer.beaconVisible(20.01)
+                        && QuestHudRenderer.beaconVisible(80) && !QuestHudRenderer.beaconVisible(80.01),
+                "Beacon marker distance bounds are incorrect");
+        ClientPreferences.get().trackingMarkerScalePercent = 125;
+        require(ClientPreferences.get().trackingMarkerScalePercent == 125,
+                "Coordinate marker scale cannot be customized");
+        ClientPreferences.get().trackingMarkerScalePercent = originalMarkerScale;
+        long started = 2_000_000_000L;
+        require(animation.play("coordinate_task", started), "Coordinate marker animation did not start");
+        require(animation.isPlaying(started)
+                        && animation.progress("coordinate_task", started) == 0,
+                "Coordinate marker animation did not begin at zero");
+        require(animation.progress("coordinate_task",
+                        started + CoordinateTrackAnimation.DURATION_NANOS / 2) > .49F,
+                "Coordinate marker animation did not advance");
+        require(!animation.play("another_task",
+                        started + CoordinateTrackAnimation.DURATION_NANOS - 1),
+                "Coordinate marker animation replayed before the current animation ended");
+        require(!animation.isPlaying(started + CoordinateTrackAnimation.DURATION_NANOS)
+                        && animation.play("coordinate_task",
+                        started + CoordinateTrackAnimation.DURATION_NANOS),
+                "Coordinate marker replay did not unlock at the animation end");
     }
 
     private static void createImage() throws Exception {

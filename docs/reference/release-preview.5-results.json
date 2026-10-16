@@ -1,0 +1,103 @@
+{
+  "Release": "v0.1.0-multiversion-preview.5",
+  "Date": "2026-10-16",
+  "Environment": "Windows client and integrated server",
+  "Results": [
+    {
+      "Loader": "Fabric",
+      "Minecraft": "1.20.1",
+      "Mode": "authoringDocsTest",
+      "Status": "PASS",
+      "Detail": "PASS: real script examples and predicate result types, graph true/false/once/error behavior, syntax-only editor validation, draft retention, JS inspector bounds, complete command export, six full-screen settings tabs and 100ms tab timing, node quick editing/full-content display, pinyin field menus, hold-drag owner-preserving variables, anchored independent inventory entries, Chinese 1920x1080 screenshots.",
+      "Report": "fabric-1.20.1-functions-20261016-214337"
+    },
+    {
+      "Loader": "Fabric",
+      "Minecraft": "1.20.1",
+      "Mode": "journeyEditingTest",
+      "Status": "PASS",
+      "Detail": "PASS: recommended journey focus, task default inclusion and visibility,\nchapter task picker, empty membership, dragged positions and display-only connections,\nserver permission/conflict validation, catalog round-trip,\nchapter background/music switch and playback release,\nchapter-only appearance isolation, full-scene multiple selection,\nlive width/height/ratio handles, framed chapter markers,\nbackground mode/music graph execution, gallery draft save, chapter switch events,\nclick-opened quest details with explicit navigation,\ndistinct icons, finite line endpoints, overscroll rebound,\ndesktop/compact editor geometry, loot toolbar and hot-event exit icon.",
+      "Report": "fabric-1.20.1-functions-20261016-214337"
+    },
+    {
+      "Loader": "Fabric",
+      "Minecraft": "1.20.1",
+      "Mode": "runtimeTest",
+      "Status": "PASS",
+      "Detail": "PASS: mixed item/XP/level/command/function/script/effect/unlock/completion rewards,\nfrozen scripts, no executable catalog leaks, failure receipts and duplicate protection,\nnested conditions, atomic submissions, counters, events, admin permission checks,\nNBT persistence, overflow confirmation path, reward and condition editor screenshots.",
+      "Report": "fabric-1.20.1-functions-20261016-214337"
+    },
+    {
+      "Loader": "Fabric",
+      "Minecraft": "1.21.1",
+      "Mode": "authoringDocsTest",
+      "Status": "PASS",
+      "Detail": "PASS: real script examples and predicate result types, graph true/false/once/error behavior, syntax-only editor validation, draft retention, JS inspector bounds, complete command export, six full-screen settings tabs and 100ms tab timing, node quick editing/full-content display, pinyin field menus, hold-drag owner-preserving variables, anchored independent inventory entries, Chinese 1920x1080 screenshots.",
+      "Report": "fabric-1.21.1-functions-20261016-214807"
+    },
+    {
+      "Loader": "Fabric",
+      "Minecraft": "1.21.1",
+      "Mode": "journeyEditingTest",
+      "Status": "PASS",
+      "Detail": "PASS: recommended journey focus, task default inclusion and visibility,\nchapter task picker, empty membership, dragged positions and display-only connections,\nserver permission/conflict validation, catalog round-trip,\nchapter background/music switch and playback release,\nchapter-only appearance isolation, full-scene multiple selection,\nlive width/height/ratio handles, framed chapter markers,\nbackground mode/music graph execution, gallery draft save, chapter switch events,\nclick-opened quest details with explicit navigation,\ndistinct icons, finite line endpoints, overscroll rebound,\ndesktop/compact editor geometry, loot toolbar and hot-event exit icon.",
+      "Report": "fabric-1.21.1-functions-20261016-214807"
+    },
+    {
+      "Loader": "Fabric",
+      "Minecraft": "1.21.1",
+      "Mode": "runtimeTest",
+      "Status": "PASS",
+      "Detail": "PASS: mixed item/XP/level/command/function/script/effect/unlock/completion rewards,\nfrozen scripts, no executable catalog leaks, failure receipts and duplicate protection,\nnested conditions, atomic submissions, counters, events, admin permission checks,\nNBT persistence, overflow confirmation path, reward and condition editor screenshots.",
+      "Report": "fabric-1.21.1-functions-20261016-214807"
+    },
+    {
+      "Loader": "Forge",
+      "Minecraft": "1.20.1",
+      "Mode": "authoringDocsTest",
+      "Status": "PASS",
+      "Detail": "PASS: real script examples and predicate result types, graph true/false/once/error behavior, syntax-only editor validation, draft retention, JS inspector bounds, complete command export, six full-screen settings tabs and 100ms tab timing, node quick editing/full-content display, pinyin field menus, hold-drag owner-preserving variables, anchored independent inventory entries, Chinese 1920x1080 screenshots.",
+      "Report": "forge-functions-20261016-213803"
+    },
+    {
+      "Loader": "Forge",
+      "Minecraft": "1.20.1",
+      "Mode": "journeyEditingTest",
+      "Status": "PASS",
+      "Detail": "PASS: recommended journey focus, task default inclusion and visibility,\nchapter task picker, empty membership, dragged positions and display-only connections,\nserver permission/conflict validation, catalog round-trip,\nchapter background/music switch and playback release,\nchapter-only appearance isolation, full-scene multiple selection,\nlive width/height/ratio handles, framed chapter markers,\nbackground mode/music graph execution, gallery draft save, chapter switch events,\nclick-opened quest details with explicit navigation,\ndistinct icons, finite line endpoints, overscroll rebound,\ndesktop/compact editor geometry, loot toolbar and hot-event exit icon.",
+      "Report": "forge-functions-20261016-213803"
+    },
+    {
+      "Loader": "Forge",
+      "Minecraft": "1.20.1",
+      "Mode": "runtimeTest",
+      "Status": "PASS",
+      "Detail": "PASS: mixed item/XP/level/command/function/script/effect/unlock/completion rewards,\nfrozen scripts, no executable catalog leaks, failure receipts and duplicate protection,\nnested conditions, atomic submissions, counters, events, admin permission checks,\nNBT persistence, overflow confirmation path, reward and condition editor screenshots.",
+      "Report": "forge-functions-20261016-213803"
+    },
+    {
+      "Loader": "NeoForge",
+      "Minecraft": "1.21.1",
+      "Mode": "authoringDocsTest",
+      "Status": "PASS",
+      "Detail": "PASS: real script examples and predicate result types, graph true/false/once/error behavior, syntax-only editor validation, draft retention, JS inspector bounds, complete command export, six full-screen settings tabs and 100ms tab timing, node quick editing/full-content display, pinyin field menus, hold-drag owner-preserving variables, anchored independent inventory entries, Chinese 1920x1080 screenshots.",
+      "Report": "neoforge-functions-20261016-220153"
+    },
+    {
+      "Loader": "NeoForge",
+      "Minecraft": "1.21.1",
+      "Mode": "journeyEditingTest",
+      "Status": "PASS",
+      "Detail": "PASS: recommended journey focus, task default inclusion and visibility,\nchapter task picker, empty membership, dragged positions and display-only connections,\nserver permission/conflict validation, catalog round-trip,\nchapter background/music switch and playback release,\nchapter-only appearance isolation, full-scene multiple selection,\nlive width/height/ratio handles, framed chapter markers,\nbackground mode/music graph execution, gallery draft save, chapter switch events,\nclick-opened quest details with explicit navigation,\ndistinct icons, finite line endpoints, overscroll rebound,\ndesktop/compact editor geometry, loot toolbar and hot-event exit icon.",
+      "Report": "neoforge-functions-20261016-215231"
+    },
+    {
+      "Loader": "NeoForge",
+      "Minecraft": "1.21.1",
+      "Mode": "runtimeTest",
+      "Status": "PASS",
+      "Detail": "PASS: mixed item/XP/level/command/function/script/effect/unlock/completion rewards,\nfrozen scripts, no executable catalog leaks, failure receipts and duplicate protection,\nnested conditions, atomic submissions, counters, events, admin permission checks,\nNBT persistence, overflow confirmation path, reward and condition editor screenshots.",
+      "Report": "neoforge-functions-20261016-215231"
+    }
+  ]
+}

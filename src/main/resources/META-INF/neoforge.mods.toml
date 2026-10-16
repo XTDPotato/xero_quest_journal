@@ -24,6 +24,13 @@ ordering="AFTER"
 side="CLIENT"
 
 [[dependencies.xero_quest_journal]]
+modId="roughlyenoughitems"
+type="optional"
+versionRange="[16,)"
+ordering="AFTER"
+side="CLIENT"
+
+[[dependencies.xero_quest_journal]]
 modId="minecraft"
 type="required"
 versionRange="[1.21.1]"

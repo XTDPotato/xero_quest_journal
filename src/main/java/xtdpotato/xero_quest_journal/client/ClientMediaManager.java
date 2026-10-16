@@ -118,15 +118,21 @@ public final class ClientMediaManager {
 
     public static void renderImageCover(GuiGraphics graphics, String source,
                                         int x, int y, int width, int height, float alpha) {
+        renderImageScaled(graphics, source, x, y, width, height, alpha, "cover");
+    }
+
+    public static void renderImageScaled(GuiGraphics graphics, String source,
+                                         int x, int y, int width, int height, float alpha, String mode) {
         if (source == null || source.isBlank()) return;
+        String scaleType = mediaScaleType(mode);
         ResourceLocation id = ResourceLocation.tryParse(source);
         Path local = id == null ? null : QuestIcons.localPath(id);
         if (local != null) {
-            renderImageCoverHandle(graphics, local, source, x, y, width, height, alpha);
+            renderImageScaledHandle(graphics, local, source, x, y, width, height, alpha, scaleType);
         } else if (isNetworkSource(source) || validLocalFile(localMediaPath(source),
                 IMAGE_EXTENSIONS, MAX_IMAGE_BYTES)) {
-            renderImageCoverHandle(graphics, isNetworkSource(source) ? source.strip() : localMediaPath(source),
-                    source, x, y, width, height, alpha);
+            renderImageScaledHandle(graphics, isNetworkSource(source) ? source.strip() : localMediaPath(source),
+                    source, x, y, width, height, alpha, scaleType);
         } else if (id != null && QuestIcons.valid(source)) {
             int[] size = RESOURCE_SIZES.computeIfAbsent(source, ignored -> {
                 try (InputStream input = Minecraft.getInstance().getResourceManager().open(id)) {
@@ -138,17 +144,25 @@ public final class ClientMediaManager {
                 return new int[]{1, 1};
             });
             if (size[0] == 1 && size[1] == 1) QuestIcons.render(graphics, source, x, y, width, height, alpha);
-            else drawTexture(graphics, id, x, y, width, height, alpha, size[0], size[1], "cover");
+            else drawTexture(graphics, id, x, y, width, height, alpha, size[0], size[1], scaleType);
         }
     }
 
-    private static void renderImageCoverHandle(GuiGraphics graphics, Object input, String key,
-                                                int x, int y, int width, int height, float alpha) {
+    public static String mediaScaleType(String mode) {
+        return switch (mode) {
+            case "stretch" -> "fit_xy";
+            case "contain" -> "fit_center";
+            default -> mode;
+        };
+    }
+
+    private static void renderImageScaledHandle(GuiGraphics graphics, Object input, String key,
+                                                int x, int y, int width, int height, float alpha, String scaleType) {
         ImageHandle handle = IMAGES.computeIfAbsent(key, ignored -> new ImageHandle(input, key));
         handle.upload();
         if (handle.textureId != null)
             drawTexture(graphics, handle.textureId, x, y, width, height, alpha,
-                    handle.width, handle.height, "cover");
+                    handle.width, handle.height, scaleType);
     }
 
     private static void renderImageHandle(GuiGraphics graphics, Object input, String key,
@@ -170,7 +184,7 @@ public final class ClientMediaManager {
         handle.uploadFrame();
         if (handle.textureId != null) {
             drawTexture(graphics, handle.textureId, x, y, width, height, alpha,
-                    handle.frameWidth, handle.frameHeight, scaleType);
+                    handle.frameWidth, handle.frameHeight, mediaScaleType(scaleType));
         } else {
             graphics.fill(x, y, x + width, y + height, 0xB0101216);
             String status = handle.runtimeUnavailable ? missingRuntimeText()
@@ -288,6 +302,7 @@ public final class ClientMediaManager {
                 double scale = "cover".equals(scaleType)
                         ? Math.max((double) drawWidth / sourceWidth, (double) drawHeight / sourceHeight)
                         : Math.min((double) drawWidth / sourceWidth, (double) drawHeight / sourceHeight);
+                if ("adaptive".equals(scaleType)) scale = Math.min(1, scale);
                 drawWidth = Math.max(1, (int) Math.round(sourceWidth * scale));
                 drawHeight = Math.max(1, (int) Math.round(sourceHeight * scale));
             }

@@ -215,7 +215,7 @@ public final class QuestNodeLibraryScreen extends AnimatedQuestScreen {
             case "reward" -> "gift";
             case "logic", "condition" -> "clause";
             case "script_condition" -> "source";
-            case "variable" -> "variables";
+            case "variable", "calculate_variable" -> "variables";
             case "set_variable" -> "edit";
             case "kubejs", "kubejs_call" -> "source";
             case "kubejs_script" -> "edit";

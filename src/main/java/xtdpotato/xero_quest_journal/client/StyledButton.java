@@ -19,6 +19,7 @@ public class StyledButton extends Button {
     private final ButtonStyle[] cachedStyles = new ButtonStyle[32];
     private int cachedRevision = -1;
     private ItemStack icon = ItemStack.EMPTY;
+    private String textureIcon;
     private String leadingIcon;
     private ButtonStyleSheet extra;
     private ButtonStyleSheet defaults;
@@ -190,7 +191,10 @@ public class StyledButton extends Button {
     }
 
     protected void renderContent(GuiGraphics graphics, ButtonStyle style, int text) {
-        if (!icon.isEmpty()) {
+        if (textureIcon != null) {
+            QuestIcons.render(graphics, textureIcon, getX() + (getWidth() - 16) / 2,
+                    getY() + (getHeight() - 16) / 2, 16);
+        } else if (!icon.isEmpty()) {
             graphics.renderItem(icon, getX() + (getWidth() - 16) / 2, getY() + (getHeight() - 16) / 2);
         } else if ((text >>> 24) >= 4) {
             int inset = Math.min(Math.max(2, style.padding()), Math.max(0, (getWidth() - 1) / 2));
@@ -269,6 +273,13 @@ public class StyledButton extends Button {
 
     public StyledButton icon(ItemStack value) {
         this.icon = value;
+        this.textureIcon = null;
+        return this;
+    }
+
+    public StyledButton textureIcon(String value) {
+        this.textureIcon = value == null || value.isBlank() ? null : value;
+        this.icon = ItemStack.EMPTY;
         return this;
     }
 

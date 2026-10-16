@@ -97,7 +97,8 @@ public final class QuestLootChoiceScreen extends AnimatedQuestScreen {
             var attachment = mail.attachments().get(index);
             if (attachment.claimed() || attachment.count() <= 0) continue;
             indices.put(rewards.size(), new AttachmentIndex(mail.id(), index));
-            rewards.add(new QuestDefinition.Reward(attachment.type(), attachment.item(), attachment.count()));
+            rewards.add(new QuestDefinition.Reward(attachment.type(), attachment.item(), attachment.count(),
+                    attachment.quality(), attachment.background()));
         }
         return new QuestLootChoiceScreen(parent, "", messages.size() == 1 ? messages.getFirst().subject()
                 : Component.translatable("screen.xero_quest_journal.mailbox.claim_all").getString(), rewards, true,
