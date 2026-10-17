@@ -3733,7 +3733,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
             StyledButton tab = new StyledButton(tabX, y + 42, tabWidth - 4, 26,
                     text("icon_picker." + source.key), ignored -> {
                         iconPicker.source = source;
-                        iconPicker.page = 0;
+                        iconPicker.scroll.jump(0);
                         init();
                     }, styles, "icon-source-" + source.key, "toolbar-button");
             tab.setSelectionHighlighted(iconPicker.source == source);
@@ -3747,15 +3747,15 @@ public final class QuestScreen extends AnimatedQuestScreen {
                 Math.max(80, w - 198), 128, value -> iconPicker.search = value);
         search.setResponder(value -> {
             iconPicker.search = value;
-            iconPicker.page = 0;
+            iconPicker.scroll.jump(0);
             rebuildIconPickerResults(x, y, w, h);
         });
-        var refresh = new JournalNavButton(x + w - 174, searchY, 24, 22, text("icon_picker.refresh"),
+        JournalNavButton refresh = new JournalNavButton(x + w - 174, searchY, 24, 22, text("icon_picker.refresh"),
                 ignored -> {
-                    QuestIcons.refreshChoices();
-                    iconPicker.cachedChoices.clear();
-                    iconPicker.page = 0;
-                    rebuildIconPickerResults(x, y, w, h);
+                    if (iconPicker.refreshPending == null) {
+                        iconPicker.refreshPending = CompletableFuture.runAsync(QuestIcons::refreshChoices);
+                        iconPicker.cachedChoices.clear();
+                    }
                 }, styles, "icon-filter", JournalNavButton.Kind.ICON, "refresh");
         refresh.setTooltip(Tooltip.create(text("icon_picker.refresh")));
         addRenderableWidget(refresh);
@@ -3763,7 +3763,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
                 text("icon_picker.sort"), List.of("id", "name", "created", "modified"), iconPicker.sort,
                 value -> text("icon_picker.sort." + value), value -> {
                     iconPicker.sort = value;
-                    iconPicker.page = 0;
+                    iconPicker.scroll.jump(0);
                     rebuildIconPickerResults(x, y, w, h);
                 }, styles, "icon-sort");
         sort.setTooltip(Tooltip.create(text("icon_picker.sort")));
@@ -3771,24 +3771,27 @@ public final class QuestScreen extends AnimatedQuestScreen {
         var order = new JournalNavButton(x + w - 40, searchY, 24, 22, text("icon_picker.order"),
                 ignored -> {
                     iconPicker.descending = !iconPicker.descending;
-                    iconPicker.page = 0;
+                    iconPicker.scroll.jump(0);
                     rebuildIconPickerResults(x, y, w, h);
                     init();
                 }, styles, "icon-sort-order", JournalNavButton.Kind.ICON,
-                iconPicker.descending ? "expand" : "back");
+                iconPicker.descending ? "sort_down" : "sort_up");
         order.setTooltip(Tooltip.create(text(iconPicker.descending
                 ? "icon_picker.descending" : "icon_picker.ascending")));
         addRenderableWidget(order);
         int columns = Math.max(3, (w - 32) / 40);
         int rows = Math.max(1, (h - 244) / 40);
-        int pageSize = columns * rows;
-        iconPicker.pageSize = pageSize;
-        for (int slot = 0; slot < pageSize; slot++) {
+        iconPicker.columns = columns;
+        iconPicker.visibleRows = rows;
+        iconPicker.gridTop = y + 112;
+        iconPicker.gridBottom = y + h - 100;
+        int slotCount = columns * (rows + 2);
+        for (int slot = 0; slot < slotCount; slot++) {
             int index = slot;
             int bx = x + 16 + slot % columns * 40;
             int by = y + 112 + slot / columns * 40;
             StyledButton icon = new StyledButton(bx, by, 36, 36, Component.empty(), ignored -> {
-                int choiceIndex = iconPicker.page * iconPicker.pageSize + index;
+                int choiceIndex = iconPicker.firstRow() * iconPicker.columns + index;
                 if (choiceIndex < iconPicker.filteredChoices.size()) {
                     iconPicker.manual = iconPicker.filteredChoices.get(choiceIndex).value();
                     updateIconPickerSelection();
@@ -3798,19 +3801,8 @@ public final class QuestScreen extends AnimatedQuestScreen {
             addRenderableWidget(icon);
             iconChoiceButtons.add(icon);
         }
-        int controlsY = y + h - 126;
-        iconPrevious = new StyledButton(x + 16, controlsY, 32, 24, Component.literal("\u2039"),
-                ignored -> {
-                    iconPicker.page--;
-                    rebuildIconPickerResults(x, y, w, h);
-                }, styles, "icon-previous", "toolbar-button");
-        addRenderableWidget(iconPrevious);
-        iconNext = new StyledButton(x + 54, controlsY, 32, 24, Component.literal("\u203a"),
-                ignored -> {
-                    iconPicker.page++;
-                    rebuildIconPickerResults(x, y, w, h);
-                }, styles, "icon-next", "toolbar-button");
-        addRenderableWidget(iconNext);
+        iconPrevious = null;
+        iconNext = null;
         iconPicker.sourceButtons.forEach(button ->
                 button.active = !button.styleId().equals("icon-source-" + iconPicker.source.key));
         rebuildIconPickerResults(x, y, w, h);
@@ -3819,18 +3811,65 @@ public final class QuestScreen extends AnimatedQuestScreen {
 
     private void rebuildIconPickerResults(int x, int y, int w, int h) {
         String normalizedSearch = iconPicker.search.strip().toLowerCase(Locale.ROOT);
-        List<QuestIcons.IconChoice> sorted = sortIconChoices(iconChoices(iconPicker.source));
+        List<QuestIcons.IconChoice> available = readyIconChoices();
+        if (available == null) {
+            iconPicker.filteredChoices = List.of();
+            updateIconPickerViewport();
+            return;
+        }
+        List<QuestIcons.IconChoice> sorted = sortIconChoices(available);
         iconPicker.filteredChoices = normalizedSearch.isEmpty() ? sorted
                 : sorted.stream()
                 .filter(choice -> choice.matchesNormalized(normalizedSearch)).toList();
-        int pages = Math.max(1, (iconPicker.filteredChoices.size() + iconPicker.pageSize - 1)
-                / iconPicker.pageSize);
-        iconPicker.page = Math.max(0, Math.min(iconPicker.page, pages - 1));
-        int start = iconPicker.page * iconPicker.pageSize;
+        int totalRows = Math.max(1, (iconPicker.filteredChoices.size() + iconPicker.columns - 1)
+                / iconPicker.columns);
+        iconPicker.scroll.limit(Math.max(0, (totalRows - iconPicker.visibleRows) * 40));
+        updateIconPickerViewport();
+    }
+
+    private List<QuestIcons.IconChoice> readyIconChoices() {
+        List<QuestIcons.IconChoice> cached = iconPicker.cachedChoices.get(iconPicker.source);
+        if (cached != null) return cached;
+        if (iconPicker.source == IconSource.INVENTORY || iconPicker.source == IconSource.LOCAL)
+            return iconChoices(iconPicker.source);
+        if (iconPicker.loadingChoices == null || iconPicker.loadingSource != iconPicker.source) {
+            IconSource source = iconPicker.source;
+            iconPicker.loadingSource = source;
+            iconPicker.loadingChoices = CompletableFuture.supplyAsync(() -> switch (source) {
+                case ITEMS -> QuestIcons.itemChoices();
+                case TAGS -> QuestIcons.tagChoices();
+                case TEXTURES -> QuestIcons.textureChoices();
+                default -> List.of();
+            });
+            return null;
+        }
+        if (!iconPicker.loadingChoices.isDone()) return null;
+        try {
+            List<QuestIcons.IconChoice> result = iconPicker.loadingChoices.join();
+            iconPicker.cachedChoices.put(iconPicker.source, result);
+            iconPicker.loadingChoices = null;
+            return result;
+        } catch (RuntimeException failure) {
+            iconPicker.loadingChoices = null;
+            error = "icon_picker.refresh_failed";
+            return List.of();
+        }
+    }
+
+    private void updateIconPickerViewport() {
+        if (iconPicker == null || iconPicker.columns <= 0) return;
+        int firstRow = iconPicker.firstRow();
+        int offset = (int) Math.round(iconPicker.scroll.position()) % 40;
         for (int slot = 0; slot < iconChoiceButtons.size(); slot++) {
             StyledButton icon = iconChoiceButtons.get(slot);
-            int index = start + slot;
-            boolean visible = index < iconPicker.filteredChoices.size();
+            int column = slot % iconPicker.columns;
+            int row = slot / iconPicker.columns;
+            int index = (firstRow + row) * iconPicker.columns + column;
+            icon.setX(16 + column * 40);
+            icon.setY(iconPicker.gridTop + row * 40 - offset);
+            boolean inViewport = icon.getY() + 36 >= iconPicker.gridTop
+                    && icon.getY() < iconPicker.gridBottom;
+            boolean visible = index < iconPicker.filteredChoices.size() && inViewport;
             icon.visible = visible;
             if (visible) {
                 QuestIcons.IconChoice choice = iconPicker.filteredChoices.get(index);
@@ -3839,8 +3878,6 @@ public final class QuestScreen extends AnimatedQuestScreen {
                 icon.setTooltip(Tooltip.create(QuestIcons.metadataTooltip(choice.value())));
             }
         }
-        iconPrevious.active = iconPicker.page > 0;
-        iconNext.active = iconPicker.page + 1 < pages;
     }
 
     private List<QuestIcons.IconChoice> sortIconChoices(List<QuestIcons.IconChoice> choices) {
@@ -3932,7 +3969,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
             editBox.setValue(iconPicker.manual);
         for (int slot = 0; slot < iconChoiceButtons.size(); slot++) {
             StyledButton button = iconChoiceButtons.get(slot);
-            int choiceIndex = iconPicker.page * iconPicker.pageSize + slot;
+            int choiceIndex = iconPicker.firstRow() * iconPicker.columns + slot;
             button.setSelectionHighlighted(button.visible && choiceIndex < iconPicker.filteredChoices.size()
                     && iconPicker.filteredChoices.get(choiceIndex).value().equals(iconPicker.manual));
         }
@@ -3944,14 +3981,15 @@ public final class QuestScreen extends AnimatedQuestScreen {
     private void initIconPickerFooter(int x, int y, int w, int h) {
         int footerY = y + h - 88;
         int actionX = x + w - 308;
+        int manualWidth = Math.max(80, actionX - x - 28);
         field("icon_picker.manual", iconPicker.manual, x + 16, footerY,
-                Math.max(80, actionX - x - 28), 8192, value -> {
+                manualWidth, 8192, value -> {
                     iconPicker.manual = value;
                     children().stream().filter(StyledButton.class::isInstance).map(StyledButton.class::cast)
                             .filter(button -> button.styleId().equals("icon-preview")).findFirst()
                             .ifPresent(button -> button.active = !value.isBlank());
                 });
-        addRenderableWidget(new StyledButton(actionX, footerY, 72, 22,
+        addRenderableWidget(new StyledButton(x + 16, y + h - 42, 72, 26,
                 text("icon_picker.apply"), ignored -> {
                     String value = iconPicker.manual.strip();
                     var id = ResourceLocation.tryParse(value);
@@ -3966,11 +4004,11 @@ public final class QuestScreen extends AnimatedQuestScreen {
                         error = "create.error.icon";
                     }
                 }, styles, "icon-apply", "toolbar-button"));
-        var preview = new JournalNavButton(actionX + 78, footerY, 24, 22, text("icon_picker.preview"),
+        var preview = new JournalNavButton(x + 94, y + h - 42, 26, 26, text("icon_picker.preview"),
                 ignored -> {
                     if (!iconPicker.manual.isBlank())
                         minecraft.setScreen(new QuestIconPreviewScreen(this, iconPicker.manual));
-                }, styles, "icon-preview", JournalNavButton.Kind.ICON, "overview");
+                }, styles, "icon-preview", JournalNavButton.Kind.ICON, "fullscreen");
         preview.active = !iconPicker.manual.isBlank();
         preview.setTooltip(Tooltip.create(text("icon_picker.preview")));
         addRenderableWidget(preview);
@@ -3979,13 +4017,13 @@ public final class QuestScreen extends AnimatedQuestScreen {
                     text("icon_picker.open_folder"), ignored ->
                     Util.getPlatform().openFile(QuestIcons.localRoot().toFile()),
                     styles, "icon-folder", "toolbar-button"));
-        addRenderableWidget(new StyledButton(x + 16, y + h - 42, (w - 42) / 2, 26,
+        addRenderableWidget(new StyledButton(actionX, footerY, 72, 22,
                 text("icon_picker.blank"), ignored -> {
                     iconPicker.manual = "";
                     updateIconPickerSelection();
                 }, styles, "icon-none", "toolbar-button"));
-        addRenderableWidget(new StyledButton(x + 26 + (w - 42) / 2, y + h - 42,
-                (w - 42) / 2, 26, Component.translatable("gui.cancel"), ignored -> {
+        addRenderableWidget(new StyledButton(x + w - 220, y + h - 42, 204, 26,
+                Component.translatable("gui.cancel"), ignored -> {
                     if (externalPicker) {
                         onClose();
                         return;
@@ -4891,6 +4929,26 @@ public final class QuestScreen extends AnimatedQuestScreen {
     @Override
     public void tick() {
         updateActionMessageTimeout();
+        if (iconPicker != null) {
+            iconPicker.scroll.advance();
+            updateIconPickerViewport();
+            if (iconPicker.refreshPending != null && iconPicker.refreshPending.isDone()) {
+                try {
+                    iconPicker.refreshPending.join();
+                    error = null;
+                } catch (RuntimeException failure) {
+                    error = "icon_picker.refresh_failed";
+                }
+                iconPicker.refreshPending = null;
+                iconPicker.loadingChoices = null;
+                init();
+                return;
+            }
+            if (iconPicker.loadingChoices != null && iconPicker.loadingChoices.isDone()) {
+                init();
+                return;
+            }
+        }
         if (historyPending != null) {
             if (!historyPending.isDone()) return;
             try {
@@ -7197,6 +7255,17 @@ public final class QuestScreen extends AnimatedQuestScreen {
                 return handled;
             }
         }
+        if (iconPicker != null && button == 0 && x >= 16 && x < width - 16
+                && y >= iconPicker.gridTop && y < iconPicker.gridBottom) {
+            boolean overWidget = children().stream().anyMatch(child ->
+                    child instanceof net.minecraft.client.gui.components.AbstractWidget widget
+                            && widget.visible && widget.isMouseOver(x, y));
+            if (!overWidget) {
+                iconPicker.dragging = true;
+                iconPicker.dragY = y;
+                return true;
+            }
+        }
         if (form != null || iconPicker != null) {
             return super.mouseClicked(x, y, button);
         }
@@ -7503,6 +7572,11 @@ public final class QuestScreen extends AnimatedQuestScreen {
     public boolean mouseDragged(double x, double y, int button, double dx, double dy) {
         if (historyPending != null) return true;
         if (dragChoicePopup(x, y, button, dx, dy)) return true;
+        if (iconPicker != null && iconPicker.dragging && button == 0) {
+            iconPicker.scroll.to(iconPicker.scroll.target() - (y - iconPicker.dragY));
+            iconPicker.dragY = y;
+            return true;
+        }
         if (button == 0 && pressedStructurePreviewId != null) {
             if (Math.abs(x - structurePreviewPressX) >= 4 || Math.abs(y - structurePreviewPressY) >= 4)
                 structurePreviewMoved = true;
@@ -7616,6 +7690,10 @@ public final class QuestScreen extends AnimatedQuestScreen {
 
     @Override
     public boolean mouseReleased(double x, double y, int button) {
+        if (iconPicker != null && button == 0 && iconPicker.dragging) {
+            iconPicker.dragging = false;
+            return true;
+        }
         if (overviewMode && !editMode && form == null && iconPicker == null && !menuDragging) {
             // Route release to the held card even outside its hit box, so it cannot stick.
             boolean handled = false;
@@ -7755,6 +7833,11 @@ public final class QuestScreen extends AnimatedQuestScreen {
             if (iconPicker == null && vertical != 0 && inFormBody(x, y)) {
                 form.motion.limit(formMaxScroll());
                 form.motion.wheel(vertical * 24);
+                return true;
+            }
+            if (iconPicker != null && vertical != 0 && x >= 16 && x < width - 16
+                    && y >= iconPicker.gridTop && y < iconPicker.gridBottom) {
+                iconPicker.scroll.wheel(vertical * 56);
                 return true;
             }
             return super.mouseScrolled(x, y, horizontal, vertical);
@@ -8511,20 +8594,32 @@ public final class QuestScreen extends AnimatedQuestScreen {
         String manual;
         String sort = "id";
         boolean descending;
-        int page;
-        int pageSize = 1;
+        int columns = 1;
+        int visibleRows = 1;
+        int gridTop;
+        int gridBottom;
         List<QuestIcons.IconChoice> filteredChoices = List.of();
         final List<StyledButton> sourceButtons = new ArrayList<>();
         final EnumMap<IconSource, List<QuestIcons.IconChoice>> cachedChoices = new EnumMap<>(IconSource.class);
+        final SmoothScroll scroll = new SmoothScroll();
+        CompletableFuture<Void> refreshPending;
+        CompletableFuture<List<QuestIcons.IconChoice>> loadingChoices;
+        IconSource loadingSource;
         final java.util.function.Consumer<String> changed;
         final boolean itemOnly;
         boolean allowTags;
+        boolean dragging;
+        double dragY;
 
         IconPicker(String current, java.util.function.Consumer<String> changed, boolean itemOnly) {
             manual = current == null ? "" : current;
             this.changed = changed;
             this.itemOnly = itemOnly;
             source = !itemOnly && manual.endsWith(".png") ? IconSource.TEXTURES : IconSource.ITEMS;
+        }
+
+        int firstRow() {
+            return (int) Math.floor(scroll.position() / 40);
         }
     }
 

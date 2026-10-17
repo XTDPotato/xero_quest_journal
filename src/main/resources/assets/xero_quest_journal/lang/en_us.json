@@ -1063,6 +1063,7 @@
   "screen.xero_quest_journal.icon_picker.descending": "Descending",
   "screen.xero_quest_journal.icon_picker.filter": "Filter",
   "screen.xero_quest_journal.icon_picker.refresh": "Refresh icon list",
+  "screen.xero_quest_journal.icon_picker.refresh_failed": "Could not refresh icon list",
   "screen.xero_quest_journal.icon_picker.open_folder": "Open texture folder",
   "screen.xero_quest_journal.icon_picker.manual": "Advanced: resource ID",
   "screen.xero_quest_journal.icon_picker.apply": "Apply",
