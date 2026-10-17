@@ -6,6 +6,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
 import xtdpotato.xero_quest_journal.core.model.AnecdoteDefinition;
+import xtdpotato.xero_quest_journal.core.model.QuestDefinition;
 
 import java.util.List;
 
@@ -15,6 +16,7 @@ final class AnecdoteEntryEditorScreen extends AnimatedQuestScreen {
     private final boolean creating;
     private String id, titleValue, labelValue, iconValue, headingValue;
     private List<AnecdoteDefinition.Record> records;
+    private List<QuestDefinition.Reward> rewards;
     private boolean defaultDiscovered, hideWhenLocked;
     private EditBox title, label, icon, heading;
     private ButtonStyleSheet styles;
@@ -42,6 +44,7 @@ final class AnecdoteEntryEditorScreen extends AnimatedQuestScreen {
         iconValue = entry.icon();
         headingValue = entry.heading();
         records = entry.records();
+        rewards = entry.rewards();
         defaultDiscovered = entry.defaultDiscovered();
         hideWhenLocked = entry.hideWhenLocked();
     }
@@ -128,7 +131,7 @@ final class AnecdoteEntryEditorScreen extends AnimatedQuestScreen {
         return new AnecdoteDefinition(id, titleValue, labelValue, iconValue, headingValue, records,
                 defaultDiscovered, hideWhenLocked, creating ? AnecdoteClientState.snapshot().entries().size()
                 : AnecdoteClientState.snapshot().entries().stream().filter(entry -> entry.id().equals(id))
-                .mapToInt(AnecdoteDefinition::order).findFirst().orElse(0));
+                .mapToInt(AnecdoteDefinition::order).findFirst().orElse(0), rewards);
     }
 
     private void save() {

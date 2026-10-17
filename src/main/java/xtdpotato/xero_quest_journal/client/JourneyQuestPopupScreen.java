@@ -247,7 +247,7 @@ final class JourneyQuestPopupScreen extends AnimatedQuestScreen {
                     return true;
                 }
             }
-            expandedCondition = expandedCondition == hit.row().index() ? -1 : hit.row().index();
+            minecraft.setScreen(new ConditionDetailScreen(this, trigger));
             return true;
         }
         return false;

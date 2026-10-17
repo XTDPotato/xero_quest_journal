@@ -184,6 +184,18 @@ public final class AnecdoteRewardsScreen extends AnimatedQuestScreen {
                 textY += font.lineHeight + 3;
             }
         }
+        if (entry != null && !entry.rewards().isEmpty()) {
+            int rewardY = top + heightPage - 74;
+            centered(g, text("reward_label"), center, rewardY - 16, 0xFF927447);
+            int rewardX = rightLeft + 24;
+            for (var reward : entry.rewards()) {
+                RewardCardRenderer.render(g, font, QuestRewardsScreen.icon(reward.type(), reward.item()),
+                        reward.count(), reward.quality(), reward.background(), rewardX, rewardY,
+                        .9F, 1, false, false);
+                rewardX += RewardCardRenderer.COLUMN_STEP;
+                if (rewardX > rightLeft + widthPage / 2 - 36) break;
+            }
+        }
     }
 
     private AnecdoteDefinition findEntry(String id) {

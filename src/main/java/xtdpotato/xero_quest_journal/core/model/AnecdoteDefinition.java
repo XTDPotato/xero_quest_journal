@@ -6,7 +6,8 @@ import java.util.List;
 /** One independently authored chronicle card and its right-page records. */
 public record AnecdoteDefinition(String id, String title, String cardText, String icon, String heading,
                                  List<Record> records, boolean defaultDiscovered,
-                                 boolean hideWhenLocked, int order) {
+                                 boolean hideWhenLocked, int order,
+                                 List<QuestDefinition.Reward> rewards) {
     public static final int MAX_RECORDS = 32;
 
     public record Record(String id, String title, String body, String completedIcon) {
@@ -29,6 +30,9 @@ public record AnecdoteDefinition(String id, String title, String cardText, Strin
         icon = icon == null ? "" : icon.strip();
         heading = clean(heading, 256);
         records = records == null ? List.of() : List.copyOf(records);
+        rewards = rewards == null || rewards.isEmpty()
+                ? List.of(new QuestDefinition.Reward("item", "minecraft:diamond", 50, "legendary", ""))
+                : List.copyOf(rewards);
         if (!id.matches("[a-z0-9_.-]{1,64}") || title.isBlank() || cardText.isBlank()
                 || icon.length() > 2048 || heading.length() > 256 || records.size() > MAX_RECORDS
                 || order < 0 || order > 1_000_000)
@@ -37,6 +41,13 @@ public record AnecdoteDefinition(String id, String title, String cardText, Strin
         for (Record record : records)
             if (record == null || !ids.add(record.id()))
                 throw new IllegalArgumentException("Duplicate or missing anecdote record ID");
+    }
+
+    public AnecdoteDefinition(String id, String title, String cardText, String icon, String heading,
+                              List<Record> records, boolean defaultDiscovered,
+                              boolean hideWhenLocked, int order) {
+        this(id, title, cardText, icon, heading, records, defaultDiscovered, hideWhenLocked, order,
+                List.of(new QuestDefinition.Reward("item", "minecraft:diamond", 50, "legendary", "")));
     }
 
     private static String clean(String value, int maximum) {

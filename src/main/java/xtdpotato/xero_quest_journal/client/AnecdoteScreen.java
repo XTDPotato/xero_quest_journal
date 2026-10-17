@@ -34,7 +34,7 @@ public final class AnecdoteScreen extends AnimatedQuestScreen {
     private long frameNanos;
     private final UiMotion pageOpen = new UiMotion(false, System.nanoTime());
     private boolean editActionsVisible;
-    private Rect closeBounds, rewardBounds, addBounds, editBounds, recordAddBounds;
+    private Rect closeBounds, rewardBounds, rewardAddBounds, addBounds, editBounds, recordAddBounds;
     private int bookLeft, bookTop, bookWidth, bookHeight, leftWidth, rightLeft, rightWidth;
     private int gridTop, gridBottom, cardWidth, cardHeight, cardColumns;
     private int recordsTop, recordsBottom;
@@ -50,8 +50,8 @@ public final class AnecdoteScreen extends AnimatedQuestScreen {
     }
 
     private void layout() {
-        bookWidth = Math.min(width - 32, Math.max(360, Math.round(width * .86F)));
-        bookHeight = Math.min(height - 44, Math.max(240, Math.round(height * .77F)));
+        bookWidth = Math.min(Math.max(280, width - 24), Math.max(280, Math.round(width * .86F)));
+        bookHeight = Math.min(Math.max(200, height - 72), Math.max(200, Math.round(height * .72F)));
         bookLeft = (width - bookWidth) / 2;
         bookTop = (height - bookHeight) / 2 + 8;
         leftWidth = Math.round(bookWidth * .49F);
@@ -60,14 +60,15 @@ public final class AnecdoteScreen extends AnimatedQuestScreen {
         int pageInset = Math.max(12, Math.min(24, bookWidth / 40));
         gridTop = bookTop + 28;
         gridBottom = bookTop + bookHeight - 18;
-        cardColumns = width < 500 ? 2 : 4;
+        cardColumns = width < 420 ? 2 : width < 760 ? 3 : 4;
         int gridWidth = Math.max(1, leftWidth - pageInset * 2 - (cardColumns - 1) * 7);
         cardWidth = Math.max(36, gridWidth / cardColumns);
         cardHeight = Math.round(cardWidth * 1.25F);
         recordsTop = bookTop + 68;
         recordsBottom = bookTop + bookHeight - 22;
-        closeBounds = new Rect(width - 48, 10, 36, 32);
-        rewardBounds = new Rect(width - 188, 12, 128, 28);
+        closeBounds = new Rect(bookLeft + bookWidth - 34, Math.max(6, bookTop - 30), 24, 24);
+        rewardBounds = new Rect(bookLeft + bookWidth - 168, Math.max(6, bookTop - 28), 112, 22);
+        rewardAddBounds = new Rect(rewardBounds.x() - 30, rewardBounds.y(), 22, 22);
         addBounds = new Rect(bookLeft + pageInset, bookTop + 8, 24, 18);
         editBounds = new Rect(width - 220, 46, 82, 22);
         recordAddBounds = new Rect(rightLeft + rightWidth - 38, bookTop + 43, 24, 22);
@@ -135,6 +136,8 @@ public final class AnecdoteScreen extends AnimatedQuestScreen {
     private void drawHeader(GuiGraphics g, int mouseX, int mouseY) {
         JournalNavButton.drawIcon(g, "overview", 24, 12, 22, 0xFFE8D099);
         g.drawString(font, text("title"), 52, 18, 0xFFF1D89B, false);
+        if (ClientEditMode.enabled() && minecraft.player != null && minecraft.player.hasPermissions(2))
+            drawAction(g, rewardAddBounds, Component.empty(), "add", mouseX, mouseY, false);
         drawAction(g, rewardBounds, text("rewards"), "gift", mouseX, mouseY, false);
         drawAction(g, closeBounds, Component.empty(), "close", mouseX, mouseY, false);
         if (ClientEditMode.enabled() && minecraft.player != null && minecraft.player.hasPermissions(2))
@@ -314,6 +317,11 @@ public final class AnecdoteScreen extends AnimatedQuestScreen {
     private void drawAction(GuiGraphics g, Rect bounds, Component label, String icon,
                             int mouseX, int mouseY, boolean disabled) {
         boolean hovered = bounds.contains(mouseX, mouseY);
+        if (icon.equals("close")) {
+            JournalNavButton.drawIcon(g, "close", bounds.x() + 4, bounds.y() + 4, bounds.height() - 8,
+                    hovered ? 0xFFFFE1A3 : 0xFFF3E4BF);
+            return;
+        }
         int color = disabled ? 0x66695E4E : hovered ? 0xFFE6D4AC : 0xE9F2E9DD;
         g.fill(bounds.x(), bounds.y(), bounds.x() + bounds.width(), bounds.y() + bounds.height(), color);
         g.renderOutline(bounds.x(), bounds.y(), bounds.width(), bounds.height(),
@@ -338,6 +346,14 @@ public final class AnecdoteScreen extends AnimatedQuestScreen {
             return true;
         }
         boolean canEdit = ClientEditMode.enabled() && minecraft.player != null && minecraft.player.hasPermissions(2);
+        if (canEdit && rewardAddBounds.contains(mouseX, mouseY) && button == 0 && selected() != null) {
+            var entry = selected();
+            minecraft.setScreen(new QuestRewardsScreen(this, entry.rewards(), "manual",
+                    (values, mode) -> AnecdoteClientState.save(new AnecdoteDefinition(entry.id(),
+                            entry.title(), entry.cardText(), entry.icon(), entry.heading(), entry.records(),
+                            entry.defaultDiscovered(), entry.hideWhenLocked(), entry.order(), values)), true));
+            return true;
+        }
         if (canEdit && addBounds.contains(mouseX, mouseY) && button == 0) {
             var entry = new AnecdoteDefinition(AnecdoteClientState.nextId(), "新逸闻", "新", "", "", List.of(),
                     false, false, AnecdoteClientState.snapshot().entries().size());
