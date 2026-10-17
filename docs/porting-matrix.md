@@ -4,7 +4,7 @@
 各 Minecraft/加载器组合生成独立 JAR；不能把不同 Minecraft API 或加载器的代码放进一个通用安装包。
 
 历史完整迁移验证日期：2026-10-13。本次共享功能更新与生产包复验日期：2026-10-17，
-详见 [预览 8 发布验证](release-verification-2026-10-17.md)。
+详见 [预览 9 发布验证](release-verification-2026-10-17.md)。
 
 | Minecraft | NeoForge / Forge | Fabric | Java |
 | --- | --- | --- | --- |
