@@ -1063,6 +1063,7 @@
   "screen.xero_quest_journal.icon_picker.descending": "降序",
   "screen.xero_quest_journal.icon_picker.filter": "筛选",
   "screen.xero_quest_journal.icon_picker.refresh": "刷新图标列表",
+  "screen.xero_quest_journal.icon_picker.refresh_failed": "刷新图标列表失败",
   "screen.xero_quest_journal.icon_picker.open_folder": "打开贴图文件夹",
   "screen.xero_quest_journal.icon_picker.manual": "高级：手动资源 ID",
   "screen.xero_quest_journal.icon_picker.apply": "应用",

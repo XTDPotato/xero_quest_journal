@@ -239,6 +239,18 @@ public class JournalNavButton extends StyledButton {
 
     public static void drawIcon(GuiGraphics g, String name, int x, int y, int size, int color) {
         if (name == null || name.isBlank()) name = "other";
+        if (name.equals("refresh")) {
+            drawRefresh(g, x, y, size, color);
+            return;
+        }
+        if (name.equals("fullscreen")) {
+            drawFullscreen(g, x, y, size, color);
+            return;
+        }
+        if (name.equals("sort_up") || name.equals("sort_down")) {
+            drawSort(g, x, y, size, color, name.equals("sort_down"));
+            return;
+        }
         if (name.equals("forward") || name.equals("next")) {
             g.pose().pushPose();
             g.pose().translate(x + size, y, 0);
@@ -256,5 +268,46 @@ public class JournalNavButton extends StyledButton {
         g.blit(ResourceLocation.fromNamespaceAndPath("xero_quest_journal", "textures/gui/navigation/" + name + ".png"),
                 x, y, size, size, 0, 0, 32, 32, 32, 32);
         g.setColor(1, 1, 1, 1);
+    }
+
+    private static void drawRefresh(GuiGraphics g, int x, int y, int size, int color) {
+        int stroke = Math.max(2, size / 6);
+        int left = x + stroke, top = y + stroke, right = x + size - stroke, bottom = y + size - stroke;
+        g.fill(left + stroke, top, right - stroke, top + stroke, color);
+        g.fill(right - stroke, top + stroke, right, y + size / 2, color);
+        g.fill(left, bottom - stroke, right - stroke, bottom, color);
+        g.fill(left, y + size / 2, left + stroke, bottom - stroke, color);
+        g.fill(right - stroke * 2, top - 1, right + 1, top + stroke * 2, color);
+        g.fill(right - stroke * 2, top - 1, right + stroke, top + stroke, color);
+        g.fill(left - 1, bottom - stroke * 2, left + stroke * 2, bottom + 1, color);
+        g.fill(left - 1, bottom - stroke, left + stroke, bottom + stroke, color);
+    }
+
+    private static void drawFullscreen(GuiGraphics g, int x, int y, int size, int color) {
+        int stroke = Math.max(2, size / 6), inset = Math.max(2, size / 5);
+        g.fill(x + inset, y + inset, x + inset + stroke, y + inset + size / 3, color);
+        g.fill(x + inset, y + inset, x + inset + size / 3, y + inset + stroke, color);
+        g.fill(x + size - inset - stroke, y + inset, x + size - inset, y + inset + size / 3, color);
+        g.fill(x + size - inset - size / 3, y + inset, x + size - inset, y + inset + stroke, color);
+        g.fill(x + inset, y + size - inset - stroke, x + inset + size / 3, y + size - inset, color);
+        g.fill(x + inset, y + size - inset - size / 3, x + inset + stroke, y + size - inset, color);
+        g.fill(x + size - inset - size / 3, y + size - inset - stroke, x + size - inset, y + size - inset, color);
+        g.fill(x + size - inset - stroke, y + size - inset - size / 3, x + size - inset, y + size - inset, color);
+    }
+
+    private static void drawSort(GuiGraphics g, int x, int y, int size, int color, boolean down) {
+        int mid = x + size / 2, top = y + size / 5, bottom = y + size - size / 5;
+        int shaft = Math.max(2, size / 7);
+        if (!down) {
+            g.fill(mid - shaft / 2, top + 3, mid + (shaft + 1) / 2, bottom, color);
+            g.fill(mid - size / 4, top, mid + size / 4, top + shaft, color);
+            g.fill(mid - size / 4, top, mid - size / 4 + shaft, top + size / 4, color);
+            g.fill(mid + size / 4 - shaft, top, mid + size / 4, top + size / 4, color);
+        } else {
+            g.fill(mid - shaft / 2, top, mid + (shaft + 1) / 2, bottom - 3, color);
+            g.fill(mid - size / 4, bottom - shaft, mid + size / 4, bottom, color);
+            g.fill(mid - size / 4, bottom - size / 4, mid - size / 4 + shaft, bottom, color);
+            g.fill(mid + size / 4 - shaft, bottom - size / 4, mid + size / 4, bottom, color);
+        }
     }
 }
