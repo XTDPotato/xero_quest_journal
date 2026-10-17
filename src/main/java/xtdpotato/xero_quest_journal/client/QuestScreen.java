@@ -6548,7 +6548,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
             entries.add(Map.entry("copy_id", () -> copyId(id)));
             if (canAuthor()) entries.add(Map.entry("order.move_task", () -> startTaskMove(id)));
             entries.add(Map.entry("unlock_graph.title",
-                    () -> minecraft.setScreen(new QuestUnlockGraphScreen(this))));
+                    () -> minecraft.setScreen(new QuestUnlockGraphScreen(this, id))));
             entries.add(Map.entry("layout.canvas_settings", () -> openCanvasSize(id)));
             if (canAuthor()) {
                 entries.add(Map.entry("graph.overview", () -> openTriggerOverview(id)));
