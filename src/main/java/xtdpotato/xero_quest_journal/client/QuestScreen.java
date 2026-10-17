@@ -5278,7 +5278,8 @@ public final class QuestScreen extends AnimatedQuestScreen {
             renderElements(graphics, mouseX, mouseY);
             if (selected != null && rewardFooterHeight() > 0) {
                 JournalDetailRenderer.renderFooter(graphics, font, selected, displayedRewards(), detailsLeft,
-                        detailContentBottom(), width - 14, mouseX, mouseY, controls.containsKey("system:daily-bonus"));
+                        detailContentBottom(), width - 14, mouseX, mouseY,
+                        controls.containsKey("system:daily-bonus"), editMode);
             }
         };
         if (editMode || selected == null || detailReveal.settled()) {
@@ -5607,11 +5608,13 @@ public final class QuestScreen extends AnimatedQuestScreen {
      * editing and when the task layout already places its own reward control.
      */
     private int rewardFooterHeight() {
-        if (editMode || overviewMode || previewViewport != null || selected == null) return 0;
-        if (!JournalDetailRenderer.footerApplies(selected, displayedRewards())) return 0;
-        for (var element : layout.elements().values()) {
-            if (element.quest().equals(selectedId) && element.kind().equals("quest_rewards")
-                    && runtimeVisible(element)) return 0;
+        if (overviewMode || previewViewport != null || selected == null) return 0;
+        if (!editMode) {
+            if (!JournalDetailRenderer.footerApplies(selected, displayedRewards())) return 0;
+            for (var element : layout.elements().values()) {
+                if (element.quest().equals(selectedId) && element.kind().equals("quest_rewards")
+                        && runtimeVisible(element)) return 0;
+            }
         }
         int available = canvasBottom() - canvasTop() - 60;
         return available < JournalDetailRenderer.FOOTER_HEIGHT ? 0 : JournalDetailRenderer.FOOTER_HEIGHT;
@@ -7236,6 +7239,11 @@ public final class QuestScreen extends AnimatedQuestScreen {
         }
         if (button == 0 && selected != null && rewardFooterHeight() > 0
                 && y >= detailContentBottom() && y < canvasBottom()) {
+            if (editMode && JournalDetailRenderer.addButtonAt(displayedRewards(), detailsLeft,
+                    detailContentBottom(), x, y)) {
+                openRewardsEditor();
+                return true;
+            }
             var hit = JournalDetailRenderer.cardAt(font, selected, displayedRewards(), detailsLeft,
                     detailContentBottom(), width - 14, x, y);
             if (hit != null) {

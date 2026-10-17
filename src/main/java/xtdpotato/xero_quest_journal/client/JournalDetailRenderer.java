@@ -136,7 +136,8 @@ final class JournalDetailRenderer {
     }
 
     static void renderFooter(GuiGraphics g, Font font, QuestDefinition quest, List<QuestDefinition.Reward> rewards,
-                             int left, int top, int right, int mouseX, int mouseY, boolean claimButtonShown) {
+                             int left, int top, int right, int mouseX, int mouseY, boolean claimButtonShown,
+                             boolean editMode) {
         int x = left + 10;
         int w = Math.max(24, right - x - 10);
         var view = ClientQuestProgress.view(quest.id());
@@ -166,8 +167,25 @@ final class JournalDetailRenderer {
                         reward.count(), reward.quality(), reward.background(), cardX, cardY,
                         1F, 1F, claimed, hovered);
             }
+        } else if (editMode) {
+            g.drawString(font, text("rewards.locked"), x, top + 8, 0xFFF2CF83, false);
+            int cardX = x, cardY = top + 20;
+            int cardRight = cardX + RewardCardRenderer.WIDTH;
+            int cardBottom = cardY + RewardCardRenderer.HEIGHT;
+            g.fillGradient(cardX, cardY, cardRight, cardY + 28, 0xFF536B83, 0xFF7087A0);
+            g.fill(cardX, cardY + 28, cardRight, cardBottom, 0xCC2A2D34);
+            g.renderOutline(cardX, cardY, RewardCardRenderer.WIDTH, RewardCardRenderer.HEIGHT, 0xFFD9E5F2);
+            JournalNavButton.drawIcon(g, "add", cardX + 9, cardY + 9, 16, 0xFFF2CF83);
         }
         if (daily) renderDaily(g, font, x + w - dailyWidth, top, dailyWidth, mouseX, mouseY, claimButtonShown);
+    }
+
+    static boolean addButtonAt(List<QuestDefinition.Reward> rewards, int left, int top,
+                               double mouseX, double mouseY) {
+        if (rewards != null && !rewards.isEmpty()) return false;
+        int x = left + 10, y = top + 20;
+        return mouseX >= x && mouseX < x + RewardCardRenderer.WIDTH
+                && mouseY >= y && mouseY < y + RewardCardRenderer.HEIGHT;
     }
 
     static int dailyBlockWidth(Font font) {
