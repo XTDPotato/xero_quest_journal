@@ -204,6 +204,10 @@ tasks.register("prepareFabricSources") {
                         'Path.of(System.getProperty("xero.verificationDir", "../build/verification"))')
                         .replace('Path.of("..", "build", "verification", ',
                                 'Path.of(System.getProperty("xero.verificationDir", "../build/verification"), ')
+                        .replace("progress.save(new net.minecraft.nbt.CompoundTag(), game.level.registryAccess())",
+                                "progress.save(new net.minecraft.nbt.CompoundTag())")
+                        .replace("QuestProgressData.load(saved, game.level.registryAccess())",
+                                "QuestProgressData.load(saved)")
                 text = text.replace("new DimensionTransition(target, player, DimensionTransition.DO_NOTHING)", "target")
                         .replace("new DimensionTransition(target, entity, DimensionTransition.DO_NOTHING)", "target")
                         .replace("settings factory", "settings screen")

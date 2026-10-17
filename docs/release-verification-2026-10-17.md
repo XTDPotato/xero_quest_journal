@@ -1,6 +1,6 @@
-# 2026-10-17 多版本预览 9 验证
+# 2026-10-17 多版本预览 10 验证
 
-本次 Release 对应模组版本 `0.2.0`，标签为 `v0.2.0-multiversion-preview.9`。
+本次 Release 对应模组版本 `0.2.0`，标签为 `v0.2.0-multiversion-preview.10`。
 只发布已接入共享源码的四个目标；26.1、26.2、26.3 工程仍未完成完整 GUI、输入、
 物品/配方、权限和运行时迁移，不提供可安装 JAR。
 
@@ -35,5 +35,9 @@ NeoForge 1.21.1 使用 `runClient -PlootTableTest` 启动集成世界并通过�
 
 ![邮件中的战利品图标](images/loot-display-mail-zh-1920.png)
 
+此外，关键帧弹出动画专项 `popupAnimationTest` 已分别在 NeoForge 1.21.1、
+Fabric 1.21.1、Fabric 1.20.1 和 Forge 1.20.1 客户端通过，日志均包含
+`XERO_POPUP_ANIMATION_PASS`。为支持 1.20.1 测试，Fabric/Forge 的测试源码生成器
+同步适配了旧版 `SavedData.save/load` 签名。
+
 该回归不等于对所有 MC 版本、第三方模组组合或远端多人流程的全面验收。
-Fabric/Forge 本轮执行构建检查；UI 专项运行回归在 NeoForge 1.21.1 客户端执行。

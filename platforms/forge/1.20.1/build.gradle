@@ -521,6 +521,10 @@ tasks.register("prepareForgeSources") {
                         "\$1)")
                         .replaceAll(/((?:QuestProgressData|MailboxData)\.load\([^;]*),\s*(?:player\.getServer\(\)|server)\.registryAccess\(\)\)/,
                                 "\$1)")
+                        .replace("progress.save(new net.minecraft.nbt.CompoundTag(), game.level.registryAccess())",
+                                "progress.save(new net.minecraft.nbt.CompoundTag())")
+                        .replace("QuestProgressData.load(saved, game.level.registryAccess())",
+                                "QuestProgressData.load(saved)")
                         .replace("NbtIo.writeCompressed(data, root.resolve(\"test.nbt\"))",
                                 "NbtIo.writeCompressed(data, root.resolve(\"test.nbt\").toFile())")
                         .replace("NbtIo.writeCompressed(data, root.resolve(\"oversize.nbt\"))",
