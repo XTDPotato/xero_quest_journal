@@ -66,6 +66,16 @@ final class JourneyAppearanceRegression {
                 require(targetChapter.id().equals(chapterId),
                         "Appearance editor targeted a different chapter: " + targetChapter.id());
                 field("text_x").setValue("17");
+                require(button(editor, "journey-appearance-undo").active,
+                        "Appearance undo button did not activate after a draft edit");
+                button(editor, "journey-appearance-undo").onPress();
+                require(field("text_x").getValue().equals("0")
+                                && button(editor, "journey-appearance-redo").active,
+                        "Appearance undo did not restore the previous draft");
+                button(editor, "journey-appearance-redo").onPress();
+                require(field("text_x").getValue().equals("17")
+                                && button(editor, "journey-appearance-undo").active,
+                        "Appearance redo did not restore the edited draft");
                 field("text_y").setValue("-9");
                 field("icon_x").setValue("8");
                 field("icon_y").setValue("3");

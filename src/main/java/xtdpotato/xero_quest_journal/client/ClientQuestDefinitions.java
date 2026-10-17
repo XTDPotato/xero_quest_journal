@@ -50,6 +50,24 @@ public final class ClientQuestDefinitions {
         return local() ? QuestVariableStore.all() : ClientQuestProgress.catalog().variables();
     }
 
+    public static String lootDisplayIcon(String id) {
+        if (local()) {
+            var table = xtdpotato.xero_quest_journal.core.io.QuestLootStore.find(id);
+            return table == null ? xtdpotato.xero_quest_journal.core.model.LootDefinition.DEFAULT_DISPLAY_ICON
+                    : table.displayIcon();
+        }
+        return ClientQuestProgress.catalog().lootDisplayIcons().getOrDefault(id,
+                xtdpotato.xero_quest_journal.core.model.LootDefinition.DEFAULT_DISPLAY_ICON);
+    }
+
+    public static xtdpotato.xero_quest_journal.core.model.LootDefinition.Display lootTable(String id) {
+        if (local()) {
+            var table = xtdpotato.xero_quest_journal.core.io.QuestLootStore.find(id);
+            return table == null ? null : table.display();
+        }
+        return ClientQuestProgress.catalog().lootTables().get(id);
+    }
+
     public static QuestDefinition find(String id) {
         if (id == null) return null;
         all();

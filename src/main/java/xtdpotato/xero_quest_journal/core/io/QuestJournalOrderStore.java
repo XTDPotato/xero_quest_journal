@@ -47,7 +47,9 @@ public final class QuestJournalOrderStore {
                     next = new QuestJournalOrder(old.tasks(), QuestJournalOrder.move(
                             old.tabOrder(QuestTypeStore.all()), id, neighbor, direction), old.groups());
                 } else return "invalid_action";
+                var before = QuestAuthoringHistory.capture(java.util.List.of(file()));
                 write(next);
+                QuestAuthoringHistory.remember(player, id, "order", before);
                 return "journal_order_saved";
             } catch (IllegalArgumentException invalid) {
                 return "invalid_action";
@@ -75,7 +77,9 @@ public final class QuestJournalOrderStore {
                 var current = QuestJournalOrder.apply(QuestRepository.all().stream()
                         .map(QuestDefinition::id).toList(), old.tasks());
                 var moved = QuestJournalOrder.moveBlock(current, taskIds, neighbor, after);
+                var before = QuestAuthoringHistory.capture(java.util.List.of(file()));
                 write(new QuestJournalOrder(moved, old.tabs(), old.groups()));
+                QuestAuthoringHistory.remember(player, taskIds.getFirst(), "order", before);
                 return "journal_order_saved";
             } catch (IllegalArgumentException invalid) {
                 return "invalid_action";

@@ -96,6 +96,7 @@ final class MailboxReceiptRegression {
                 var visible = MailboxScreen.class.getDeclaredMethod("visibleAttachments", MailboxRuntime.View.class);
                 visible.setAccessible(true);
                 require(((List<?>) visible.invoke(null, selected)).size() == 3, "Hidden attachments left visible cards");
+                verifyFooter(game, true);
                 capture(game, "mailbox-hidden-rewards-grid");
                 button(game, "mail-claim");
             }
@@ -107,6 +108,8 @@ final class MailboxReceiptRegression {
                         "Mail receipt included silent, hidden or non-item rewards");
                 capture(game, "mailbox-mixed-item-receipt");
                 game.setScreen((Screen) field(game.screen, "parent"));
+                verifyFooter(game, false);
+                capture(game, "mailbox-claimed-delete-footer");
                 var server = game.getSingleplayerServer();
                 serverWork = CompletableFuture.runAsync(() -> {
                     var player = server.getPlayerList().getPlayer(game.player.getUUID());
@@ -132,6 +135,7 @@ final class MailboxReceiptRegression {
                 if (!claimed("receipt_command")) return false;
                 require(game.screen instanceof MailboxScreen && field(game.screen, "pending") == null,
                         "Command-only claim opened a popup");
+                verifyFooter(game, false);
                 var server = game.getSingleplayerServer();
                 serverWork = CompletableFuture.runAsync(() -> {
                     var player = server.getPlayerList().getPlayer(game.player.getUUID());
@@ -158,6 +162,7 @@ final class MailboxReceiptRegression {
                 if (field(game.screen, "pending") != null) return false;
                 require("inventory_full".equals(field(game.screen, "actionMessage")) && !claimed("receipt_full"),
                         "Full inventory did not preserve pending rewards");
+                verifyFooter(game, true);
                 var server = game.getSingleplayerServer();
                 serverWork = CompletableFuture.runAsync(() -> {
                     var player = server.getPlayerList().getPlayer(game.player.getUUID());
@@ -187,6 +192,20 @@ final class MailboxReceiptRegression {
 
     private static boolean claimed(String id) {
         return ClientMailbox.messages().stream().anyMatch(mail -> mail.id().equals(id) && !mail.claimable());
+    }
+    private static void verifyFooter(Minecraft game, boolean claimable) {
+        var buttons = game.screen.children().stream().filter(StyledButton.class::isInstance)
+                .map(StyledButton.class::cast).toList();
+        require(buttons.stream().noneMatch(b -> b.styleId().equals(claimable ? "mail-delete" : "mail-claim")),
+                "Claim and delete were displayed for the same mail");
+        var action = buttons.stream().filter(b -> b.styleId().equals(claimable ? "mail-claim" : "mail-delete"))
+                .findFirst().orElseThrow();
+        var star = buttons.stream().filter(b -> b.styleId().equals("mail-star")).findFirst().orElseThrow();
+        require(action.getRight() == game.screen.width - 24 && action.getY() == game.screen.height - 32,
+                "Mail action is not anchored to the bottom right");
+        require(star.getRight() < action.getX() && star.getY() >= action.getY()
+                        && star.getBottom() <= action.getBottom(),
+                "Favorite button overlaps the mail action");
     }
     private static Object field(Object owner, String name) throws Exception {
         var field = owner.getClass().getDeclaredField(name);

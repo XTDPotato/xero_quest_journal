@@ -634,7 +634,8 @@ public final class QuestRewardsScreen extends AnimatedQuestScreen {
     public static String icon(String type, String target) {
         return switch (type) {
             case "item" -> target.isBlank() ? "minecraft:diamond" : target;
-            case "loot" -> "minecraft:chest";
+            case "loot" -> ClientQuestDefinitions.lootDisplayIcon(target);
+            case "loot_choice" -> QuestRewards.choiceDisplayIcon(target);
             case "mail" -> "minecraft:written_book";
             case "experience", "levels" -> "minecraft:experience_bottle";
             case "command", "function", "script" -> "minecraft:command_block";

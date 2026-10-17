@@ -7,6 +7,7 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
+import org.lwjgl.glfw.GLFW;
 import xtdpotato.xero_quest_journal.core.model.QuestDefinition;
 import xtdpotato.xero_quest_journal.core.model.JourneyAppearance;
 import xtdpotato.xero_quest_journal.core.network.QuestCatalog;
@@ -37,6 +38,8 @@ public final class JourneyAppearanceScreen extends AnimatedQuestScreen {
     private final LinkedHashSet<Selection> selections = new LinkedHashSet<>();
     private final Map<Selection, JourneyAppearance.Element> dragValues = new LinkedHashMap<>();
     private final Map<Selection, int[]> dragBounds = new LinkedHashMap<>();
+    private final Deque<Map<String, Draft>> undo = new ArrayDeque<>();
+    private final Deque<Map<String, Draft>> redo = new ArrayDeque<>();
     private boolean multiSelect, syncingFields;
     private Selection pendingToggle;
     private boolean selectionDragged;
@@ -51,6 +54,14 @@ public final class JourneyAppearanceScreen extends AnimatedQuestScreen {
         String icon, ix, iy, tx, ty, iconScale, textScale, text, background, textColor;
         String iw, ih, tw, th;
         boolean iconVisible, textVisible, overridden;
+        Draft(Draft other) {
+            this.icon = other.icon; this.ix = other.ix; this.iy = other.iy;
+            this.tx = other.tx; this.ty = other.ty; this.iconScale = other.iconScale;
+            this.textScale = other.textScale; this.text = other.text; this.background = other.background;
+            this.textColor = other.textColor; this.iw = other.iw; this.ih = other.ih;
+            this.tw = other.tw; this.th = other.th; this.iconVisible = other.iconVisible;
+            this.textVisible = other.textVisible; this.overridden = other.overridden;
+        }
         Draft(JourneyAppearance.Element value, boolean overridden) {
             icon = value.icon();
             text = value.text(); background = value.background();
@@ -147,6 +158,40 @@ public final class JourneyAppearanceScreen extends AnimatedQuestScreen {
     private int bodyTop() { return 92; }
     private int bodyBottom() { return height - 47; }
     private Draft current() { return drafts.get(selected); }
+    private Map<String, Draft> snapshot() {
+        var copy = new LinkedHashMap<String, Draft>();
+        drafts.forEach((key, value) -> copy.put(key, new Draft(value)));
+        return copy;
+    }
+    private void pushUndo() {
+        undo.push(snapshot());
+        while (undo.size() > 64) undo.removeLast();
+        redo.clear();
+        updateHistoryButtons();
+    }
+    private void updateHistoryButtons() {
+        children().stream().filter(StyledButton.class::isInstance).map(StyledButton.class::cast)
+                .filter(button -> button.styleId().equals("journey-appearance-undo"))
+                .forEach(button -> button.active = !undo.isEmpty());
+        children().stream().filter(StyledButton.class::isInstance).map(StyledButton.class::cast)
+                .filter(button -> button.styleId().equals("journey-appearance-redo"))
+                .forEach(button -> button.active = !redo.isEmpty());
+    }
+    private void restore(Map<String, Draft> state) {
+        drafts.clear();
+        state.forEach((key, value) -> drafts.put(key, new Draft(value)));
+        init();
+    }
+    private void undoEdit() {
+        if (undo.isEmpty()) return;
+        redo.push(snapshot());
+        restore(undo.pop());
+    }
+    private void redoEdit() {
+        if (redo.isEmpty()) return;
+        undo.push(snapshot());
+        restore(redo.pop());
+    }
 
     @Override protected void init() {
         if (!ClientEditMode.enabled()) { onClose(); return; }
@@ -181,6 +226,7 @@ public final class JourneyAppearanceScreen extends AnimatedQuestScreen {
         field("icon", draft.icon, x, y, w - 30, 2048, value -> draft.icon = value);
         var picker = new EditorIconButton(x + w - 24, y + 12, text("choose_icon"), () -> {
             minecraft.setScreen(QuestScreen.pickResource(this, draft.icon, false, value -> {
+                if (!draft.icon.equals(value)) pushUndo();
                 draft.icon = value;
                 draft.overridden = true;
                 applyFieldToSelection("icon", value);
@@ -201,6 +247,7 @@ public final class JourneyAppearanceScreen extends AnimatedQuestScreen {
         field("background", draft.background, x, y + 249, w - 30, 2048, value -> draft.background = value);
         addBody(new EditorIconButton(x + w - 24, y + 262, text("choose_background"), () ->
                 minecraft.setScreen(QuestScreen.pickResource(this, draft.background, false, value -> {
+                    if (!draft.background.equals(value)) pushUndo();
                     draft.background = value; draft.overridden = true;
                     applyFieldToSelection("background", value);
                 })), styles, "journey-appearance-background", "minecraft:painting"));
@@ -210,12 +257,18 @@ public final class JourneyAppearanceScreen extends AnimatedQuestScreen {
         field("text_width", draft.tw, x, y + 375, half, 8, value -> draft.tw = value);
         field("text_height", draft.th, x + half + 8, y + 375, half, 8, value -> draft.th = value);
         addRenderableWidget(new ScrollRail(x + w + 2, bodyTop(), bodyBottom() - bodyTop(), scroll));
-        int part = (w - 40) / 2;
         addRenderableWidget(new EditorIconButton(x, height - 30, text("reset_element"),
                 this::resetSelection, styles, "journey-appearance-reset", "refresh"));
-        addRenderableWidget(new StyledButton(x + 30, height - 29, part, 21, text("save"),
+        addRenderableWidget(new EditorIconButton(x + 28, height - 30, text("undo"),
+                this::undoEdit, styles, "journey-appearance-undo", "undo")).active = !undo.isEmpty();
+        addRenderableWidget(new EditorIconButton(x + 56, height - 30, text("redo"),
+                this::redoEdit, styles, "journey-appearance-redo", "redo")).active = !redo.isEmpty();
+        int actionLeft = x + 80;
+        int actionWidth = Math.max(20, (w - 84) / 2);
+        addRenderableWidget(new StyledButton(actionLeft, height - 29, actionWidth, 21, text("save"),
                 ignored -> save(), styles, "journey-appearance-save"));
-        addRenderableWidget(new StyledButton(x + part + 36, height - 29, part, 21,
+        addRenderableWidget(new StyledButton(actionLeft + actionWidth + 4, height - 29,
+                actionWidth, 21,
                 Component.translatable("gui.cancel"), ignored -> onClose(), styles, "journey-appearance-cancel"));
         if (pending != null) children().stream().filter(AbstractWidget.class::isInstance)
                 .map(AbstractWidget.class::cast).forEach(widget -> widget.active = false);
@@ -235,6 +288,7 @@ public final class JourneyAppearanceScreen extends AnimatedQuestScreen {
     }
 
     private void resetSelection() {
+        pushUndo();
         for (Selection ref : selections) {
             Draft draft = drafts.get(ref.slot());
             var base = inherited.get(ref.slot());
@@ -270,6 +324,7 @@ public final class JourneyAppearanceScreen extends AnimatedQuestScreen {
         field.setTooltip(Tooltip.create(text(key)));
         Draft owner = current();
         field.setResponder(next -> {
+            if (!syncingFields && !next.equals(value)) pushUndo();
             changed.accept(next); owner.overridden = true;
             if (!syncingFields) applyFieldToSelection(key, next);
         });
@@ -303,6 +358,7 @@ public final class JourneyAppearanceScreen extends AnimatedQuestScreen {
         }
     }
     private void setVisible(String kind, boolean value) {
+        pushUndo();
         if (kind.equals("icon")) current().iconVisible = value;
         else current().textVisible = value;
         current().overridden = true;
@@ -561,6 +617,7 @@ public final class JourneyAppearanceScreen extends AnimatedQuestScreen {
     @Override public boolean mouseDragged(double x, double y, int button, double dx, double dy) {
         if (dragMode.isBlank()) return super.mouseDragged(x, y, button, dx, dy);
         if (!selectionDragged && Math.hypot(x - dragX, y - dragY) < 2) return true;
+        if (!selectionDragged) pushUndo();
         selectionDragged = true; pendingToggle = null;
         int mx = (int) Math.round(x - dragX), my = (int) Math.round(y - dragY);
         double sx = 1, sy = 1;
@@ -637,6 +694,17 @@ public final class JourneyAppearanceScreen extends AnimatedQuestScreen {
             scroll.wheel(vertical * 28); return true;
         }
         return false;
+    }
+    @Override public boolean keyPressed(int key, int scanCode, int modifiers) {
+        if (!(getFocused() instanceof EditBox) && (modifiers & GLFW.GLFW_MOD_CONTROL) != 0) {
+            if (key == GLFW.GLFW_KEY_Z) {
+                if ((modifiers & GLFW.GLFW_MOD_SHIFT) != 0) redoEdit();
+                else undoEdit();
+                return true;
+            }
+            if (key == GLFW.GLFW_KEY_Y) { redoEdit(); return true; }
+        }
+        return super.keyPressed(key, scanCode, modifiers);
     }
     @Override public void onClose() { if (pending == null) closeTo(parent); }
     @Override public boolean isPauseScreen() { return false; }

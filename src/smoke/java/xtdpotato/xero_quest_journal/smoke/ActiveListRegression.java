@@ -19,6 +19,15 @@ final class ActiveListRegression {
     private static boolean pagination;
 
     static void fixtures() throws Exception {
+        Path emptyGroup = QuestRepository.root().resolve(PREFIX + "empty_group");
+        Files.createDirectories(emptyGroup);
+        Files.writeString(emptyGroup.resolve("group_manifest.json"),
+                "{\"id\":\"active_list_empty_group\",\"name\":\"Empty active list\",\"type\":\"world\"}");
+        Files.writeString(emptyGroup.resolve(PREFIX + "claimed.json"), """
+                {"id":"active_list_claimed","title":"Claimed tab regression","type":"world",
+                 "rewardMode":"manual","rewards":[{"type":"experience","count":1}],
+                 "triggers":[{"type":"confirm","count":1}]}
+                """);
         for (String type : List.of("main", "legendary", "commission", "world", "other")) {
             Files.writeString(QuestRepository.root().resolve(PREFIX + type + ".json"),
                     "{\"id\":\"" + PREFIX + type + "\",\"title\":\"Active " + type
@@ -81,6 +90,46 @@ final class ActiveListRegression {
                 game.getWindow().setWidth(1920);
                 game.getWindow().setHeight(1080);
                 game.resizeDisplay();
+                set(screen, "editMode", false);
+                screen.init(game, screen.width, screen.height);
+                var category = QuestScreen.class.getDeclaredMethod("setCategory", String.class);
+                category.setAccessible(true);
+                category.invoke(screen, "completed");
+                require(field(screen, "selectedId").equals(PREFIX + "claimed"),
+                        "Completed fixture was not selected");
+                @SuppressWarnings("unchecked")
+                var categories = (List<String>) call(screen, "categories");
+                for (int i = 0; i < categories.size() * 2; i++) {
+                    String before = (String) field(screen, "category");
+                    String expected = categories.get((categories.indexOf(before) + 1) % categories.size());
+                    click(game, "category-" + expected);
+                    require(field(screen, "category").equals(expected),
+                            "Tab switch bounced back from " + expected + " to " + field(screen, "category"));
+                }
+                category.invoke(screen, "active");
+                ((net.minecraft.client.gui.components.EditBox) field(screen, "taskSearch"))
+                        .setValue("no_such_quest_803174");
+                wait = 12;
+            }
+            case 4 -> {
+                require(field(screen, "taskSearch") != null, "No search results hid the search field");
+                set(screen, "searchQuery", "");
+                var category = QuestScreen.class.getDeclaredMethod("setCategory", String.class);
+                category.setAccessible(true);
+                category.invoke(screen, "empty_regression");
+                require(field(screen, "selected") == null && field(screen, "taskSearch") == null,
+                        "Empty active-task group retained the search field");
+                require(screen.children().stream().noneMatch(child -> child instanceof StyledButton b
+                                && b.styleId().equals("search-settings")),
+                        "Empty active-task group retained search settings");
+                wait = 6;
+            }
+            case 5 -> {
+                capture(game, "journal-empty-without-search");
+                set(screen, "editMode", true);
+                set(screen, "groupId", "");
+                screen.init(game, screen.width, screen.height);
+                require(field(screen, "taskSearch") != null, "Empty editor lost its search tools");
                 QuestConfig.defaults().taskPagination = pagination;
                 return true;
             }
@@ -88,6 +137,19 @@ final class ActiveListRegression {
         }
         stage++;
         return false;
+    }
+
+    private static Object call(Object owner, String name) throws Exception {
+        var method = owner.getClass().getDeclaredMethod(name);
+        method.setAccessible(true);
+        return method.invoke(owner);
+    }
+
+    private static void click(Minecraft game, String id) {
+        var button = screen.children().stream().filter(StyledButton.class::isInstance)
+                .map(StyledButton.class::cast).filter(b -> b.styleId().equals(id)).findFirst().orElseThrow();
+        require(button.active, "Tab control is disabled: " + id);
+        button.onPress();
     }
 
     private static void checkRows(boolean editing) throws Exception {

@@ -317,7 +317,9 @@ final class CreationRegression {
                 click(game, find(game, "icon-apply"));
                 require(field(form(), "description").equals(""), "Clear not applied");
                 click(game, find(game, "cancel"));
-                return true;
+            }
+            case 11 -> {
+                return AuthoringHistoryRegression.tick(game);
             }
             default -> throw new AssertionError("Unknown creation stage " + stage);
         }

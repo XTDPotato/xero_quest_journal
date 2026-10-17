@@ -4,6 +4,7 @@ import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.arguments.BoolArgumentType;
+import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -64,6 +65,57 @@ public final class QuestCommand {
                 .then(deleteGeneratedCommand())
                 .then(mailCommands()));
         dispatcher.register(toastCommand());
+        dispatcher.register(anecdoteCommand());
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> anecdoteCommand() {
+        var positions = Commands.argument("position", StringArgumentType.greedyString())
+                .suggests((context, builder) -> {
+                    for (String value : List.of("top", "bottom", "left", "start", "right", "end", "center",
+                            "top,left", "top,right", "bottom,left", "bottom,right", "top,center",
+                            "bottom,center", "left,center", "right,center")) builder.suggest(value);
+                    return builder.buildFuture();
+                })
+                .executes(context -> sendAnecdote(context.getSource(),
+                        EntityArgument.getPlayers(context, "targets"),
+                        DoubleArgumentType.getDouble(context, "x"), DoubleArgumentType.getDouble(context, "y"),
+                        DoubleArgumentType.getDouble(context, "scale"),
+                        StringArgumentType.getString(context, "position")));
+        var scale = Commands.argument("scale", DoubleArgumentType.doubleArg(.1, 2))
+                .executes(context -> sendAnecdote(context.getSource(),
+                        EntityArgument.getPlayers(context, "targets"),
+                        DoubleArgumentType.getDouble(context, "x"), DoubleArgumentType.getDouble(context, "y"),
+                        DoubleArgumentType.getDouble(context, "scale"), "top"))
+                .then(positions);
+        var y = Commands.argument("y", DoubleArgumentType.doubleArg(-8192, 8192))
+                .executes(context -> sendAnecdote(context.getSource(),
+                        EntityArgument.getPlayers(context, "targets"),
+                        DoubleArgumentType.getDouble(context, "x"), DoubleArgumentType.getDouble(context, "y"),
+                        .7, "top"))
+                .then(scale);
+        var x = Commands.argument("x", DoubleArgumentType.doubleArg(-8192, 8192))
+                .executes(context -> sendAnecdote(context.getSource(),
+                        EntityArgument.getPlayers(context, "targets"),
+                        DoubleArgumentType.getDouble(context, "x"), 0, .7, "top"))
+                .then(y);
+        return Commands.literal("xero_anecdote").requires(source -> source.hasPermission(2))
+                .then(Commands.argument("targets", EntityArgument.players())
+                        .executes(context -> sendAnecdote(context.getSource(),
+                                EntityArgument.getPlayers(context, "targets"), 0, 0, .7, "top"))
+                        .then(x));
+    }
+
+    private static int sendAnecdote(CommandSourceStack source, Collection<ServerPlayer> targets,
+                                    double x, double y, double scale, String position) {
+        final QuestNetwork.AnecdotePayload payload;
+        try {
+            payload = new QuestNetwork.AnecdotePayload(x, y, scale, position);
+        } catch (IllegalArgumentException invalid) {
+            source.sendFailure(Component.literal(invalid.getMessage()));
+            return 0;
+        }
+        for (ServerPlayer target : targets) PacketDistributor.sendToPlayer(target, payload);
+        return targets.size();
     }
 
     /** Daily commissions: players claim their bonus; administrators inspect or re-roll a selection. */
@@ -336,7 +388,7 @@ public final class QuestCommand {
 
     private static LiteralArgumentBuilder<CommandSourceStack> openCommands() {
         var root = Commands.literal("open");
-        for (String screen : List.of("journal", "overview", "mailbox", "settings", "templates")) {
+        for (String screen : List.of("journal", "overview", "mailbox", "settings", "templates", "anecdotes")) {
             root.then(Commands.literal(screen)
                     .executes(context -> open(context.getSource(),
                             List.of(context.getSource().getPlayerOrException()), screen, ""))

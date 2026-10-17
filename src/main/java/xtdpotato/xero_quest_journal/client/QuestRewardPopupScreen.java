@@ -290,11 +290,8 @@ public final class QuestRewardPopupScreen extends AnimatedQuestScreen {
         scroll += (targetScroll - scroll) * (1 - Math.exp(-16 * elapsed));
         if (Math.abs(targetScroll - scroll) < .05) scroll = targetScroll;
         int y = top(), w = panelWidth();
-        // Genshin-style "items obtained" band: full-width dark strip that fades out above and below.
-        int bandTop = y - 4, bandBottom = y + panelHeight() + 4;
-        g.fillGradient(0, bandTop - 28, width, bandTop, 0x000A0D12, 0x8C0A0D12);
-        g.fill(0, bandTop, width, bandBottom, 0x8C0A0D12);
-        g.fillGradient(0, bandBottom, width, bandBottom + 28, 0x8C0A0D12, 0x000A0D12);
+        // The modal transition already fades the whole window. Keep the receipt surface
+        // transparent so the blurred parent remains visible behind the reward content.
         g.pose().pushPose();
         g.pose().translate(width / 2f, y + 12, 0);
         g.pose().scale(1.5f, 1.5f, 1);
@@ -520,7 +517,7 @@ public final class QuestRewardPopupScreen extends AnimatedQuestScreen {
             pressedReward = -1;
             dragging = scrollbarDragging = false;
             if (open) {
-                minecraft.setScreen(new QuestRewardPopupScreen(this, rewards.get(selected)));
+                minecraft.setScreen(LootTablePopupScreen.inspect(this, rewards.get(selected)));
                 return true;
             }
         }

@@ -2,13 +2,17 @@ param([string]$Preview = "preview.5")
 $ErrorActionPreference = "Stop"
 if ($Preview -notmatch '^preview\.[0-9]+$') { throw "Expected preview.N" }
 $repoRoot = Split-Path -Parent $PSScriptRoot
+$versionLine = Get-Content -LiteralPath (Join-Path $repoRoot "gradle.properties") |
+    Where-Object { $_ -match '^mod_version=' } | Select-Object -First 1
+$modVersion = ($versionLine -split '=', 2)[1].Trim()
+if ($modVersion -notmatch '^[0-9]+\.[0-9]+\.[0-9]+$') { throw "Invalid mod_version" }
 $output = Join-Path $repoRoot "build/releases/$Preview"
 if (Test-Path -LiteralPath $output) { throw "Release output already exists: $output" }
 $targets = @(
-    @{ Loader="neoforge"; Minecraft="1.21.1"; Source="build/libs/xero_quest_journal-0.1.0.jar" },
-    @{ Loader="forge"; Minecraft="1.20.1"; Source="platforms/forge/1.20.1/build/libs/xero_quest_journal-forge-0.1.0.jar" },
-    @{ Loader="fabric"; Minecraft="1.20.1"; Source="platforms/fabric/1.20.1/build/libs/xero_quest_journal-fabric-1.20.1-0.1.0.jar" },
-    @{ Loader="fabric"; Minecraft="1.21.1"; Source="platforms/fabric/1.21.1/build/libs/xero_quest_journal-fabric-1.21.1-0.1.0.jar" }
+    @{ Loader="neoforge"; Minecraft="1.21.1"; Source="build/libs/xero_quest_journal-$modVersion.jar" },
+    @{ Loader="forge"; Minecraft="1.20.1"; Source="platforms/forge/1.20.1/build/libs/xero_quest_journal-forge-$modVersion.jar" },
+    @{ Loader="fabric"; Minecraft="1.20.1"; Source="platforms/fabric/1.20.1/build/libs/xero_quest_journal-fabric-1.20.1-$modVersion.jar" },
+    @{ Loader="fabric"; Minecraft="1.21.1"; Source="platforms/fabric/1.21.1/build/libs/xero_quest_journal-fabric-1.21.1-$modVersion.jar" }
 )
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 foreach ($target in $targets) {
@@ -24,7 +28,9 @@ foreach ($target in $targets) {
         foreach ($class in @("client/ScriptEditorScreenBase", "core/model/QuestScriptReference",
                 "client/JourneyAppearanceScreen", "client/JourneyPreviewScene", "client/JourneyQuestPopupScreen",
                 "client/QuestSearchFilterScreen", "client/CoordinateTrackAnimation",
-                "core/runtime/QuestVariableMath")) {
+                "core/runtime/QuestVariableMath", "client/AnecdoteScreen", "client/AnecdoteRewardsScreen",
+                "core/runtime/AnecdoteRuntime", "core/model/AnecdoteDefinition",
+                "core/io/QuestAuthoringHistory", "core/model/LootDefinition")) {
             if (!$jar.GetEntry("xtdpotato/xero_quest_journal/$class.class")) {
                 throw "Authoring changes are absent from $source"
             }
@@ -36,7 +42,7 @@ $bundle = Join-Path $output "supported-builds"
 New-Item -ItemType Directory -Force -Path $bundle | Out-Null
 $checksums = [Collections.Generic.List[string]]::new()
 foreach ($target in $targets) {
-    $name = "xero_quest_journal-$($target.Loader)-$($target.Minecraft)-0.1.0.jar"
+    $name = "xero_quest_journal-$($target.Loader)-$($target.Minecraft)-$modVersion.jar"
     $asset = Join-Path $output $name
     Copy-Item -LiteralPath (Join-Path $repoRoot $target.Source) -Destination $asset
     $folder = Join-Path $bundle "$($target.Loader)/$($target.Minecraft)"

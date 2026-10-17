@@ -388,8 +388,10 @@ public final class QuestTemplateStore {
                         || !expectedHash.equals(QuestRepository.fingerprint(Files.readString(file))))) return "conflict";
                 String json = GSON.toJson(template);
                 if (json.length() > 262144) return "invalid";
+                var before = xtdpotato.xero_quest_journal.core.io.QuestAuthoringHistory.capture(List.of(file));
                 AtomicFiles.write(file, json, exists);
                 refresh();
+                xtdpotato.xero_quest_journal.core.io.QuestAuthoringHistory.remember(author, "", "template", before);
                 return "";
             } catch (IOException exception) {
                 XeroQuestJournal.LOGGER.warn("Unable to save quest template {}", template.id(), exception);

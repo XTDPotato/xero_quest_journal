@@ -343,6 +343,8 @@ public final class QuestAuthoring {
             Path changedChapter = null;
             String chapterBefore = null;
             try {
+                var orderBefore = QuestAuthoringHistory.capture(placement == null ? List.of()
+                        : List.of(QuestJournalOrderStore.file()));
                 Path folder = safe(group == null ? QuestRepository.root() : group.directory());
                 JsonObject metadata = new JsonObject();
                 metadata.addProperty("id", request.id());
@@ -441,6 +443,10 @@ public final class QuestAuthoring {
                 }
                 QuestRepository.reload();
                 if (placement != null) QuestJournalOrderStore.placeNew(request.id(), placement);
+                var originals = new LinkedHashMap<Path, String>(orderBefore);
+                originals.put(createdFile, null);
+                if (changedChapter != null) originals.put(changedChapter, chapterBefore);
+                QuestAuthoringHistory.remember(author, request.id(), "create", originals);
                 return new Result(request.id(), null);
             } catch (FileAlreadyExistsException exception) {
                 return failure("duplicate");
@@ -618,8 +624,7 @@ public final class QuestAuthoring {
                         updated = QuestDocuments.conditions(updated, request.defaultConditions());
                     }
                 }
-                AtomicFiles.write(file, updated, true);
-                QuestRepository.reload();
+                QuestAuthoringHistory.write(author, request.id(), "edit", file, updated);
                 return new Result(request.id(), null);
             } catch (Exception exception) {
                 XeroQuestJournal.LOGGER.warn("Unable to edit {}", request.id(), exception);
@@ -648,13 +653,7 @@ public final class QuestAuthoring {
                 if (!QuestRepository.parseDefinition(file, updatedSource).id().equals(id)) {
                     return failure("definitions");
                 }
-                AtomicFiles.write(file, updatedSource, true);
-                QuestRepository.reload();
-                if (!QuestRepository.errors().isEmpty()) {
-                    AtomicFiles.write(file, current, true);
-                    QuestRepository.reload();
-                    return failure("definitions");
-                }
+                QuestAuthoringHistory.write(author, id, "edit", file, updatedSource);
                 return new Result(id, null);
             } catch (Exception exception) {
                 XeroQuestJournal.LOGGER.warn("Unable to save source for {}", id, exception);
@@ -716,6 +715,8 @@ public final class QuestAuthoring {
                 AtomicFiles.write(layoutFile, GSON.toJson(layout), true);
                 QuestRepository.reload();
                 if (!QuestRepository.errors().isEmpty()) throw new IllegalStateException("Invalid unlock graph");
+                originals.put(layoutFile, hadLayout ? oldLayout : null);
+                QuestAuthoringHistory.remember(author, "", "unlock", originals);
                 return new Result("", null);
             } catch (Exception invalid) {
                 XeroQuestJournal.LOGGER.warn("Unable to save unlock graph", invalid);
@@ -800,7 +801,8 @@ public final class QuestAuthoring {
             if (ids.stream().anyMatch(task -> QuestRepository.find(task) == null)
                     || !ids.containsAll(draft.timeline().positions().keySet())
                     || draft.timeline().connections().stream().anyMatch(edge ->
-                    !ids.contains(edge.from()) || !ids.contains(edge.to()))) return "invalid_config";
+                    !validJourneyEndpoint(ids, edge.from()) || !validJourneyEndpoint(ids, edge.to())))
+                return "invalid_config";
             try {
                 Path file = safe(chapter.file());
                 String source = Files.readString(file);
@@ -812,14 +814,18 @@ public final class QuestAuthoring {
                 if (draft.name() != null) json.addProperty("name", draft.name());
                 if (draft.icon() != null) json.addProperty("icon", draft.icon());
                 if (draft.appearance() != null) json.add("journeyAppearance", GSON.toJsonTree(draft.appearance()));
-                AtomicFiles.write(file, GSON.toJson(json), true);
-                QuestRepository.reload();
+                QuestAuthoringHistory.write(author, id, "journey", file, GSON.toJson(json));
                 return "config_saved";
             } catch (Exception failure) {
                 XeroQuestJournal.LOGGER.warn("Unable to save journey chapter", failure);
                 return "config_save_failed";
             }
         }
+    }
+
+    private static boolean validJourneyEndpoint(Set<String> chapterTasks, String endpoint) {
+        return xtdpotato.xero_quest_journal.core.model.JourneyTimeline.chapterPoint(endpoint)
+                || chapterTasks.contains(endpoint);
     }
 
     public static Result editRewards(ServerPlayer author, String id, String expectedHash,

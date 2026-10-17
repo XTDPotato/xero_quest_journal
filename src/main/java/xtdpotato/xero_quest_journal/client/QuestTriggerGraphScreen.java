@@ -1098,6 +1098,34 @@ public final class QuestTriggerGraphScreen extends AnimatedQuestScreen {
                 labels.add(new Label(text("default").copy().append(": ")
                         .append(text("task_property.value." + defaultValue)), x, y + 120));
             }
+        } else if (node.type().equals("discover_anecdote")) {
+            field("anecdote.target", "target", node.get("target", ""), y);
+            var anecdotes = xtdpotato.xero_quest_journal.client.AnecdoteClientState.snapshot().entries();
+            if (!anecdotes.isEmpty())
+                addRenderableWidget(new StyledChoiceButton<>(x, y + 38, w, 20, text("anecdote.target"),
+                        anecdotes.stream().map(xtdpotato.xero_quest_journal.core.model.AnecdoteDefinition::id).toList(),
+                        node.get("target", anecdotes.getFirst().id()), Component::literal,
+                        value -> { update("target", value); init(); }, styles, "graph-anecdote-target"));
+        } else if (node.type().equals("complete_anecdote")) {
+            var anecdotes = xtdpotato.xero_quest_journal.client.AnecdoteClientState.snapshot().entries();
+            var ids = anecdotes.stream()
+                    .map(xtdpotato.xero_quest_journal.core.model.AnecdoteDefinition::id).toList();
+            if (!ids.isEmpty()) {
+                String entry = node.get("entry", ids.getFirst());
+                addRenderableWidget(new StyledChoiceButton<>(x, y, w, 20, text("anecdote.target"),
+                        ids, entry, Component::literal, value -> { update("entry", value); update("record",
+                        anecdotes.stream().filter(item -> item.id().equals(value)).findFirst()
+                                .flatMap(item -> item.records().stream().findFirst())
+                                .map(xtdpotato.xero_quest_journal.core.model.AnecdoteDefinition.Record::id).orElse("")); init(); },
+                        styles, "graph-anecdote-entry"));
+                var selected = anecdotes.stream().filter(item -> item.id().equals(entry)).findFirst().orElse(null);
+                if (selected != null && !selected.records().isEmpty())
+                    addRenderableWidget(new StyledChoiceButton<>(x, y + 28, w, 20, text("anecdote.record"),
+                            selected.records().stream()
+                                    .map(xtdpotato.xero_quest_journal.core.model.AnecdoteDefinition.Record::id).toList(),
+                            node.get("record", selected.records().getFirst().id()), Component::literal,
+                            value -> update("record", value), styles, "graph-anecdote-record"));
+            }
         } else if (node.type().equals("variable") || node.type().equals("set_variable")) {
             variableChoice(node, "variable", y, node.type().equals("set_variable")
                     ? variable -> !variable.readOnly() : variable -> true);

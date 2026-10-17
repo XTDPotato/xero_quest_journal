@@ -121,7 +121,7 @@ sourceSets {
 
 def clientRegression = [
         'smokeTest', 'mailboxTest', 'templateTest', 'rewardsTest', 'creationTest',
-        'animationTest', 'popupAnimationTest', 'rewardPopupTest', 'recipeViewerTest',
+        'animationTest', 'popupAnimationTest', 'rewardPopupTest', 'recipeViewerTest', 'anecdoteTest',
         'canvasEditorTest', 'controlGraphTest', 'locationItemTest', 'mediaTest',
         'hotEventsTest', 'runtimeTest', 'structureSceneTest', 'buttonImageTest',
         'unlockGraphTest', 'journeyTest', 'overviewTest', 'journalFocusTest', 'mailReferenceTest',
@@ -136,6 +136,10 @@ neoForge {
     runs {
         client {
             client()
+            if (project.hasProperty('anecdoteTest')) {
+                systemProperty 'xero.anecdoteTest', 'true'
+                gameDirectory = file('run-anecdote')
+            }
             if (project.hasProperty('authoringDocsTest')) {
                 systemProperty 'xero.authoringDocsTest', 'true'
                 gameDirectory = file('run-authoring-docs')
@@ -207,6 +211,7 @@ neoForge {
                 gameDirectory = file('run-reward-quality')
             }
             if (project.hasProperty('canvasEditorTest')) {
+                systemProperty 'xero.canvasHistoryOnly', project.hasProperty('canvasHistoryOnly').toString()
                 systemProperty 'xero.canvasEditorTest', 'true'
                 gameDirectory = file('run-canvas-editor')
             }

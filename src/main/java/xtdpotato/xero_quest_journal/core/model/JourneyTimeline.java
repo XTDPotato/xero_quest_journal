@@ -6,6 +6,12 @@ import java.util.Map;
 /** Display-only chapter layout; connections never alter quest prerequisites. */
 public record JourneyTimeline(Map<String, Position> positions, List<Connection> connections,
                               boolean customConnections, boolean explicitTasks) {
+    /** Reserved endpoint that targets the current chapter's timeline diamond. */
+    public static final String CHAPTER_POINT = "@chapter";
+
+    public static boolean chapterPoint(String endpoint) {
+        return CHAPTER_POINT.equals(endpoint);
+    }
     public JourneyTimeline(Map<String, Position> positions, List<Connection> connections, boolean customConnections) {
         this(positions, connections, customConnections, false);
     }
@@ -18,7 +24,8 @@ public record JourneyTimeline(Map<String, Position> positions, List<Connection> 
     public record Connection(String from, String to) {
         public Connection {
             if (from == null || to == null || from.isBlank() || to.isBlank()
-                    || from.equals(to) || from.length() > 128 || to.length() > 128)
+                    || from.equals(to) || from.length() > 128 || to.length() > 128
+                    || chapterPoint(from) && chapterPoint(to))
                 throw new IllegalArgumentException("Invalid journey connection");
         }
     }

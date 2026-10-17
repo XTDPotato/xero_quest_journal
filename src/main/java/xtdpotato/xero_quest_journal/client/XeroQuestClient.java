@@ -40,8 +40,10 @@ public final class XeroQuestClient {
         QuestPresentationClient.tickAll();
         ClientStructures.tick();
         ClientMailbox.tick();
+        AnecdoteClientState.tick();
         MailArrivalToast.tick();
         XeroToast.tick();
+        AnecdoteToast.tick();
         var requestedScreen = xtdpotato.xero_quest_journal.core.network.QuestClientInbox.takeOpenScreen();
         if (requestedScreen != null && minecraft.player != null) {
             switch (requestedScreen.screen()) {
@@ -55,6 +57,10 @@ public final class XeroQuestClient {
                 }
                 case "settings" -> minecraft.setScreen(new QuestConfigScreen(null));
                 case "templates" -> minecraft.setScreen(new QuestTemplateScreen(new QuestScreen(), ""));
+                case "anecdotes" -> {
+                    AnecdoteClientState.request();
+                    minecraft.setScreen(new AnecdoteScreen(null));
+                }
                 default -> {
                 }
             }
@@ -138,6 +144,7 @@ public final class XeroQuestClient {
                 QuestCompletionToast.render(graphics);
                 QuestUnlockToast.render(graphics);
             }
+            AnecdoteToast.render(graphics);
             graphics.flush();
         } finally {
             graphics.pose().popPose();

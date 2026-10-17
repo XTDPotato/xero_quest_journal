@@ -26,6 +26,7 @@ final class CanvasEditorRegression {
     private static String supportedTemplate;
     private static int stage;
     private static int ticks;
+    private static int historyPhase;
     private static String formatted;
     private static final String MARKUP = "<quest id=\"test\"><rules><trigger type=\"confirm\"/></rules>"
             + "<content>  hello <b>world</b> \n </content><script>if (a < b) { call(\"x\"); }</script></quest>";
@@ -38,6 +39,7 @@ final class CanvasEditorRegression {
                 ClientPreferences.get().reducedMotion = true;
                 pending = CompletableFuture.runAsync(() -> {
                     var player = game.getSingleplayerServer().getPlayerList().getPlayer(game.player.getUUID());
+                    player.getPersistentData().putBoolean("xero_quest_edit_mode", true);
                     require(QuestAuthoring.create(player, new QuestAuthoring.Request(QuestAuthoring.Kind.TASK,
                             ID, "Canvas test", "", "", "", "guide", "", 1)).successful(), "Create task");
                 }, game.getSingleplayerServer());
@@ -48,7 +50,7 @@ final class CanvasEditorRegression {
                 journal = QuestScreen.task(null, ID);
                 set(journal, "editMode", true);
                 set(journal, "category", ClientQuestDefinitions.find(ID).type());
-                set(journal, "searchQuery", ID);
+                set(journal, "searchQuery", "");
                 game.setScreen(journal);
                 var layout = layout();
                 layout.elements().put(CONTROL, new LayoutEditorState.Element(CONTROL, ID, "text",
@@ -84,6 +86,7 @@ final class CanvasEditorRegression {
             }
             case 2 -> {
                 checkResponsiveScale(game);
+                invoke(journal, "selectLayoutElement", new Class<?>[]{String.class, boolean.class}, CONTROL, false);
                 edit("x", "40");
                 require(layout().position(CONTROL, 0, 0).x() == 40, "X edit failed");
                 edit("y", "60");
@@ -135,11 +138,19 @@ final class CanvasEditorRegression {
                 require(restored.taskCanvas(ID).width() == 1200, "Canvas not persisted");
                 journal.setFocused(null);
                 journal.keyPressed(GLFW.GLFW_KEY_Z, 0, GLFW.GLFW_MOD_CONTROL);
-                require(layout().taskCanvas(ID).height() != 1600, "Canvas resize undo failed");
-                journal.setFocused(null);
-                journal.keyPressed(GLFW.GLFW_KEY_Y, 0, GLFW.GLFW_MOD_CONTROL);
+            }
+            case 3 -> {
+                if (field(journal, "historyPending") != null || field(journal, "afterPublication") != null
+                        || (boolean) invoke(field(journal, "presentationWriter"), "busy", new Class<?>[0])) return false;
+                if (historyPhase == 0) {
+                    require(layout().taskCanvas(ID).height() != 1600, "Canvas resize undo failed: " + field(journal, "error"));
+                    journal.setFocused(null);
+                    journal.keyPressed(GLFW.GLFW_KEY_Y, 0, GLFW.GLFW_MOD_CONTROL);
+                    historyPhase = 1;
+                    return false;
+                }
                 require(layout().taskCanvas(ID).height() == 1600, "Canvas resize redo failed");
-                set(journal, "selectedLayoutId", CONTROL);
+                invoke(journal, "selectLayoutElement", new Class<?>[]{String.class, boolean.class}, CONTROL, false);
                 edit("y", "900");
                 double scale = (double) invoke(journal, "canvasScaleY", new Class<?>[0]);
                 set(journal, "detailScroll", 850 * scale);
@@ -150,9 +161,8 @@ final class CanvasEditorRegression {
                 require(Math.abs(logicalY - 900) <= 1, "Scrolled coordinate round-trip failed");
                 require(display[1] > (int) invoke(journal, "canvasTop", new Class<?>[0])
                         && display[1] < (int) invoke(journal, "canvasBottom", new Class<?>[0]), "Extended control not visible");
-            }
-            case 3 -> {
                 capture(game, "canvas-editor-extended");
+                if (Boolean.getBoolean("xero.canvasHistoryOnly")) return true;
                 invoke(journal, "openCanvasSize", new Class<?>[]{String.class}, ID);
             }
             case 4 -> {
@@ -373,7 +383,10 @@ final class CanvasEditorRegression {
         int x = (int) invoke(journal, "coordinateLeft", new Class<?>[]{String.class}, axis) + 3;
         journal.mouseClicked(x, journal.height - 44, 0);
         journal.mouseClicked(x, journal.height - 44, 0);
-        require(field(journal, "coordinateEditor") != null, "Double click did not open " + axis);
+        require(field(journal, "coordinateEditor") != null, "Double click did not open " + axis
+                + "; selected=" + field(journal, "selectedLayoutId") + "; exists=" + layout().elements().containsKey(CONTROL)
+                + "; edit=" + field(journal, "editMode") + "; blocked=" + journal.inputBlocked()
+                + "; form=" + field(journal, "form"));
     }
 
     private static void edit(String axis, String value) throws Exception {

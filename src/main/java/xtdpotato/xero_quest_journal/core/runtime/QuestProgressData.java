@@ -43,6 +43,11 @@ public final class QuestProgressData extends SavedData {
     private final Map<UUID, Daily> daily = new HashMap<>();
     private final Map<UUID, Set<String>> knownTasks = new HashMap<>();
     private final Map<UUID, Set<String>> newTasks = new HashMap<>();
+    private final Map<UUID, Set<String>> discoveredAnecdotes = new HashMap<>();
+    private final Map<UUID, Set<String>> newAnecdotes = new HashMap<>();
+    private final Map<UUID, Set<String>> knownAnecdotes = new HashMap<>();
+    private final Map<UUID, Map<String, Long>> completedAnecdotes = new HashMap<>();
+    private final Map<UUID, Set<String>> newAnecdoteCompletions = new HashMap<>();
     private final Map<UUID, Long> observedCatalogRevisions = new HashMap<>();
 
     public boolean isNewTask(UUID player, String questId) {
@@ -91,6 +96,118 @@ public final class QuestProgressData extends SavedData {
         if (unread == null || unread.isEmpty()) return false;
         setDirty();
         return true;
+    }
+
+    public boolean anecdoteDiscovered(UUID player, String id) {
+        return discoveredAnecdotes.getOrDefault(player, Set.of()).contains(id);
+    }
+
+    public boolean anecdoteNew(UUID player, String id) {
+        return newAnecdotes.getOrDefault(player, Set.of()).contains(id);
+    }
+
+    public void ensureAnecdoteDefaults(UUID player,
+                                       java.util.Collection<xtdpotato.xero_quest_journal.core.model.AnecdoteDefinition> entries) {
+        Set<String> discovered = discoveredAnecdotes.computeIfAbsent(player, ignored -> new HashSet<>());
+        boolean changed = false;
+        for (var entry : entries) if (entry.defaultDiscovered()) changed |= discovered.add(entry.id());
+        if (changed) setDirty();
+    }
+
+    public void observeAnecdoteCatalog(UUID player,
+                                       java.util.Collection<xtdpotato.xero_quest_journal.core.model.AnecdoteDefinition> entries) {
+        Set<String> current = new HashSet<>();
+        for (var entry : entries) current.add(entry.id());
+        Set<String> known = knownAnecdotes.get(player);
+        if (known == null) {
+            known = new HashSet<>(current);
+            knownAnecdotes.put(player, known);
+            ensureAnecdoteDefaults(player, entries);
+            setDirty();
+            return;
+        }
+        boolean changed = known.retainAll(current);
+        for (var entry : entries) {
+            if (known.add(entry.id())) {
+                newAnecdotes.computeIfAbsent(player, ignored -> new HashSet<>()).add(entry.id());
+                changed = true;
+            }
+            if (entry.defaultDiscovered())
+                changed |= discoveredAnecdotes.computeIfAbsent(player, ignored -> new HashSet<>()).add(entry.id());
+        }
+        if (changed) setDirty();
+    }
+
+    public boolean discoverAnecdote(UUID player, String id) {
+        boolean changed = discoveredAnecdotes.computeIfAbsent(player, ignored -> new HashSet<>()).add(id);
+        if (changed) {
+            newAnecdotes.computeIfAbsent(player, ignored -> new HashSet<>()).add(id);
+            setDirty();
+        }
+        return changed;
+    }
+
+    public boolean markAnecdoteRead(UUID player, String id) {
+        Set<String> unread = newAnecdotes.get(player);
+        if (unread == null || !unread.remove(id)) return false;
+        if (unread.isEmpty()) newAnecdotes.remove(player);
+        setDirty();
+        return true;
+    }
+
+    private static String anecdoteKey(String entryId, String recordId) { return entryId + "/" + recordId; }
+
+    public boolean anecdoteCompleted(UUID player, String entryId, String recordId) {
+        return completedAnecdotes.getOrDefault(player, Map.of()).containsKey(anecdoteKey(entryId, recordId));
+    }
+
+    public boolean completeAnecdoteRecord(UUID player, String entryId, String recordId) {
+        String key = anecdoteKey(entryId, recordId);
+        var completed = completedAnecdotes.computeIfAbsent(player, ignored -> new HashMap<>());
+        if (completed.containsKey(key)) return false;
+        completed.put(key, System.currentTimeMillis());
+        newAnecdoteCompletions.computeIfAbsent(player, ignored -> new HashSet<>()).add(key);
+        setDirty();
+        return true;
+    }
+
+    public List<xtdpotato.xero_quest_journal.core.model.AnecdoteSnapshot.Completed> completedAnecdotes(UUID player) {
+        return completedAnecdotes.getOrDefault(player, Map.of()).entrySet().stream().map(entry -> {
+            int split = entry.getKey().indexOf('/');
+            if (split <= 0) return null;
+            return new xtdpotato.xero_quest_journal.core.model.AnecdoteSnapshot.Completed(
+                    entry.getKey().substring(0, split), entry.getKey().substring(split + 1), entry.getValue());
+        }).filter(java.util.Objects::nonNull).sorted(java.util.Comparator
+                .comparingLong(xtdpotato.xero_quest_journal.core.model.AnecdoteSnapshot.Completed::completedAt)
+                .reversed()).toList();
+    }
+
+    public List<String> newAnecdoteCompletions(UUID player) {
+        return newAnecdoteCompletions.getOrDefault(player, Set.of()).stream().toList();
+    }
+
+    public boolean markAnecdoteCompletionsRead(UUID player, java.util.Collection<String> keys) {
+        Set<String> unread = newAnecdoteCompletions.get(player);
+        if (unread == null || !unread.removeAll(keys)) return false;
+        if (unread.isEmpty()) newAnecdoteCompletions.remove(player);
+        setDirty();
+        return true;
+    }
+
+    public void forgetAnecdote(String id) {
+        boolean changed = false;
+        for (var values : discoveredAnecdotes.values()) changed |= values.remove(id);
+        for (var values : newAnecdotes.values()) changed |= values.remove(id);
+        for (var values : knownAnecdotes.values()) changed |= values.remove(id);
+        String prefix = id + "/";
+        for (var values : completedAnecdotes.values()) changed |= values.keySet().removeIf(key -> key.startsWith(prefix));
+        for (var values : newAnecdoteCompletions.values()) changed |= values.removeIf(key -> key.startsWith(prefix));
+        discoveredAnecdotes.values().removeIf(Set::isEmpty);
+        newAnecdotes.values().removeIf(Set::isEmpty);
+        knownAnecdotes.values().removeIf(Set::isEmpty);
+        completedAnecdotes.values().removeIf(Map::isEmpty);
+        newAnecdoteCompletions.values().removeIf(Set::isEmpty);
+        if (changed) setDirty();
     }
 
     /** Today's commission roll for one player: the reset day, chosen task IDs and the bonus receipt. */
@@ -329,6 +446,27 @@ public final class QuestProgressData extends SavedData {
             Set<String> newValues = new HashSet<>();
             for (int j = 0; j < newTasks.size(); j++) newValues.add(newTasks.getString(j));
             if (!newValues.isEmpty()) result.newTasks.put(player, newValues);
+            ListTag discoveredAnecdotes = person.getList("discoveredAnecdotes", Tag.TAG_STRING);
+            Set<String> discoveredValues = new HashSet<>();
+            for (int j = 0; j < discoveredAnecdotes.size(); j++)
+                discoveredValues.add(discoveredAnecdotes.getString(j));
+            if (!discoveredValues.isEmpty()) result.discoveredAnecdotes.put(player, discoveredValues);
+            ListTag newAnecdotes = person.getList("newAnecdotes", Tag.TAG_STRING);
+            Set<String> newAnecdoteValues = new HashSet<>();
+            for (int j = 0; j < newAnecdotes.size(); j++) newAnecdoteValues.add(newAnecdotes.getString(j));
+            if (!newAnecdoteValues.isEmpty()) result.newAnecdotes.put(player, newAnecdoteValues);
+            ListTag knownAnecdotes = person.getList("knownAnecdotes", Tag.TAG_STRING);
+            Set<String> knownAnecdoteValues = new HashSet<>();
+            for (int j = 0; j < knownAnecdotes.size(); j++) knownAnecdoteValues.add(knownAnecdotes.getString(j));
+            if (person.contains("knownAnecdotes")) result.knownAnecdotes.put(player, knownAnecdoteValues);
+            CompoundTag completed = person.getCompound("completedAnecdotes");
+            Map<String, Long> completedValues = new HashMap<>();
+            completed.getAllKeys().forEach(key -> completedValues.put(key, completed.getLong(key)));
+            if (!completedValues.isEmpty()) result.completedAnecdotes.put(player, completedValues);
+            ListTag newCompletions = person.getList("newAnecdoteCompletions", Tag.TAG_STRING);
+            Set<String> newCompletionValues = new HashSet<>();
+            for (int j = 0; j < newCompletions.size(); j++) newCompletionValues.add(newCompletions.getString(j));
+            if (!newCompletionValues.isEmpty()) result.newAnecdoteCompletions.put(player, newCompletionValues);
             Map<String, Entry> records = new HashMap<>();
             ListTag quests = person.getList("quests", Tag.TAG_COMPOUND);
             for (int j = 0; j < quests.size(); j++) {
@@ -410,6 +548,11 @@ public final class QuestProgressData extends SavedData {
         allPlayers.addAll(daily.keySet());
         allPlayers.addAll(knownTasks.keySet());
         allPlayers.addAll(newTasks.keySet());
+        allPlayers.addAll(discoveredAnecdotes.keySet());
+        allPlayers.addAll(newAnecdotes.keySet());
+        allPlayers.addAll(knownAnecdotes.keySet());
+        allPlayers.addAll(completedAnecdotes.keySet());
+        allPlayers.addAll(newAnecdoteCompletions.keySet());
         allPlayers.forEach(id -> {
             Map<String, Entry> records = players.getOrDefault(id, Map.of());
             CompoundTag person = new CompoundTag();
@@ -424,6 +567,25 @@ public final class QuestProgressData extends SavedData {
             newTasks.getOrDefault(id, Set.of()).forEach(key ->
                     newTaskIds.add(net.minecraft.nbt.StringTag.valueOf(key)));
             person.put("newTasks", newTaskIds);
+            ListTag discoveredAnecdoteIds = new ListTag();
+            discoveredAnecdotes.getOrDefault(id, Set.of()).forEach(key ->
+                    discoveredAnecdoteIds.add(net.minecraft.nbt.StringTag.valueOf(key)));
+            person.put("discoveredAnecdotes", discoveredAnecdoteIds);
+            ListTag newAnecdoteIds = new ListTag();
+            newAnecdotes.getOrDefault(id, Set.of()).forEach(key ->
+                    newAnecdoteIds.add(net.minecraft.nbt.StringTag.valueOf(key)));
+            person.put("newAnecdotes", newAnecdoteIds);
+            ListTag knownAnecdoteIds = new ListTag();
+            knownAnecdotes.getOrDefault(id, Set.of()).forEach(key ->
+                    knownAnecdoteIds.add(net.minecraft.nbt.StringTag.valueOf(key)));
+            if (knownAnecdotes.containsKey(id)) person.put("knownAnecdotes", knownAnecdoteIds);
+            CompoundTag completedAnecdoteTimes = new CompoundTag();
+            completedAnecdotes.getOrDefault(id, Map.of()).forEach(completedAnecdoteTimes::putLong);
+            person.put("completedAnecdotes", completedAnecdoteTimes);
+            ListTag newCompletionIds = new ListTag();
+            newAnecdoteCompletions.getOrDefault(id, Set.of()).forEach(key ->
+                    newCompletionIds.add(net.minecraft.nbt.StringTag.valueOf(key)));
+            person.put("newAnecdoteCompletions", newCompletionIds);
             CompoundTag counts = new CompoundTag();
             counters.getOrDefault(id, Map.of()).forEach(counts::putInt);
             person.put("counters", counts);
@@ -478,7 +640,7 @@ public final class QuestProgressData extends SavedData {
             }
             people.add(person);
         });
-        root.putInt("schema", 7);
+        root.putInt("schema", 8);
         root.put("players", people);
         return root;
     }

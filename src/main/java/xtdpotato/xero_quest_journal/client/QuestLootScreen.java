@@ -25,7 +25,6 @@ import java.util.function.Consumer;
 
 /** Authoring screen for reusable weighted loot tables. */
 public final class QuestLootScreen extends AnimatedQuestScreen {
-    private static final int ENTRY_HEIGHT = 128;
     private static final int TABLE_ROW_HEIGHT = 30;
     private final Screen parent;
     private final Consumer<String> selectedCallback;
@@ -35,6 +34,7 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
     private final Set<String> rangeTables = new LinkedHashSet<>();
     private final Set<AbstractWidget> tableWidgets = new LinkedHashSet<>();
     private final Set<AbstractWidget> entryWidgets = new LinkedHashSet<>();
+    private final Set<AbstractWidget> metadataWidgets = new LinkedHashSet<>();
     private final Map<Integer, LootWeightSlider> weightSliders = new LinkedHashMap<>();
     private final Map<Integer, EditBox> weightBoxes = new LinkedHashMap<>();
     private final Deque<EditorSnapshot> undo = new ArrayDeque<>();
@@ -50,6 +50,7 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
     private LootDefinition.Mode mode = LootDefinition.Mode.RANDOM;
     private String rolls = "1";
     private String choiceTitle = "";
+    private String displayIcon = LootDefinition.DEFAULT_DISPLAY_ICON;
     private String entrySearch = "";
     private String status;
     private long statusUntil;
@@ -64,9 +65,11 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
     private SuggestedEditBox nameBox;
     private int lastTableScroll;
     private int lastEntryScroll;
+    private int renderedTableStart;
+    private int renderedEntryStart;
 
     private record EditorSnapshot(String id, String name, LootDefinition.Mode mode, String rolls, String choiceTitle,
-                                  List<Draft> entries) {}
+                                  String displayIcon, List<Draft> entries) {}
 
     public QuestLootScreen(Screen parent) {
         this(parent, "", null);
@@ -120,6 +123,7 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
         mode = table.mode();
         rolls = Integer.toString(table.rolls());
         choiceTitle = table.choiceTitle();
+        displayIcon = table.displayIcon();
         entries.clear();
         table.entries().forEach(entry -> entries.add(new Draft(entry)));
         entryMotion.jump(0);
@@ -136,6 +140,7 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
         mode = LootDefinition.Mode.RANDOM;
         rolls = "1";
         choiceTitle = "";
+        displayIcon = LootDefinition.DEFAULT_DISPLAY_ICON;
         entries.clear();
         entries.add(new Draft(new LootDefinition.Entry("entry-1", "item",
                 "minecraft:diamond", 1, 100, "always", true)));
@@ -156,13 +161,20 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
 
     private int tableViewportTop() { return 66; }
     private int tableViewportBottom() { return Math.max(tableViewportTop() + 44, height - 12); }
-    private int rowsViewportTop() { return 188; }
-    private int rowsViewportBottom() { return Math.max(rowsViewportTop() + ENTRY_HEIGHT, height - 62); }
+    private boolean scrollWholeEditor() { return height < 440; }
+    private int rowsViewportTop() { return scrollWholeEditor() ? 40 : 220; }
+    private int entryContentTop() { return 248; }
+    private int rowsViewportBottom() { return Math.max(rowsViewportTop() + 20, height - 62); }
+    private boolean stackedEntries() { return editorWidth() < 560; }
+    private int entryHeight() { return stackedEntries() ? 166 : 128; }
     private int tableMaxScroll() {
         return Math.max(0, tables.size() * TABLE_ROW_HEIGHT - (tableViewportBottom() - tableViewportTop()));
     }
     private int entryMaxScroll() {
-        return Math.max(0, filteredEntries().size() * ENTRY_HEIGHT - (rowsViewportBottom() - rowsViewportTop()));
+        return Math.max(0, entryContentTop() + filteredEntries().size() * entryHeight() - rowsViewportBottom());
+    }
+    private int firstVisibleEntry() {
+        return Math.max(0, (entryMotion.pixels() - (entryContentTop() - rowsViewportTop())) / entryHeight());
     }
 
     @Override
@@ -170,7 +182,7 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
         if (tableWidgets.contains(widget)) {
             return new Viewport(8, tableViewportTop(), leftPanel() - 10, tableViewportBottom());
         }
-        if (entryWidgets.contains(widget)) {
+        if (entryWidgets.contains(widget) || scrollWholeEditor() && metadataWidgets.contains(widget)) {
             return new Viewport(editorLeft(), rowsViewportTop(), width - 20, rowsViewportBottom());
         }
         return null;
@@ -182,6 +194,7 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
         clearWidgets();
         tableWidgets.clear();
         entryWidgets.clear();
+        metadataWidgets.clear();
         weightSliders.clear();
         weightBoxes.clear();
         styles = ButtonStyleSheet.load();
@@ -206,6 +219,7 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
 
         tableMotion.limit(tableMaxScroll());
         int firstTable = Math.max(0, tableMotion.pixels() / TABLE_ROW_HEIGHT);
+        renderedTableStart = firstTable;
         int tableRows = (tableViewportBottom() - tableViewportTop()) / TABLE_ROW_HEIGHT + 2;
         for (int index = firstTable; index < Math.min(tables.size(), firstTable + tableRows); index++) {
             int row = index;
@@ -215,6 +229,7 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
                     Math.max(80, listWidth - 8), 26, Component.literal(table.name()),
                     ignored -> selectTable(row, false), styles, "loot-table-" + index);
             button.setSelectionColor(selectionColor(table.id()));
+            button.leadingIcon(table.displayIcon());
             button.setTooltip(Tooltip.create(Component.literal(table.id())));
             addRenderableWidget(button);
             tableWidgets.add(button);
@@ -243,12 +258,32 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
         choiceTitleBox.withoutMenu();
         choiceTitleBox.setMaxLength(256);
         choiceTitleBox.setValue(choiceTitle);
+        choiceTitleBox.setHint(text("loot.choice_title"));
         choiceTitleBox.setResponder(value -> { if (!choiceTitle.equals(value)) pushUndo(); choiceTitle = value; });
         addRenderableWidget(choiceTitleBox);
+        StyledButton iconPicker = new StyledButton(x, 136, Math.max(90, w - 34), 22,
+                text("loot.display_icon"), ignored -> minecraft.setScreen(QuestScreen.pickResource(
+                this, displayIcon, false, value -> {
+                    String next = LootDefinition.normalizeDisplayIcon(value);
+                    if (!displayIcon.equals(next)) pushUndo();
+                    displayIcon = next;
+                })), styles, "loot-display-icon");
+        iconPicker.leadingIcon(displayIcon);
+        iconPicker.setTooltip(Tooltip.create(text("loot.display_icon.tooltip")));
+        addRenderableWidget(iconPicker);
+        StyledButton resetIcon = new EditorIconButton(x + w - 26, 136, text("loot.display_icon.reset"),
+                () -> {
+                    pushUndo();
+                    displayIcon = LootDefinition.DEFAULT_DISPLAY_ICON;
+                    init();
+                }, styles, "loot-display-icon-reset", "undo");
+        resetIcon.active = !displayIcon.equals(LootDefinition.DEFAULT_DISPLAY_ICON);
+        resetIcon.setTooltip(Tooltip.create(text("loot.display_icon.reset")));
+        addRenderableWidget(resetIcon);
         addRenderableWidget(new EditorIconButton(width - 34, 10, text("close"),
                 this::onClose, styles, "loot-close", "close"));
-        StyledButton delete = new StyledButton(x + w - 108, 78, 104, 22, text("loot.delete"),
-                ignored -> confirmDelete(), styles, "loot-delete");
+        StyledButton delete = new EditorIconButton(x + 4, height - 34, text("loot.delete"),
+                this::confirmDelete, styles, "loot-delete", "delete");
         delete.setTooltip(Tooltip.create(text("loot.delete")));
         delete.active = !selectedId.isBlank();
         addRenderableWidget(delete);
@@ -267,19 +302,21 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
 
         entryMotion.limit(entryMaxScroll());
         List<Integer> filtered = filteredEntries();
-        int firstEntry = Math.max(0, entryMotion.pixels() / ENTRY_HEIGHT);
-        int visibleEntries = (rowsViewportBottom() - rowsViewportTop()) / ENTRY_HEIGHT + 2;
+        int firstEntry = firstVisibleEntry();
+        renderedEntryStart = firstEntry;
+        int visibleEntries = (rowsViewportBottom() - rowsViewportTop()) / entryHeight() + 2;
         for (int row = firstEntry; row < Math.min(filtered.size(), firstEntry + visibleEntries); row++) {
             int index = filtered.get(row);
-            addRow(index, entries.get(index), x, rowsViewportTop() + row * ENTRY_HEIGHT - entryMotion.pixels(), w);
+            addRow(index, entries.get(index), x, entryContentTop() + row * entryHeight() - entryMotion.pixels(), w);
         }
         addRenderableWidget(new ScrollRail(width - 16, rowsViewportTop(),
                 rowsViewportBottom() - rowsViewportTop(), entryMotion));
 
-        EditBox search = new SuggestedEditBox(this, font, x, 144, Math.max(110, w - 88), 20,
+        EditBox search = new SuggestedEditBox(this, font, x, 176, Math.max(110, w - 88), 20,
                 text("loot.search"), "loot.search");
         search.setMaxLength(128);
         search.setValue(entrySearch);
+        search.setHint(text("loot.search"));
         search.setResponder(value -> {
             if (entrySearch.equals(value)) return;
             entrySearch = value;
@@ -290,10 +327,15 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
                     .findFirst().ifPresent(box -> { box.setFocused(true); setFocused(box); });
         });
         addRenderableWidget(search);
-        StyledButton addEntry = new StyledButton(x + w - 26, 144, 26, 20, Component.literal("+"),
+        StyledButton addEntry = new StyledButton(x + w - 26, 176, 26, 20, Component.literal("+"),
                 ignored -> addEntry(), styles, "loot-add-entry");
         addEntry.setTooltip(Tooltip.create(text("loot.add_entry")));
         addRenderableWidget(addEntry);
+        children().stream().filter(AbstractWidget.class::isInstance).map(AbstractWidget.class::cast)
+                .filter(widget -> widget.getX() >= x && widget.getY() >= 40 && widget.getY() < 200
+                        && !entryWidgets.contains(widget) && !(widget instanceof ScrollRail))
+                .forEach(metadataWidgets::add);
+        if (scrollWholeEditor()) moveWidgets(metadataWidgets, -entryMotion.pixels());
         StyledButton undoButton = new EditorIconButton(width - 94, 10, text("loot.undo"),
                 this::undo, styles, "loot-undo", "undo");
         undoButton.active = !undo.isEmpty();
@@ -355,7 +397,8 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
 
         addField(draft, "count", draft.count, x + 20, y + 48, 68, value -> draft.count = value, index);
         int sliderX = x + 154;
-        int sliderWidth = Math.min(210, Math.max(92, rowWidth / 4));
+        int sliderWidth = stackedEntries() ? Math.max(60, rowWidth - 164)
+                : Math.min(210, Math.max(92, rowWidth / 4));
         if (mode != LootDefinition.Mode.CHOICE) {
             EditBox weightBox = new SuggestedEditBox(this, font, x + 94, y + 48, 54, 20,
                     text("loot.weight"), "loot.weight.value." + index);
@@ -372,16 +415,18 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
             addRenderableWidget(slider);
         }
         int actionX = x + rowWidth - 54;
-        int conditionX = mode == LootDefinition.Mode.CHOICE ? x + 142 : sliderX + sliderWidth + 12;
+        int conditionX = stackedEntries() ? x + 20
+                : mode == LootDefinition.Mode.CHOICE ? x + 142 : sliderX + sliderWidth + 12;
+        int conditionY = y + (stackedEntries() ? 86 : 48);
         int conditionWidth = Math.max(54, actionX - conditionX - 6);
-        EditBox condition = new SuggestedEditBox(this, font, conditionX, y + 48, conditionWidth, 20,
+        EditBox condition = new SuggestedEditBox(this, font, conditionX, conditionY, conditionWidth, 20,
                 text("loot.condition"), "loot.condition." + index);
         condition.setMaxLength(512);
         condition.setValue(draft.condition);
         condition.setResponder(value -> { if (!draft.condition.equals(value)) pushUndo(); draft.condition = value; });
         condition.setTooltip(Tooltip.create(text("loot.condition_help")));
         addRenderableWidget(condition);
-        StyledButton enabled = new StyledButton(actionX, y + 48, 24, 20,
+        StyledButton enabled = new StyledButton(actionX, conditionY, 24, 20,
                 Component.literal(draft.enabled ? "✓" : "×"), ignored -> {
             pushUndo();
             draft.enabled = !draft.enabled;
@@ -390,7 +435,7 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
         }, styles, "loot-enabled-" + index);
         enabled.setTooltip(Tooltip.create(text("loot.enabled")));
         addRenderableWidget(enabled);
-        StyledButton remove = new StyledButton(actionX + 28, y + 48, 24, 20, Component.literal("×"),
+        StyledButton remove = new StyledButton(actionX + 28, conditionY, 24, 20, Component.literal("×"),
                 ignored -> {
                     pushUndo();
                     entries.remove(index);
@@ -402,7 +447,8 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
 
         if (draft.type.equals("item")) {
             int qualityWidth = Math.min(150, Math.max(104, rowWidth / 3));
-            addRenderableWidget(new StyledChoiceButton<>(x + 20, y + 78, qualityWidth, 20,
+            int qualityY = y + (stackedEntries() ? 124 : 86);
+            addRenderableWidget(new StyledChoiceButton<>(x + 20, qualityY, qualityWidth, 20,
                     text("rewards.quality"), xtdpotato.xero_quest_journal.core.model.QuestRewardQuality.VALUES,
                     draft.quality.isBlank() ? "auto" : draft.quality,
                     value -> text("rewards.quality." + value),
@@ -410,7 +456,7 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
                     styles, "loot-entry-quality-" + index));
             int backgroundX = x + 20 + qualityWidth + 8;
             int backgroundWidth = Math.max(60, x + rowWidth - backgroundX - 8);
-            SuggestedEditBox background = new SuggestedEditBox(this, font, backgroundX, y + 78,
+            SuggestedEditBox background = new SuggestedEditBox(this, font, backgroundX, qualityY,
                     backgroundWidth, 20, text("rewards.background"), "loot.background." + index);
             background.withoutMenu();
             background.setMaxLength(7);
@@ -519,7 +565,7 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
     }
 
     private EditorSnapshot snapshot() {
-        return new EditorSnapshot(id, name, mode, rolls, choiceTitle,
+        return new EditorSnapshot(id, name, mode, rolls, choiceTitle, displayIcon,
                 entries.stream().map(Draft::new).toList());
     }
 
@@ -547,6 +593,7 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
         mode = snapshot.mode();
         rolls = snapshot.rolls();
         choiceTitle = snapshot.choiceTitle();
+        displayIcon = snapshot.displayIcon();
         entries.clear();
         snapshot.entries().forEach(entry -> entries.add(new Draft(entry)));
         error = null;
@@ -621,6 +668,7 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
             }
         }
         reloadTables();
+        xtdpotato.xero_quest_journal.core.io.QuestRepository.lootPresentationChanged();
         selectedTables.clear();
         for (String tableId : failed) {
             if (tables.stream().anyMatch(table -> table.id().equals(tableId))) selectedTables.add(tableId);
@@ -657,7 +705,7 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
             int parsedRolls = Integer.parseInt(rolls.strip());
             List<LootDefinition.Entry> values = entries.stream().map(Draft::value).toList();
             LootDefinition table = new LootDefinition(id.strip(), name.strip(), mode, parsedRolls,
-                    choiceTitle.strip(), values);
+                    choiceTitle.strip(), values, displayIcon);
             QuestLootStore.validate(table);
             String oldId = selectedId;
             var server = minecraft.getSingleplayerServer();
@@ -665,6 +713,7 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
             QuestLootStore.save(author, table);
             if (!oldId.isBlank() && !oldId.equals(table.id())) QuestLootStore.delete(author, oldId);
             reloadTables();
+            xtdpotato.xero_quest_journal.core.io.QuestRepository.lootPresentationChanged();
             selectedId = table.id();
             select(table.id());
             status = "loot.saved";
@@ -687,10 +736,13 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
         entryMotion.limit(entryMaxScroll());
         tableMotion.advance();
         entryMotion.advance();
+        if (renderedTableStart != Math.max(0, tableMotion.pixels() / TABLE_ROW_HEIGHT)
+                || renderedEntryStart != firstVisibleEntry()) init();
         int tableScroll = tableMotion.pixels();
         int entryScroll = entryMotion.pixels();
         moveWidgets(tableWidgets, lastTableScroll - tableScroll);
         moveWidgets(entryWidgets, lastEntryScroll - entryScroll);
+        if (scrollWholeEditor()) moveWidgets(metadataWidgets, lastEntryScroll - entryScroll);
         lastTableScroll = tableScroll;
         lastEntryScroll = entryScroll;
 
@@ -702,26 +754,32 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
         if (width < 640) g.drawString(font,
                 font.plainSubstrByWidth(title.getString(), Math.max(1, leftPanel() - 24)), 12, 42, 0xFFFFFFFF, false);
         else g.drawString(font, title, x, 10, RewardEditorTheme.TEXT);
-        g.drawString(font, text("loot.id"), x, 31, RewardEditorTheme.MUTED);
-        g.drawString(font, text("loot.name"), x + w / 2 + 4, 31, RewardEditorTheme.MUTED);
-        g.drawString(font, text("loot.entry_section"), x, 174, RewardEditorTheme.TEXT);
+        if (scrollWholeEditor()) g.enableScissor(x, rowsViewportTop(), width - 20, rowsViewportBottom());
+        int headerOffset = scrollWholeEditor() ? entryMotion.pixels() : 0;
+        if (!scrollWholeEditor()) {
+            g.drawString(font, text("loot.id"), x, 31, RewardEditorTheme.MUTED);
+            g.drawString(font, text("loot.name"), x + w / 2 + 4, 31, RewardEditorTheme.MUTED);
+        }
+        g.drawString(font, text("loot.entry_section"), x, 220 - headerOffset, RewardEditorTheme.TEXT);
+        if (scrollWholeEditor()) g.disableScissor();
         g.enableScissor(x, rowsViewportTop(), width - 20, rowsViewportBottom());
         List<Integer> filtered = filteredEntries();
         for (int row = 0; row < filtered.size(); row++) {
             int index = filtered.get(row);
             Draft draft = entries.get(index);
-            int y = rowsViewportTop() + row * ENTRY_HEIGHT - entryMotion.pixels();
-            if (y + ENTRY_HEIGHT < rowsViewportTop() || y > rowsViewportBottom()) continue;
+            int y = entryContentTop() + row * entryHeight() - entryMotion.pixels();
+            if (y + entryHeight() < rowsViewportTop() || y > rowsViewportBottom()) continue;
             QuestIcons.render(g, icon(draft.type, draft.item), x + 2, y + 14, 16);
             g.drawString(font, text("loot.count"), x + 20, y + 37, 0xFFB9C4CE);
             if (mode != LootDefinition.Mode.CHOICE) g.drawString(font, text("loot.weight"), x + 94, y + 37, 0xFFB9C4CE);
             int sliderWidth = Math.min(210, Math.max(92, Math.max(180, w - 12) / 4));
-            int conditionX = mode == LootDefinition.Mode.CHOICE ? x + 142 : x + 154 + sliderWidth + 12;
-            g.drawString(font, text("loot.condition"), conditionX, y + 37, 0xFFB9C4CE);
+            int conditionX = stackedEntries() ? x + 20
+                    : mode == LootDefinition.Mode.CHOICE ? x + 142 : x + 154 + sliderWidth + 12;
+            g.drawString(font, text("loot.condition"), conditionX, y + (stackedEntries() ? 75 : 37), 0xFFB9C4CE);
             if (draft.type.equals("item")) {
-                g.drawString(font, text("rewards.quality"), x + 20, y + 67, RewardEditorTheme.MUTED);
+                g.drawString(font, text("rewards.quality"), x + 20, y + (stackedEntries() ? 113 : 75), RewardEditorTheme.MUTED);
                 g.drawString(font, text("rewards.background"), x + 28 + Math.min(150, Math.max(104, Math.max(180, w - 12) / 3)),
-                        y + 67, RewardEditorTheme.MUTED);
+                        y + (stackedEntries() ? 113 : 75), RewardEditorTheme.MUTED);
             }
         }
         g.disableScissor();
@@ -754,11 +812,11 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
         List<Integer> filtered = filteredEntries();
         for (int row = 0; row < filtered.size(); row++) {
             int index = filtered.get(row);
-            int y = rowsViewportTop() + row * ENTRY_HEIGHT - entryMotion.pixels();
-            if (y + ENTRY_HEIGHT < rowsViewportTop() || y > rowsViewportBottom()) continue;
+            int y = entryContentTop() + row * entryHeight() - entryMotion.pixels();
+            if (y + entryHeight() < rowsViewportTop() || y > rowsViewportBottom()) continue;
             Draft draft = entries.get(index);
             RewardEditorTheme.entry(g, x, y + 4, Math.max(1, width - x - 22),
-                    ENTRY_HEIGHT - 8, draft.type, draft.enabled, false);
+                    entryHeight() - 8, draft.type, draft.enabled, false);
         }
         g.disableScissor();
     }
@@ -812,7 +870,7 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
             return true;
         }
         if (x >= editorLeft() && y >= rowsViewportTop() && y < rowsViewportBottom()) {
-            entryMotion.wheel(vertical * ENTRY_HEIGHT);
+            entryMotion.wheel(vertical * entryHeight());
             return true;
         }
         return super.mouseScrolled(x, y, horizontal, vertical);
@@ -876,6 +934,17 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
 
     @Override
     public boolean keyPressed(int key, int scanCode, int modifiers) {
+        if (!(getFocused() instanceof EditBox) && (modifiers & GLFW.GLFW_MOD_CONTROL) != 0) {
+            if (key == GLFW.GLFW_KEY_Z) {
+                if ((modifiers & GLFW.GLFW_MOD_SHIFT) != 0) redo();
+                else undo();
+                return true;
+            }
+            if (key == GLFW.GLFW_KEY_Y) {
+                redo();
+                return true;
+            }
+        }
         if (key == GLFW.GLFW_KEY_ESCAPE && contextIndex >= 0) {
             contextIndex = -1;
             return true;
@@ -892,7 +961,8 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
         int divider = leftPanel();
         int editorX = editorLeft();
         RewardEditorTheme.panel(g, 4, 4, divider - 8, height - 8, RewardEditorTheme.GOLD);
-        RewardEditorTheme.panel(g, divider + 5, 4, Math.max(1, width - divider - 9), 170,
+        RewardEditorTheme.panel(g, divider + 5, 4, Math.max(1, width - divider - 9),
+                scrollWholeEditor() ? height - 62 : 234,
                 RewardEditorTheme.GREEN);
         g.fill(divider, 12, divider + 1, height - 12, 0x66566370);
         renderEntrySurfaces(g, editorX);

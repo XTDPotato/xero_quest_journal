@@ -11,16 +11,16 @@ Minecraft 1.21.1 NeoForge。Forge 1.20.1、Fabric 1.20.1 和 Fabric 1.21.1
 每个游戏版本/加载器使用独立 JAR。详见 [版本矩阵](docs/porting-matrix.md)
 和 [Fabric 验证报告](docs/fabric-verification.md)。
 
-2026-10-16 多版本预览 5：同步四个已完成平台，包含章节独立外观、多选实时预览、
-背景/音乐节点、搜索筛选、奖励/邮件/战利品编辑和完整作者工具。
-详细状态见 [本轮验证](docs/release-verification-2026-10-16.md)；
+2026-10-17 多版本预览 8（模组版本 `0.2.0`）：四个已完成平台同步逸闻纪事、可撤销作者操作、
+战利品外显图标和邮件礼盒展示，并补齐 1920×1080 界面截图。
+详细状态见 [本轮验证](docs/release-verification-2026-10-17.md)；
 常见界面、入口与操作见 [中文 1080p 界面图鉴](docs/interface-gallery.md)。
 
 Xero Quest Journal 面向整合包作者、地图作者与喜欢任务引导的玩家，把任务列表、章节历程、世界目标、奖励和邮箱放在一套原生游戏界面中。作者可以在本地世界内编辑任务，也可以用 JSON、HTML 或 XML 配置任务文件。
 
 核心模组保持轻量，媒体解码使用可选后端；任务完成、奖励领取和玩家进度由服务端处理。
 
-> 当前为 **0.1.0 开发预览版**。新的界面图鉴全部采用中文、原生 1920×1080 截图；
+> 当前源码版本为 **0.2.0 开发预览版**。新的界面图鉴全部采用中文、原生 1920×1080 截图；
 > 历史验证与本次验证分开记录。26.1–26.3 尚无完整可安装包。
 
 ![任务日志、进度与底部奖励，中文 1920×1080](docs/images/journal-current-zh-1920.png)
@@ -30,7 +30,8 @@ Xero Quest Journal 面向整合包作者、地图作者与喜欢任务引导的�
 - [功能一览](#功能一览)
 - [界面与截图](#界面与截图)
 - [中文 1080p 界面图鉴：常见界面、入口和操作](docs/interface-gallery.md)
-- [2026-10-16 多版本构建与回归](docs/release-verification-2026-10-16.md)
+- [任务修改与删除的撤销/重做](docs/task-edit-undo.md)
+- [2026-10-17 多版本构建与回归](docs/release-verification-2026-10-17.md)
 - [全部命令](docs/commands.md)
 - [JavaScript 编写参考与示例](docs/javascript.md)
 - [判断节点详解](docs/trigger-conditions.md)
@@ -168,16 +169,16 @@ JS、变量、图标、富文本、回收站、设置、动画、物品栏、模
 | Minecraft / 加载器 | 1.20.1 Forge 47.3.0 或 Fabric；1.21.1 NeoForge 21.1.233 或 Fabric |
 | Java | 1.20.1 使用 Java 17；1.21.1 使用 Java 21 |
 | Fabric | 还需对应 Minecraft 版本的 Fabric API；精确测试版本见版本矩阵 |
-| 核心文件 | Release 中与 Minecraft/加载器完全匹配的单个 JAR |
+| 核心文件 | [0.2.0 多版本预览 8](https://github.com/XTDPotato/xero_quest_journal/releases/tag/v0.2.0-multiversion-preview.8) 中与 Minecraft/加载器完全匹配的单个 JAR |
 | 许可 | MIT，第三方依赖保留各自许可 |
 
-1. 从 [多版本预览 5 Release](https://github.com/XTDPotato/xero_quest_journal/releases/tag/v0.1.0-multiversion-preview.5) 选择与游戏版本、加载器相匹配的核心 JAR，放入实例的 `mods` 目录。
-2. 多人环境下，客户端与服务端应安装相互匹配的版本。当前网络协议为 **10**；相同的 `0.1.0` 显示版本不保证不同开发构建之间的协议兼容。
+1. 从 [多版本预览 8 Release](https://github.com/XTDPotato/xero_quest_journal/releases/tag/v0.2.0-multiversion-preview.8) 选择与游戏版本、加载器相匹配的核心 JAR，放入实例的 `mods` 目录。
+2. 多人环境下，客户端与服务端应安装相互匹配的版本。当前网络协议为 **10**；相同的显示版本不保证不同开发构建之间的协议兼容，旧 Release 的 `0.1.0` 与当前源码的 `0.2.0` 应分别核对。
 3. 启动游戏并进入世界，默认按 `J` 打开任务日志，按 `F8` 打开邮箱、`F7` 打开新邮件。
 4. 任务目录默认位于 `config/xero_quest/groups/`，编辑后使用 `/xero_quest reload` 重载。
 5. 本地集成服务器中，拥有管理员权限的玩家可以开启编辑模式。远端客户端作者编辑仍有限制。
 
-Release 同时提供四个独立安装包和按版本/加载器归类的合集 ZIP。
+Release 同时提供四个 `0.2.0` 独立安装包和按版本/加载器归类的合集 ZIP。
 每个实例只安装一个核心 JAR。不要将源码 ZIP、验证报告或测试世界放入 `mods`。
 
 ### 常用操作
@@ -363,8 +364,8 @@ chmod +x gradlew
 构建输出：
 
 ```text
-build/libs/xero_quest_journal-0.1.0.jar
-build/libs/xero_quest_journal-0.1.0-sources.jar
+build/libs/xero_quest_journal-0.2.0.jar
+build/libs/xero_quest_journal-0.2.0-sources.jar
 ```
 
 `build` 包含核心 JAR 的 **5,000,000 字节上限检查**与可选媒体依赖隔离检查。它不会自动运行真实客户端 smoke 测试。
@@ -458,7 +459,7 @@ tools/                     图标生成与独立检查工具
 | [背景与旅行历程编辑](docs/background-and-journey-editor.md) | 背景缩放与音乐、背景节点、章节切换事件、可视化尺寸编辑及任务弹窗 |
 | [中文 1080p 界面图鉴](docs/interface-gallery.md) | 常见界面全屏截图、入口、操作、保存和预览行为 |
 | [预览 5 发布验证](docs/release-verification-2026-10-16.md) | 本次四平台构建、客户端回归、安装包与未覆盖范围 |
-| [全部命令](docs/commands.md) | 三个根命令、64 条共享分支及 Forge 状态命令、参数、权限与示例 |
+| [全部命令](docs/commands.md) | 四个根命令、71 条共享路径及 Forge 状态命令、逸闻纪事、参数、权限与示例 |
 | [JavaScript 参考](docs/javascript.md) | 文件与事件图类型、返回值、奖励 API、编辑器、15 个示例 |
 | [判断节点详解](docs/trigger-conditions.md) | 可视化与 JS 条件、连线、真假/异常、一次执行 |
 | [节点字段与背包入口](docs/visual-graph-and-inventory-shortcuts.md) | 快速编辑、字段选择/拖拽、目标玩家、相对锚点与 REI 收藏 |

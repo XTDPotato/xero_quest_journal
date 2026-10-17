@@ -227,6 +227,14 @@ public final class QuestEventGraphs {
                         throw new IllegalArgumentException("Missing target task or invalid task property");
                     changed = true;
                 }
+                case "discover_anecdote" -> {
+                    if (!AnecdoteRuntime.discover(player, node.get("target", "")))
+                        throw new IllegalArgumentException("Anecdote target is missing or already discovered");
+                }
+                case "complete_anecdote" -> {
+                    if (!AnecdoteRuntime.completeRecord(player, node.get("entry", ""), node.get("record", "")))
+                        throw new IllegalArgumentException("Anecdote record is missing or not discovered");
+                }
                 case "command" -> QuestCommands.execute(player, node.get("command", ""));
                 case "delay" -> {
                     List<String> next = graph.edges().stream()

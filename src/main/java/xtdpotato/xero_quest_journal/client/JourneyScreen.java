@@ -21,6 +21,9 @@ public final class JourneyScreen extends AnimatedQuestScreen {
     private static final int BACKGROUND = 0xFF303541;
     private static final ResourceLocation PROGRESS_MARKER = ResourceLocation.fromNamespaceAndPath(
             "xero_quest_journal", "textures/gui/journey_progress_marker.png");
+    private static final int PROGRESS_MARKER_WIDTH = 6;
+    private static final int PROGRESS_MARKER_HEIGHT = 12;
+    private static final int PROGRESS_ALPHA = 0x80;
     private static final String UNASSIGNED_CHAPTER = "__journey_unassigned";
     private final Screen parent;
     private final String mediaOwner = "journey-" + UUID.randomUUID();
@@ -51,7 +54,8 @@ public final class JourneyScreen extends AnimatedQuestScreen {
     private long frameTime;
     private double dragX, dragY, dragScrollX, dragScrollY;
     private double timelineZoom = 1;
-    private boolean dragging, draggingTabs, draggingScrollbar, draggingVerticalScrollbar, moved, closeHeld;
+    private boolean dragging, draggingTabs, draggingTimelineProgress, draggingScrollbar,
+            draggingVerticalScrollbar, moved, closeHeld;
     private int pressedTab = -1, pressedArrow;
     private String pressedQuest = "";
     private String backdropKey = "";
@@ -71,10 +75,12 @@ public final class JourneyScreen extends AnimatedQuestScreen {
     private final List<StyledButton> menu = new ArrayList<>();
     private int menuX, menuY;
     private java.util.concurrent.CompletableFuture<String> pending;
+    private java.util.concurrent.CompletableFuture<String> historyPending;
     private String saveError = "";
     private int initializedWidth, initializedHeight;
 
-    private record QuestSlot(QuestDefinition quest, int column, int branch, int chapter) {}
+    private record QuestSlot(QuestDefinition quest, int column, int branch, int chapter,
+                             boolean categoryColumn, String category) {}
     private record Section(int start, int width, int columns, int branches, List<QuestDefinition> quests) {}
     private record Path(QuestSlot from, QuestSlot to, int fromX, int fromY, int toX, int toY) {}
 
@@ -90,6 +96,21 @@ public final class JourneyScreen extends AnimatedQuestScreen {
 
     public int chapterCount() { return chapters.size(); }
     public int visibleQuestCount() { return quests.size(); }
+    public static boolean containsQuest(String id) {
+        QuestDefinition quest = ClientQuestDefinitions.find(id);
+        var progress = ClientQuestProgress.view(id);
+        if (quest == null || !quest.journeyVisible() || quest.hidden() || progress != null && progress.hidden())
+            return false;
+        String group = ClientQuestDefinitions.groupOf(id);
+        Set<String> explicitlyAssigned = new HashSet<>();
+        for (var chapter : ClientQuestDefinitions.chapters()) {
+            if (chapter.quests().contains(id)) return true;
+            if (!chapter.quests().isEmpty() || chapter.timeline().explicitTasks())
+                explicitlyAssigned.addAll(chapter.quests());
+            else if (chapter.groupId().isBlank() || chapter.groupId().equals(group)) return true;
+        }
+        return !explicitlyAssigned.contains(id);
+    }
     private JourneyAppearance appearance() {
         return appearance(chapterIndex);
     }
@@ -173,6 +194,15 @@ public final class JourneyScreen extends AnimatedQuestScreen {
                 styles, "journey-edit-layout", editing ? "close" : "edit"));
         toggle.setTooltip(Tooltip.create(label("edit_layout")));
         toggle.active = pending == null;
+        if (editing) {
+            var undo = addRenderableWidget(new EditorIconButton(width - 212, 10, label("undo"),
+                    () -> runHistory(false), styles, "journey-undo", "undo"));
+            var redo = addRenderableWidget(new EditorIconButton(width - 182, 10, label("redo"),
+                    () -> runHistory(true), styles, "journey-redo", "redo"));
+            undo.setTooltip(Tooltip.create(Component.translatable("screen.xero_quest_journal.layout.rich_undo")));
+            redo.setTooltip(Tooltip.create(Component.translatable("screen.xero_quest_journal.layout.rich_redo")));
+            undo.active = redo.active = historyPending == null && pending == null;
+        }
         if (editing) addRenderableWidget(new EditorIconButton(width - 92, 10, label("appearance"),
                 this::editAppearance, styles, "journey-appearance", "grid")).active = pending == null;
         if (editing && canEditChapter(chapterIndex)) {
@@ -220,7 +250,8 @@ public final class JourneyScreen extends AnimatedQuestScreen {
         var positions = new LinkedHashMap<>(timeline.positions());
         positions.keySet().retainAll(members);
         var edges = timeline.connections().stream().filter(edge ->
-                members.contains(edge.from()) && members.contains(edge.to())).toList();
+                (members.contains(edge.from()) || JourneyTimeline.chapterPoint(edge.from()))
+                        && (members.contains(edge.to()) || JourneyTimeline.chapterPoint(edge.to()))).toList();
         var value = new JourneyTimeline(positions, edges, timeline.customConnections(), true);
         pending = ClientQuestProgress.saveJourney(original,
                 new xtdpotato.xero_quest_journal.core.network.QuestJourneyNetwork.Draft(ids, value, backgrounds));
@@ -265,6 +296,12 @@ public final class JourneyScreen extends AnimatedQuestScreen {
                 draft -> { pending = ClientQuestProgress.saveJourney(chapter, draft); initTools(); }));
     }
 
+    private void runHistory(boolean redo) {
+        if (historyPending != null || pending != null || !canStyle()) return;
+        historyPending = ClientQuestProgress.journeyHistory(redo);
+        initTools();
+    }
+
     private void loadQuests() {
         List<Section> nextSections = new ArrayList<>();
         List<QuestSlot> allSlots = new ArrayList<>();
@@ -281,6 +318,25 @@ public final class JourneyScreen extends AnimatedQuestScreen {
                     next.add(quest);
             }
             List<QuestSlot> layout = new ArrayList<>();
+            var categoryCells = JourneyTaskColumns.layout(chapters.get(chapter).groupId(), next);
+            if (!categoryCells.isEmpty()) {
+                int categoryCount = 0, rowCount = 0;
+                for (var cell : categoryCells) {
+                    layout.add(new QuestSlot(cell.quest(), cell.column(), cell.row(), chapter,
+                            true, cell.category()));
+                    categoryCount = Math.max(categoryCount, cell.column() + 1);
+                    rowCount = Math.max(rowCount, cell.row());
+                }
+                int lastX = layout.stream().mapToInt(slot -> {
+                    var position = chapters.get(slot.chapter()).timeline().positions().get(slot.quest().id());
+                    return position == null ? 192 + slot.column() * STEP : position.x();
+                }).max().orElse(220);
+                int extent = Math.max(420, lastX + CARD_WIDTH + 100);
+                nextSections.add(new Section(start, extent, categoryCount, rowCount, List.copyOf(next)));
+                allSlots.addAll(layout);
+                start += extent;
+                continue;
+            }
             Map<String, Integer> anchors = new HashMap<>();
             List<QuestDefinition> remaining = new ArrayList<>();
             Set<String> ids = new HashSet<>();
@@ -292,7 +348,7 @@ public final class JourneyScreen extends AnimatedQuestScreen {
                     remaining.add(quest);
                 else {
                     anchors.put(quest.id(), columns);
-                    layout.add(new QuestSlot(quest, columns++, 0, chapter));
+                    layout.add(new QuestSlot(quest, columns++, 0, chapter, false, ""));
                 }
             }
             Map<Integer, Integer> rows = new HashMap<>();
@@ -304,7 +360,7 @@ public final class JourneyScreen extends AnimatedQuestScreen {
                             .findFirst().orElse(null);
                     if (column == null) continue;
                     int row = rows.merge(column, 1, Integer::sum);
-                    layout.add(new QuestSlot(quest, column, row, chapter));
+                    layout.add(new QuestSlot(quest, column, row, chapter, false, ""));
                     anchors.put(quest.id(), column);
                     branchRows = Math.max(branchRows, row);
                     iterator.remove();
@@ -314,7 +370,7 @@ public final class JourneyScreen extends AnimatedQuestScreen {
                     // Cyclic or orphaned branches stay accessible rather than disappearing.
                     QuestDefinition quest = remaining.removeFirst();
                     anchors.put(quest.id(), columns);
-                    layout.add(new QuestSlot(quest, columns++, 0, chapter));
+                    layout.add(new QuestSlot(quest, columns++, 0, chapter, false, ""));
                 }
             }
             int lastX = layout.stream().mapToInt(slot -> {
@@ -365,9 +421,13 @@ public final class JourneyScreen extends AnimatedQuestScreen {
                             sections.get(chapter + 1).start() + 100, 0));
             }
             for (var edge : edges) {
-                var from = slot(chapter, edge.from());
-                var to = slot(chapter, edge.to());
-                if (from != null && to != null) paths.add(new Path(from, to, 0, 0, -4, 0));
+                boolean fromChapter = JourneyTimeline.chapterPoint(edge.from());
+                boolean toChapter = JourneyTimeline.chapterPoint(edge.to());
+                var from = fromChapter ? null : slot(chapter, edge.from());
+                var to = toChapter ? null : slot(chapter, edge.to());
+                if ((fromChapter || from != null) && (toChapter || to != null))
+                    paths.add(new Path(from, to, fromChapter ? sections.get(chapter).start() + 100 : 0,
+                            0, toChapter ? sections.get(chapter).start() + 100 : -4, 0));
             }
         }
         chapterConnections = List.copyOf(connections);
@@ -377,7 +437,8 @@ public final class JourneyScreen extends AnimatedQuestScreen {
             var path = paths.get(i);
             if (path.from() != null) incident.computeIfAbsent(path.from(), ignored -> new ArrayList<>()).add(path);
             if (path.to() != null) incident.computeIfAbsent(path.to(), ignored -> new ArrayList<>()).add(path);
-            int ax = pathFromX(path), ay = pathFromY(path), bx = pathToX(path), by = pathToY(path);
+            int ax = renderedPathFromX(path), ay = renderedPathFromY(path);
+            int bx = renderedPathToX(path), by = renderedPathToY(path);
             lines.add(new ViewportIndex.Entry<>(path, Math.min(ax, bx), Math.min(ay, by) - lineY(),
                     Math.max(ax, bx) + 1, Math.max(ay, by) - lineY() + 1, i));
         }
@@ -391,6 +452,23 @@ public final class JourneyScreen extends AnimatedQuestScreen {
     private int pathFromY(Path path) { return path.from() == null ? lineY() + path.fromY() : anchorY(path.from()); }
     private int pathToX(Path path) { return path.to() == null ? path.toX() : slotX(path.to()) + path.toX(); }
     private int pathToY(Path path) { return path.to() == null ? lineY() + path.toY() : anchorY(path.to()); }
+    private boolean verticalCategoryPath(Path path) {
+        return path.from() != null && path.to() != null
+                && path.from().categoryColumn() && path.to().categoryColumn()
+                && path.from().column() == path.to().column();
+    }
+    private int renderedPathFromX(Path path) {
+        return verticalCategoryPath(path) ? slotX(path.from()) + CARD_WIDTH / 2 : pathFromX(path);
+    }
+    private int renderedPathFromY(Path path) {
+        return verticalCategoryPath(path) ? slotY(path.from()) + CARD_HEIGHT : pathFromY(path);
+    }
+    private int renderedPathToX(Path path) {
+        return verticalCategoryPath(path) ? slotX(path.to()) + CARD_WIDTH / 2 : pathToX(path);
+    }
+    private int renderedPathToY(Path path) {
+        return verticalCategoryPath(path) ? slotY(path.to()) : pathToY(path);
+    }
 
     private List<QuestSlot> visibleSlots(double left, double top, double right, double bottom) {
         if (queriedSlotIndex == slotIndex && queryLeft == left && queryTop == top && queryRight == right
@@ -486,10 +564,18 @@ public final class JourneyScreen extends AnimatedQuestScreen {
     private int top() { return width < 420 ? 98 : 60; }
     private int bottom() { return height - 23; }
     private int lineY() { return (int) Math.max(CARD_HEIGHT + 28, viewHeight() * .58); }
+    private double chapterProgressMinimum() {
+        return sections.isEmpty() ? 0 : sections.get(chapterIndex).start();
+    }
+    private double chapterProgressMaximum() {
+        if (sections.isEmpty()) return 0;
+        Section section = sections.get(chapterIndex);
+        return Math.max(section.start(), section.start() + section.width() - viewWidth());
+    }
     private double timelineProgress() {
-        double range = timelineX.maximum() - timelineX.minimum();
-        return range <= 0 ? 0 : Math.clamp(
-                (timelineX.position() - timelineX.minimum()) / range, 0, 1);
+        double minimum = chapterProgressMinimum();
+        double range = chapterProgressMaximum() - minimum;
+        return range <= 0 ? 0 : Math.clamp((timelineX.position() - minimum) / range, 0, 1);
     }
     private JourneyTimeline.Position position(QuestSlot slot) {
         if (slot.quest().id().equals(nodeDrag) && slot.chapter() == nodeChapter && previewPosition != null)
@@ -503,9 +589,13 @@ public final class JourneyScreen extends AnimatedQuestScreen {
     private int slotY(QuestSlot slot) {
         var position = position(slot);
         if (position != null) return lineY() + position.y();
+        if (slot.categoryColumn())
+            return lineY() - CARD_HEIGHT + 13 + slot.branch() * (CARD_HEIGHT + 26);
         return slot.branch() == 0 ? lineY() - CARD_HEIGHT + 13 : lineY() + 60 + (slot.branch() - 1) * 64;
     }
-    private int slotHeight(QuestSlot slot) { return slot.branch() == 0 ? CARD_HEIGHT : 24; }
+    private int slotHeight(QuestSlot slot) {
+        return slot.categoryColumn() || slot.branch() == 0 ? CARD_HEIGHT : 24;
+    }
     private void updateLimits() {
         double currentScale = scale();
         if (limitScale == currentScale && previewPosition == null) return;
@@ -540,6 +630,17 @@ public final class JourneyScreen extends AnimatedQuestScreen {
 
     @Override public void tick() {
         if (!canStyle() && editing) { editing = false; nodeDrag = wireFrom = ""; previewPosition = null; menu.clear(); initTools(); }
+        if (historyPending != null && historyPending.isDone()) {
+            String result;
+            try { result = historyPending.join(); }
+            catch (RuntimeException failure) { result = "journey_history_save"; }
+            historyPending = null;
+            if (result.equals("journey_history_undone") || result.equals("journey_history_redone")) {
+                saveError = "";
+                refresh();
+            } else saveError = result;
+            initTools();
+        }
         if (pending != null && pending.isDone()) {
             String result;
             try { result = pending.join(); } catch (RuntimeException failure) { result = "config_save_failed"; }
@@ -624,7 +725,7 @@ public final class JourneyScreen extends AnimatedQuestScreen {
                 width < 420 ? Math.max(20, width - (canStyle() ? editing ? 195 : 135 : 115))
                         : tabsLeft() - 62, 0xFFF5E8CF, false);
         drawTabs(graphics);
-        drawTimelineProgress(graphics);
+        drawTimelineProgress(graphics, mouseX, mouseY);
         icon(graphics, "close", "close", width - 31, 12, 21,
                 closeHeld ? 0xFFE3BE75 : 0xFFF5E8CF);
         if (chapters.isEmpty()) {
@@ -700,9 +801,8 @@ public final class JourneyScreen extends AnimatedQuestScreen {
             JourneyAppearanceRenderer.icon(graphics, tabStyle, chapterIcon(i), x + 5, y + 8, 14, 14, 0xFFF5E8CF, false);
             JourneyAppearanceRenderer.text(graphics, font, tabStyle, chapters.get(i).name(), x + (w + iconSpace) / 2, y + 10,
                     w - 14 - iconSpace, i == chapterIndex ? 0xFFFFE6AE : 0xFFD5D1DA, true);
-            graphics.fill(x + 3, y + 28, x + w - 3, y + 29, 0x779E9AA5);
-            int half = Math.round((w - 6) * amount / 2);
-            if (half > 0) graphics.fill(x + w / 2 - half, y + 28, x + w / 2 + half, y + 31, 0xFFFFDE8F);
+            graphics.fill(x + 3, y + 29, x + w - 3, y + 30,
+                    i == chapterIndex ? 0xFFF2D29A : PROGRESS_ALPHA << 24 | 0x7C8792);
         }
         graphics.disableScissor();
         icon(graphics, "previous", "back", left - 18, y + 10, 10,
@@ -711,21 +811,52 @@ public final class JourneyScreen extends AnimatedQuestScreen {
                 tabs.position() < tabs.maximum() - .5 ? 0xFFF5E8CF : 0x668B8495);
     }
 
-    private void drawTimelineProgress(GuiGraphics graphics) {
-        double range = timelineX.maximum() - timelineX.minimum();
-        if (chapters.isEmpty() || range <= 0) return;
-        int left = tabsLeft(), right = tabsRight(), y = tabsTop() + 36;
+    private boolean timelineProgressHit(double x, double y) {
+        if (chapters.isEmpty()) return false;
+        int[] bounds = timelineProgressBounds();
+        int left = Math.max(bounds[0], tabsLeft()), right = Math.min(bounds[2], tabsRight());
+        return x >= left && x < right && y >= bounds[1] - 6 && y < bounds[3] + 7;
+    }
+
+    private void dragTimelineProgress(double x) {
+        int[] bounds = timelineProgressBounds();
+        int left = Math.max(bounds[0], tabsLeft()), right = Math.min(bounds[2], tabsRight());
+        if (right <= left) return;
+        double fraction = Math.clamp((x - left) / (right - left), 0, 1);
+        double minimum = chapterProgressMinimum();
+        timelineX.jump(minimum + fraction * (chapterProgressMaximum() - minimum));
+        followTimeline();
+    }
+
+    private void drawTimelineProgress(GuiGraphics graphics, int mouseX, int mouseY) {
+        if (chapters.isEmpty() || chapterIndex < 0 || chapterIndex >= chapters.size()) return;
+        int[] bounds = timelineProgressBounds();
+        int left = bounds[0], top = bounds[1], right = bounds[2], bottom = bounds[3];
+        int visibleLeft = Math.max(left, tabsLeft());
+        int visibleRight = Math.min(right, tabsRight());
+        if (visibleRight <= visibleLeft) return;
         int markerX = left + (int) Math.round((right - left) * timelineProgress());
-        graphics.fill(left, y, right, y + 2, 0xA9909AA5);
-        graphics.fill(left, y, markerX, y + 2, 0xFFFFE6AE);
-        for (int chapter = 1; chapter < sections.size(); chapter++) {
-            double progress = Math.clamp(chapterPosition(chapter) / range, 0, 1);
-            int tickX = left + (int) Math.round((right - left) * progress);
-            graphics.fill(tickX, y - 2, tickX + 1, y + 4,
-                    progress <= timelineProgress() ? 0xFFE8D4A5 : 0x997C8792);
-        }
-        graphics.blit(PROGRESS_MARKER, markerX - 6, y - 11, 12, 24,
+        if (draggingTimelineProgress || timelineProgressHit(mouseX, mouseY))
+            graphics.renderOutline(visibleLeft, top - 4, visibleRight - visibleLeft, 10, 0xFFFFE6AE);
+        graphics.enableScissor(tabsLeft(), top + 1 - PROGRESS_MARKER_HEIGHT / 2,
+                tabsRight(), top + 1 + PROGRESS_MARKER_HEIGHT / 2);
+        graphics.fill(visibleLeft, top, Math.clamp(markerX, visibleLeft, visibleRight), bottom,
+                0xFFFFE6AE);
+        float alpha = PROGRESS_ALPHA / 255.0F;
+        graphics.setColor(1, 1, 1, alpha);
+        graphics.blit(PROGRESS_MARKER, markerX - PROGRESS_MARKER_WIDTH / 2,
+                top + 1 - PROGRESS_MARKER_HEIGHT / 2,
+                PROGRESS_MARKER_WIDTH, PROGRESS_MARKER_HEIGHT,
                 0, 0, 32, 64, 32, 64);
+        graphics.setColor(1, 1, 1, 1);
+        graphics.disableScissor();
+    }
+
+    private int[] timelineProgressBounds() {
+        int width = tabWidth();
+        int left = tabsLeft() + chapterIndex * width - (int) Math.round(tabs.position()) + 3;
+        int top = tabsTop() + 29;
+        return new int[]{left, top, left + width - 6, top + 1};
     }
 
     private String chapterIcon(int index) {
@@ -741,6 +872,18 @@ public final class JourneyScreen extends AnimatedQuestScreen {
         if (timeline.customConnections()) return timeline.connections();
         var result = new ArrayList<JourneyTimeline.Connection>();
         var members = chapterSlots.get(chapter);
+        if (members.values().stream().anyMatch(QuestSlot::categoryColumn)) {
+            var lanes = new LinkedHashMap<String, List<QuestSlot>>();
+            members.values().stream().filter(QuestSlot::categoryColumn)
+                    .forEach(slot -> lanes.computeIfAbsent(slot.category(), ignored -> new ArrayList<>()).add(slot));
+            for (var lane : lanes.values()) {
+                lane.sort(Comparator.comparingInt(QuestSlot::branch));
+                for (int i = 1; i < lane.size(); i++)
+                    result.add(new JourneyTimeline.Connection(lane.get(i - 1).quest().id(),
+                            lane.get(i).quest().id()));
+            }
+            return List.copyOf(result);
+        }
         var main = members.values().stream().filter(slot -> slot.branch() == 0).toList();
         for (int i = 1; i < main.size(); i++)
             result.add(new JourneyTimeline.Connection(main.get(i - 1).quest().id(), main.get(i).quest().id()));
@@ -752,7 +895,18 @@ public final class JourneyScreen extends AnimatedQuestScreen {
     private QuestSlot slot(int chapter, String id) {
         return chapter < 0 || chapter >= chapterSlots.size() ? null : chapterSlots.get(chapter).get(id);
     }
-    private int anchorY(QuestSlot slot) { return slotY(slot) + (slot.branch() == 0 ? 100 : 12); }
+    private int anchorY(QuestSlot slot) {
+        return slotY(slot) + (slot.categoryColumn() || slot.branch() == 0 ? 100 : 12);
+    }
+    private int chapterMarkerAt(double x, double y) {
+        if (!inContent(x, y)) return -1;
+        double worldX = x / scale() + timelineX.position();
+        double worldY = (y - top()) / scale() + timelineY.position();
+        for (int chapter = 0; chapter < sections.size(); chapter++)
+            if (Math.abs(worldX - sections.get(chapter).start() - 100) <= 14
+                    && Math.abs(worldY - lineY()) <= 14) return chapter;
+        return -1;
+    }
     private void connection(GuiGraphics g, int ax, int ay, int bx, int by, int color) {
         int middle = (ax + bx) / 2;
         g.fill(Math.min(ax, middle), ay, Math.max(ax, middle) + 1, ay + 1, color);
@@ -766,11 +920,28 @@ public final class JourneyScreen extends AnimatedQuestScreen {
         var moving = nodeDrag.isBlank() ? null : slot(nodeChapter, nodeDrag);
         for (var path : visiblePaths) {
             if (moving != null && (path.from() == moving || path.to() == moving)) continue;
-            connection(graphics, pathFromX(path), pathFromY(path), pathToX(path), pathToY(path), 0xBCE9E3D5);
+            connection(graphics, renderedPathFromX(path), renderedPathFromY(path),
+                    renderedPathToX(path), renderedPathToY(path), 0xBCE9E3D5);
         }
         // Moving endpoints are overlaid without rebuilding the static hierarchy each frame.
         if (moving != null) for (var path : incidentPaths.getOrDefault(moving, List.of()))
-            connection(graphics, pathFromX(path), pathFromY(path), pathToX(path), pathToY(path), 0xBCE9E3D5);
+            connection(graphics, renderedPathFromX(path), renderedPathFromY(path),
+                    renderedPathToX(path), renderedPathToY(path), 0xBCE9E3D5);
+        if (editing && !wireFrom.isBlank()) {
+            int fromX, fromY;
+            if (JourneyTimeline.chapterPoint(wireFrom)) {
+                fromX = sections.get(nodeChapter).start() + 100;
+                fromY = y;
+            } else {
+                var from = slot(nodeChapter, wireFrom);
+                if (from == null) return;
+                fromX = slotX(from) + CARD_WIDTH;
+                fromY = anchorY(from);
+            }
+            connection(graphics, fromX, fromY,
+                    (int) (pointerX / scale() + timelineX.position()),
+                    (int) ((pointerY - top()) / scale() + timelineY.position()), 0xFFFFDE8F);
+        }
         int firstChapter = chapterAt(timelineX.position() - 144);
         int endChapter = Math.min(sections.size(), chapterAt(timelineX.position() + viewWidth()) + 1);
         for (int i = firstChapter; i < endChapter; i++) {
@@ -783,24 +954,26 @@ public final class JourneyScreen extends AnimatedQuestScreen {
             JourneyAppearanceRenderer.text(graphics, font, chapterStyle.get("chapter"), chapter.name(),
                     sx + 100, y - 28, 138, 0xFFF5E8CF, true);
             JourneyAppearanceRenderer.icon(graphics, chapterStyle.get("marker"), "@marker",
-                    sx + 89, y - 11, 22, 22, 0xFFFFFFFF, false);
+                    sx + 89, y - 11, 22, 22,
+                    editing && i == nodeChapter && JourneyTimeline.chapterPoint(wireFrom)
+                            ? 0xFFFFDE8F : 0xFFFFFFFF, false);
             if (sections.get(i).quests().isEmpty())
                 graphics.drawString(font, label("no_quests"), sx + 140, y - 4, 0xFFF1E8D8, false);
+        }
+        for (QuestSlot slot : visibleSlots) {
+            if (!slot.categoryColumn() || slot.branch() != 0) continue;
+            int x = slotX(slot), categoryY = slotY(slot);
+            if (x + CARD_WIDTH < timelineX.position() || x > timelineX.position() + viewWidth()) continue;
+            graphics.drawString(font, label("category." + slot.category()), x, categoryY - 14, 0xFFF1D9A8, false);
         }
         for (QuestSlot slot : visibleSlots) {
             int x = slotX(slot);
             if (x + CARD_WIDTH < timelineX.position() || x - 24 > timelineX.position() + viewWidth()) continue;
             var marker = slot.quest().journeyAppearance().over(appearance(slot.chapter())).get("marker");
-            if (slot.branch() > 0) {
+            if (slot.branch() > 0 && !slot.categoryColumn()) {
                 int sy = slotY(slot) + 12;
                 JourneyAppearanceRenderer.icon(graphics, marker, "@marker", x - 7, sy - 2, 4, 4, 0xFFF5E8CF, false);
             } else JourneyAppearanceRenderer.icon(graphics, marker, "@marker", x - 8, anchorY(slot) - 3, 6, 6, 0xFFF6E5BD, false);
-        }
-        if (editing && !wireFrom.isBlank()) {
-            var from = slot(nodeChapter, wireFrom);
-            if (from != null) connection(graphics, slotX(from) + CARD_WIDTH, anchorY(from),
-                    (int) (pointerX / scale() + timelineX.position()),
-                    (int) ((pointerY - top()) / scale() + timelineY.position()), 0xFFFFDE8F);
         }
     }
 
@@ -813,10 +986,11 @@ public final class JourneyScreen extends AnimatedQuestScreen {
         boolean complete = state != null && state.completed();
         graphics.fill(x + 2, y + 3, x + CARD_WIDTH + 3, y + h + 3, 0x44202632);
         boolean focused = slot.quest().id().equals(selectedQuest);
-        if (hover || focused || slot.branch() == 0)
+        boolean fullCard = slot.categoryColumn() || slot.branch() == 0;
+        if (hover || focused || fullCard)
             graphics.renderOutline(x - 2, y - 2, CARD_WIDTH + 4, h + 4, hover || focused ? 0xFFFFDF9C : 0x99F3EADD);
         int labelY = y;
-        if (slot.branch() == 0) {
+        if (fullCard) {
             graphics.fill(x, y, x + CARD_WIDTH, y + 84, 0xFF303C46);
             String image = slot.quest().hotEvent().image().isBlank() ? slot.quest().icon() : slot.quest().hotEvent().image();
             JourneyAppearanceRenderer.icon(graphics, questAppearance.get("card"), image, x + 1, y + 1,
@@ -828,13 +1002,13 @@ public final class JourneyScreen extends AnimatedQuestScreen {
             labelY = y + 88;
         }
         graphics.fill(x, labelY, x + CARD_WIDTH, labelY + 24, hover ? 0xFFFFF5DD : 0xFFF5F3EE);
-        String element = slot.branch() > 0 ? "branch" : "card";
+        String element = fullCard ? "card" : "branch";
         var elementStyle = questAppearance.get(element);
         if (!elementStyle.background().isBlank())
             ClientMediaManager.renderImageCover(graphics, elementStyle.background(), x, labelY, CARD_WIDTH, 24, 1);
         graphics.fill(x, labelY, x + 3, labelY + 24,
                 slot.quest().type().equals("legendary") ? 0xFFFFAB57 : 0xFFEBC548);
-        int iconSpace = slot.branch() > 0 && elementStyle.iconVisible()
+        int iconSpace = !fullCard && elementStyle.iconVisible()
                 && (!elementStyle.icon().isBlank() || !slot.quest().icon().isBlank()) ? 24 : 0;
         if (iconSpace > 0) JourneyAppearanceRenderer.icon(graphics, elementStyle, slot.quest().icon(),
                 x + 7, labelY - 3, 24, 27, 0xFFFFFFFF, false);
@@ -904,7 +1078,7 @@ public final class JourneyScreen extends AnimatedQuestScreen {
         pendingChapterEvent = "";
         if (navigationChapter >= 0) timelineX.to(timelineX.position());
         navigationChapter = -1;
-        dragging = draggingTabs = draggingScrollbar = draggingVerticalScrollbar
+        dragging = draggingTabs = draggingTimelineProgress = draggingScrollbar = draggingVerticalScrollbar
                 = closeHeld = appearanceHeld = moved = false;
         pressedQuest = "";
         pressedTab = -1;
@@ -920,14 +1094,18 @@ public final class JourneyScreen extends AnimatedQuestScreen {
                 .filter(slot -> Math.abs(wx - (slotX(slot) + (output ? CARD_WIDTH + 9 : -9))) < 9
                 && Math.abs(wy - anchorY(slot)) < 9).findFirst().orElse(null);
     }
-    private void saveConnection(QuestSlot target) {
-        if (target == null || target.chapter() != nodeChapter || target.quest().id().equals(wireFrom)) {
+    private void saveConnection(String target) {
+        boolean targetChapter = JourneyTimeline.chapterPoint(target);
+        var targetSlot = targetChapter ? null : slot(nodeChapter, target);
+        if (target == null || target.isBlank()
+                || JourneyTimeline.chapterPoint(wireFrom) && targetChapter
+                || target.equals(wireFrom) || !targetChapter && targetSlot == null) {
             wireFrom = "";
             return;
         }
         var value = chapters.get(nodeChapter);
         var connections = new ArrayList<>(effectiveConnections(nodeChapter));
-        var edge = new JourneyTimeline.Connection(wireFrom, target.quest().id());
+        var edge = new JourneyTimeline.Connection(wireFrom, target);
         if (!connections.contains(edge)) connections.add(edge);
         wireFrom = "";
         saveChapter(nodeChapter, memberIds(nodeChapter),
@@ -1002,7 +1180,7 @@ public final class JourneyScreen extends AnimatedQuestScreen {
             return true;
         }
         if (super.mouseClicked(x, y, button)) return true;
-        if (editing && pending != null) return true;
+        if (editing && (pending != null || historyPending != null)) return true;
         if (editing && button == 1 && (inContent(x, y) || inTabs(x, y))) {
             int tab = tabAt(x, y);
             if (tab >= 0 && tab < chapters.size()) activateChapter(tab);
@@ -1015,6 +1193,11 @@ public final class JourneyScreen extends AnimatedQuestScreen {
         if (atAppearance(x, y)) { appearanceHeld = true; return true; }
         if (atClose(x, y)) { closeHeld = true; return true; }
         dragX = x; dragY = y;
+        if (timelineProgressHit(x, y)) {
+            draggingTimelineProgress = true;
+            dragTimelineProgress(x);
+            return true;
+        }
         if (!chapters.isEmpty()) {
             if (atArrow(x, y, -1)) pressedArrow = -1;
             if (atArrow(x, y, 1)) pressedArrow = 1;
@@ -1037,18 +1220,29 @@ public final class JourneyScreen extends AnimatedQuestScreen {
         }
         if (!inContent(x, y)) return false;
         if (editing) {
+            if (!wireFrom.isBlank()) {
+                var target = portAt(x, y, false);
+                int markerChapter = chapterMarkerAt(x, y);
+                if (target != null) saveConnection(target.chapter() == nodeChapter
+                        ? target.quest().id() : "");
+                else if (markerChapter == nodeChapter) saveConnection(JourneyTimeline.CHAPTER_POINT);
+                else {
+                    String id = questAt(x, y);
+                    var task = slots.stream().filter(slot -> slot.quest().id().equals(id)
+                            && slot.chapter() == nodeChapter).findFirst().orElse(null);
+                    saveConnection(task == null ? "" : task.quest().id());
+                }
+                return true;
+            }
+            int markerChapter = chapterMarkerAt(x, y);
+            if (markerChapter >= 0 && canEditChapter(markerChapter)) {
+                nodeChapter = markerChapter;
+                wireFrom = JourneyTimeline.CHAPTER_POINT;
+                return true;
+            }
             var output = portAt(x, y, true);
             if (output != null && canEditChapter(output.chapter())) {
                 nodeChapter = output.chapter(); wireFrom = output.quest().id(); return true;
-            }
-            if (!wireFrom.isBlank()) {
-                var target = portAt(x, y, false);
-                if (target == null) {
-                    String id = questAt(x, y);
-                    target = slots.stream().filter(slot -> slot.quest().id().equals(id)).findFirst().orElse(null);
-                }
-                saveConnection(target);
-                return true;
             }
             String id = questAt(x, y);
             var slot = slots.stream().filter(value -> value.quest().id().equals(id)).findFirst().orElse(null);
@@ -1084,6 +1278,10 @@ public final class JourneyScreen extends AnimatedQuestScreen {
     @Override public boolean mouseDragged(double x, double y, int button, double dx, double dy) {
         if (button != 0 || inputBlocked()) return false;
         pointerX = x; pointerY = y;
+        if (draggingTimelineProgress) {
+            dragTimelineProgress(x);
+            return true;
+        }
         if (!wireFrom.isBlank()) return true;
         if (!nodeDrag.isBlank() && pending == null) {
             moved |= Math.hypot(x - dragX, y - dragY) > 4;
@@ -1115,9 +1313,16 @@ public final class JourneyScreen extends AnimatedQuestScreen {
         if (super.mouseReleased(x, y, button)) return true;
         if (button != 0) return false;
         if (inputBlocked()) { cancelPointer(); return true; }
+        if (draggingTimelineProgress) {
+            draggingTimelineProgress = false;
+            return true;
+        }
         if (!wireFrom.isBlank()) {
             var target = portAt(x, y, false);
-            if (target != null) saveConnection(target);
+            int markerChapter = chapterMarkerAt(x, y);
+            if (target != null && target.chapter() == nodeChapter) saveConnection(target.quest().id());
+            else if (markerChapter == nodeChapter) saveConnection(JourneyTimeline.CHAPTER_POINT);
+            else if (target != null) saveConnection("");
             return true;
         }
         if (!nodeDrag.isBlank()) {
@@ -1173,7 +1378,8 @@ public final class JourneyScreen extends AnimatedQuestScreen {
     }
     @Override public boolean mouseScrolled(double x, double y, double horizontal, double vertical) {
         if (inputBlocked()) return true;
-        if (dragging || draggingTabs || draggingScrollbar || draggingVerticalScrollbar) return true;
+        if (dragging || draggingTabs || draggingTimelineProgress || draggingScrollbar
+                || draggingVerticalScrollbar) return true;
         double amount = -(horizontal != 0 ? horizontal : vertical);
         if (inTabs(x, y)) { tabs.by(amount * 64); return true; }
         if (!inContent(x, y)) return false;

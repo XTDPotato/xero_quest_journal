@@ -239,6 +239,14 @@ public class JournalNavButton extends StyledButton {
 
     public static void drawIcon(GuiGraphics g, String name, int x, int y, int size, int color) {
         if (name == null || name.isBlank()) name = "other";
+        if (name.equals("forward") || name.equals("next")) {
+            g.pose().pushPose();
+            g.pose().translate(x + size, y, 0);
+            g.pose().scale(-1, 1, 1);
+            drawIcon(g, "back", 0, 0, size, color);
+            g.pose().popPose();
+            return;
+        }
         if (name.contains(":") || name.contains("/") || name.contains("\\")) {
             QuestIcons.render(g, name, x, y, size);
             return;

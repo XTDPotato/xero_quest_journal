@@ -65,7 +65,7 @@ public final class QuestBatchAuthoring {
                     object.add("quests", refs);
                     writes.put(safe(chapter.file()), GSON.toJson(object));
                 }
-                apply(writes, Set.of());
+                apply(author, ids.values().iterator().next(), "paste", writes, Set.of());
                 return new Result(Map.copyOf(ids), null);
             } catch (Exception exception) {
                 XeroQuestJournal.LOGGER.warn("Unable to paste quest batch", exception);
@@ -76,16 +76,16 @@ public final class QuestBatchAuthoring {
 
     public static Result delete(ServerPlayer author, Set<String> taskIds, Set<String> groupIds) {
         if (!allowed(author)) return failed("permission");
-        return deleteDefinitions(taskIds, groupIds, Set.of());
+        return deleteDefinitions(author, taskIds, groupIds, Set.of());
     }
 
     static Result deleteGenerated(net.minecraft.server.MinecraftServer server, Set<String> taskIds,
                                   Set<String> groupIds, Set<String> chapterIds) {
         if (server == null || !server.isSameThread()) return failed("permission");
-        return deleteDefinitions(taskIds, groupIds, chapterIds);
+        return deleteDefinitions(null, taskIds, groupIds, chapterIds);
     }
 
-    private static Result deleteDefinitions(Set<String> taskIds, Set<String> groupIds, Set<String> chapterIds) {
+    private static Result deleteDefinitions(ServerPlayer author, Set<String> taskIds, Set<String> groupIds, Set<String> chapterIds) {
         synchronized (QuestRepository.class) {
             try {
                 QuestRepository.reload();
@@ -140,7 +140,7 @@ public final class QuestBatchAuthoring {
                     }
                 }
                 if (deletes.isEmpty()) return failed("no_source");
-                apply(writes, deletes);
+                apply(author, removedTasks.stream().sorted().findFirst().orElse(""), "delete", writes, deletes);
                 return new Result(Map.of(), null);
             } catch (Exception exception) {
                 XeroQuestJournal.LOGGER.warn("Unable to delete quest batch", exception);
@@ -165,7 +165,8 @@ public final class QuestBatchAuthoring {
         }
         return resolved;
     }
-    private static void apply(Map<Path, String> writes, Set<Path> deletes) throws IOException {
+    private static void apply(ServerPlayer author, String id, String kind,
+                              Map<Path, String> writes, Set<Path> deletes) throws IOException {
         Map<Path, String> originals = new LinkedHashMap<>();
         Set<Path> affected = new LinkedHashSet<>(writes.keySet());
         affected.addAll(deletes);
@@ -187,6 +188,7 @@ public final class QuestBatchAuthoring {
             for (Path file : deletes) Files.delete(file);
             QuestRepository.reload();
             if (!QuestRepository.errors().isEmpty()) throw new IOException("Invalid batch; restoring definitions");
+            QuestAuthoringHistory.remember(author, id, kind, originals);
         } catch (Exception failure) {
             for (var entry : originals.entrySet()) {
                 if (entry.getValue() == null) Files.deleteIfExists(entry.getKey());

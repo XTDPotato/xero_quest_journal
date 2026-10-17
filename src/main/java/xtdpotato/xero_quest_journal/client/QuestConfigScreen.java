@@ -8,6 +8,7 @@ import java.util.function.IntConsumer;
 import net.minecraft.Util;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.options.controls.KeyBindsScreen;
@@ -66,7 +67,8 @@ public final class QuestConfigScreen extends AnimatedQuestScreen {
         }
         int count = switch (tab) {
             case "general" -> 5;
-            case "motion", "notifications" -> 3;
+            case "motion" -> canAuthor() ? 4 : 3;
+            case "notifications" -> 3;
             case "appearance" -> 4;
             case "tools" -> QuestReiShortcuts.available() ? 4 : 3;
             case "tasks" -> 3 + (ClientPreferences.get().fixedQuestContextMenuPosition ? 2 : 0);
@@ -93,6 +95,8 @@ public final class QuestConfigScreen extends AnimatedQuestScreen {
                         value -> config.popupAnimationMillis = value, "popup-duration");
                 action("animation.edit", "popup-animation-editor", () ->
                         minecraft.setScreen(new PopupAnimationEditorScreen(this)));
+                if (canAuthor()) action("mailbox_animation.edit", "mailbox-animation-editor", () ->
+                        minecraft.setScreen(new MailboxAnimationEditorScreen(this)));
             }
             case "notifications" -> {
                 number("task_toast_scale_label", config.taskToastScalePercent, 5, 10, 200,
@@ -216,14 +220,29 @@ public final class QuestConfigScreen extends AnimatedQuestScreen {
     }
     private void number(String key, int value, int step, int minimum, int maximum, IntConsumer update, String id) {
         var area = row(key);
+        int[] current = {value};
         body(new StyledButton(area.x(), area.y(), 32, 24, Component.literal("-"), ignored -> {
-            update.accept(Math.max(minimum, value - step));
+            update.accept(current[0] = Math.max(minimum, current[0] - step));
             saveLocal();
         }, styles, id + "-less")).setTooltip(Tooltip.create(text("decrease", text(key))));
-        body(new StyledButton(area.x() + 38, area.y(), area.width() - 76, 24,
-                Component.literal(Integer.toString(value)), ignored -> {}, styles, id + "-value")).active = false;
+        EditBox input = new EditBox(font, area.x() + 38, area.y() + 2, area.width() - 76, 20,
+                text(key));
+        input.setValue(Integer.toString(value));
+        input.setMaxLength(4);
+        input.setFilter(raw -> raw.isEmpty() || raw.matches("\\d{1,4}"));
+        input.setResponder(raw -> {
+            if (raw.isBlank()) return;
+            try {
+                int next = Math.clamp(Integer.parseInt(raw), minimum, maximum);
+                current[0] = next;
+                update.accept(next);
+                ClientPreferences.get().save();
+            } catch (NumberFormatException ignored) {
+            }
+        });
+        body(input);
         body(new StyledButton(area.x() + area.width() - 32, area.y(), 32, 24, Component.literal("+"), ignored -> {
-            update.accept(Math.min(maximum, value + step));
+            update.accept(current[0] = Math.min(maximum, current[0] + step));
             saveLocal();
         }, styles, id + "-more")).setTooltip(Tooltip.create(text("increase", text(key))));
     }

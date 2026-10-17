@@ -407,6 +407,25 @@ public final class ClientQuestProgress {
         return result;
     }
 
+    public static CompletableFuture<String> journeyHistory(boolean redo) {
+        if (Minecraft.getInstance().getConnection() == null)
+            return CompletableFuture.completedFuture("remote_unavailable");
+        if (pendingActions.size() >= 8) return CompletableFuture.completedFuture("busy");
+        long id = ++nextRequestId;
+        var result = new CompletableFuture<String>();
+        pendingActions.put(id, result);
+        deadlines.put(id, System.nanoTime() + 15_000_000_000L);
+        try {
+            PacketDistributor.sendToServer(new xtdpotato.xero_quest_journal.core.network.QuestJourneyNetwork.History(
+                    id, redo));
+        } catch (RuntimeException failure) {
+            pendingActions.remove(id);
+            deadlines.remove(id);
+            result.complete("remote_unavailable");
+        }
+        return result;
+    }
+
     public static CompletableFuture<String> reset(String id) {
         return sendAction(id, QuestNetwork.ActionPayload.RESET);
     }

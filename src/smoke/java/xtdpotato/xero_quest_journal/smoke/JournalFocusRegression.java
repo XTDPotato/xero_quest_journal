@@ -151,6 +151,12 @@ final class JournalFocusRegression {
 
     private static void serverChecks(ServerPlayer player) throws Exception {
         ActiveListRegression.fixtures();
+        require(xtdpotato.xero_quest_journal.core.QuestTypeStore.save(player,
+                        new QuestType("empty_regression", "Empty category", ""), false).isEmpty(),
+                "Empty category fixture failed");
+        require(QuestRuntime.activate(player, "active_list_claimed").equals("completed")
+                        && QuestRuntime.claim(player, "active_list_claimed").equals("claimed"),
+                "Claimed category fixture failed");
         var preferences = ClientPreferences.get();
         int originalDuration = preferences.popupAnimationMillis;
         preferences.popupAnimationMillis = 100;

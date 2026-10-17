@@ -44,6 +44,7 @@ public final class QuestNetwork {
     public static void register(RegisterPayloadHandlersEvent event) {
         // 10: unread task state and reward quality/background fields.
         var registrar = event.registrar("10");
+        AnecdoteNetwork.register(registrar);
         QuestControlNetwork.register(registrar);
         QuestUiThemeNetwork.register(registrar);
         QuestDailyNetwork.register(registrar);
@@ -97,6 +98,8 @@ public final class QuestNetwork {
         registrar.playToClient(MailboxNoticePayload.TYPE, MailboxNoticePayload.STREAM_CODEC,
                 (payload, context) -> QuestClientInbox.accept(payload));
         registrar.playToClient(ToastPayload.TYPE, ToastPayload.STREAM_CODEC,
+                (payload, context) -> QuestClientInbox.accept(payload));
+        registrar.playToClient(AnecdotePayload.TYPE, AnecdotePayload.STREAM_CODEC,
                 (payload, context) -> QuestClientInbox.accept(payload));
         registrar.playToClient(OpenScreenPayload.TYPE, OpenScreenPayload.STREAM_CODEC,
                 (payload, context) -> QuestClientInbox.accept(payload));
@@ -966,6 +969,56 @@ public final class QuestNetwork {
                     }
                 };
         @Override public Type<MailboxNoticePayload> type() { return TYPE; }
+    }
+
+    public record AnecdotePayload(double offsetX, double offsetY, double scale, String position)
+            implements CustomPacketPayload {
+        public AnecdotePayload() { this(0, 0, .7, "top"); }
+        public static final Type<AnecdotePayload> TYPE = new Type<>(
+                ResourceLocation.fromNamespaceAndPath(XeroQuestJournal.MOD_ID, "anecdote"));
+        public static final StreamCodec<RegistryFriendlyByteBuf, AnecdotePayload> STREAM_CODEC =
+                new StreamCodec<>() {
+                    @Override public AnecdotePayload decode(RegistryFriendlyByteBuf buffer) {
+                        return new AnecdotePayload(buffer.readDouble(), buffer.readDouble(),
+                                buffer.readDouble(), buffer.readUtf(64));
+                    }
+                    @Override public void encode(RegistryFriendlyByteBuf buffer, AnecdotePayload value) {
+                        buffer.writeDouble(value.offsetX());
+                        buffer.writeDouble(value.offsetY());
+                        buffer.writeDouble(value.scale());
+                        buffer.writeUtf(value.position(), 64);
+                    }
+                };
+
+        public AnecdotePayload {
+            if (!Double.isFinite(offsetX) || !Double.isFinite(offsetY)
+                    || Math.abs(offsetX) > 8192 || Math.abs(offsetY) > 8192)
+                throw new IllegalArgumentException("Anecdote position offsets must be finite and within 8192 pixels");
+            if (!Double.isFinite(scale) || scale < .1 || scale > 2)
+                throw new IllegalArgumentException("Anecdote scale must be between 0.1 and 2");
+            position = normalizePosition(position);
+        }
+
+        public static String normalizePosition(String value) {
+            if (value == null || value.isBlank()) return "top";
+            var anchors = new java.util.LinkedHashSet<String>();
+            for (String part : value.toLowerCase(java.util.Locale.ROOT).split(",")) {
+                String anchor = switch (part.strip()) {
+                    case "start" -> "left";
+                    case "end" -> "right";
+                    case "top", "bottom", "left", "right", "center" -> part.strip();
+                    default -> throw new IllegalArgumentException("Unknown anecdote anchor: " + part.strip());
+                };
+                anchors.add(anchor);
+            }
+            if (anchors.contains("top") && anchors.contains("bottom"))
+                throw new IllegalArgumentException("Choose top or bottom, not both");
+            if (anchors.contains("left") && anchors.contains("right"))
+                throw new IllegalArgumentException("Choose left/start or right/end, not both");
+            return String.join(",", anchors);
+        }
+
+        @Override public Type<AnecdotePayload> type() { return TYPE; }
     }
 
     public record ToastPayload(String content) implements CustomPacketPayload {

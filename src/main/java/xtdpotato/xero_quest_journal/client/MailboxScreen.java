@@ -74,6 +74,7 @@ public final class MailboxScreen extends AnimatedQuestScreen {
     private List<AbstractWidget> baseWidgets = List.of();
     private boolean helpScrollbar;
     private final UiCompositor rowCompositor = new UiCompositor();
+    private final UiCompositor detailCompositor = new UiCompositor();
     private UiMotion detailReveal = new UiMotion(false, System.nanoTime());
     private final java.util.Map<String, Integer> rowEntranceOrder = new java.util.LinkedHashMap<>();
     private long rowEntranceStart;
@@ -221,15 +222,8 @@ public final class MailboxScreen extends AnimatedQuestScreen {
             send.setTooltip(Tooltip.create(text("compose")));
             addRenderableWidget(send);
         }
-        if (authoringAllowed && !favoriteOnly) {
-            var edit = new MailboxActionButton(authorToolsLeft() + 30, 10, 24, 24, text("edit_animations"),
-                    ignored -> minecraft.setScreen(new MailboxAnimationEditorScreen(this)),
-                    styles, "mail-edit-animations", JournalNavButton.Kind.ICON, "edit", "edit");
-            edit.setTooltip(Tooltip.create(text("edit_animations")));
-            addRenderableWidget(edit);
-        }
         if (authoringAllowed) {
-            int toolX = favoriteOnly ? 24 : authorToolsLeft() + 60;
+            int toolX = favoriteOnly ? 24 : authorToolsLeft() + 30;
             var multiple = addRenderableWidget(new EditorIconButton(toolX, 10, text("multi_select"), () -> {
                 multiSelect = !multiSelect;
                 selectedMailIds.clear();
@@ -262,13 +256,15 @@ public final class MailboxScreen extends AnimatedQuestScreen {
         addRenderableWidget(help);
         }
 
+        int detailActionWidth = Math.min(112, Math.max(1, width - 24 - (split + 18) - 30));
+        int detailActionX = width - 24 - detailActionWidth;
         if (selected != null && selected.claimable()) {
-            JournalNavButton claim = action(split + 12, buttonY, Math.min(112, right - split - 172),
-                    "claim", "mail_claim", () -> runAction(selected.id(), QuestNetwork.MailboxActionPayload.CLAIM));
+            JournalNavButton claim = action(detailActionX, buttonY, detailActionWidth,
+                    "claim", "mail_claim_single", () -> runAction(selected.id(), QuestNetwork.MailboxActionPayload.CLAIM));
             claim.active = pending == null;
         }
         if (selected != null) {
-            MailFavoriteButton star = new MailFavoriteButton(right - 125, buttonY + 5, 14,
+            MailFavoriteButton star = new MailFavoriteButton(detailActionX - 22, buttonY + 5, 14,
                     selected.starred(),
                     ignored -> {
                         if (pending != null) return;
@@ -284,20 +280,22 @@ public final class MailboxScreen extends AnimatedQuestScreen {
             favoriteButton = star;
             if (!favoriteOnly) addRenderableWidget(star);
             favoriteMailId = selected.id();
-            JournalNavButton delete = favoriteOnly
-                    ? addRenderableWidget(new MailboxActionButton(right - 30, buttonY - 2, 26, 26, text("delete"),
-                    ignored -> {
-                        deleteId = selected.id();
-                        confirmDelete = true;
-                        init();
-                    }, styles, "mail-delete", JournalNavButton.Kind.ICON, "delete", "delete"))
-                    : action(right - 106, buttonY, 94,
-                    "delete", "delete", () -> {
-                        deleteId = selected.id();
-                        confirmDelete = true;
-                        init();
-                    });
-            delete.active = pending == null;
+            if (!selected.claimable()) {
+                JournalNavButton delete = favoriteOnly
+                        ? addRenderableWidget(new MailboxActionButton(right - 30, buttonY - 2, 26, 26, text("delete"),
+                        ignored -> {
+                            deleteId = selected.id();
+                            confirmDelete = true;
+                            init();
+                        }, styles, "mail-delete", JournalNavButton.Kind.ICON, "delete", "delete"))
+                        : action(detailActionX, buttonY, detailActionWidth,
+                        "delete", "delete", () -> {
+                            deleteId = selected.id();
+                            confirmDelete = true;
+                            init();
+                        });
+                delete.active = pending == null;
+            }
         }
 
         baseWidgets = children().stream().filter(AbstractWidget.class::isInstance).map(AbstractWidget.class::cast).toList();
@@ -660,8 +658,7 @@ public final class MailboxScreen extends AnimatedQuestScreen {
             MailDecor.centered(graphics, font, text("empty").getString(), split() / 2, height / 2, 1, 0xFFB9C3D1);
         }
         if (selected != null) {
-            renderDetails(graphics, selected, mouseX, mouseY);
-            renderDetailReveal(graphics);
+            renderFadingDetails(graphics, mouseX, mouseY);
         }
         if (maxRowScroll() > 0) {
             graphics.fill(split() - 5, listTop(), split() - 2, listBottom(), 0xFF383F50);
@@ -841,14 +838,18 @@ public final class MailboxScreen extends AnimatedQuestScreen {
         }
     }
 
-    private void renderDetailReveal(GuiGraphics graphics) {
-        if (detailReveal.settled()) return;
+    private void renderFadingDetails(GuiGraphics graphics, int mouseX, int mouseY) {
         detailReveal.advance(System.nanoTime(), popupAnimationMillis());
         Viewport detail = detailViewport();
-        int alpha = Math.round((1 - detailReveal.eased()) * 210);
-        if (alpha > 0) graphics.fill(detail.left(), detail.top(), width - 12,
-                selected != null && !visibleAttachments(selected).isEmpty() ? height - 44 : detail.bottom(),
-                alpha << 24 | 0x202A36);
+        if (detailReveal.settled()) {
+            detailCompositor.close();
+            renderDetails(graphics, selected, mouseX, mouseY);
+        } else {
+            detailCompositor.capture(graphics, () -> renderDetails(graphics, selected, mouseX, mouseY));
+            detailCompositor.centered(graphics, width, height, detail.left(), detail.top(), width - 12,
+                    !visibleAttachments(selected).isEmpty() ? height - 44 : detail.bottom(),
+                    1, detailReveal.eased());
+        }
     }
 
     private void revealDetails() {
@@ -914,7 +915,10 @@ public final class MailboxScreen extends AnimatedQuestScreen {
     private void inspectAttachment(int index) {
         if (selected == null || index < 0 || index >= visibleAttachments(selected).size()) return;
         MailboxRuntime.Attachment attachment = visibleAttachments(selected).get(index);
-        if (attachment.type().equals("item") && !attachment.item().isBlank())
+        if (attachment.type().equals("loot_choice")) {
+            minecraft.setScreen(LootTablePopupScreen.inspect(this,
+                    new QuestDefinition.Reward("loot_choice", attachment.item(), 1)));
+        } else if (attachment.type().equals("item") && !attachment.item().isBlank())
             minecraft.setScreen(new QuestRewardPopupScreen(this,
                     new QuestDefinition.Reward("item", attachment.item(), attachment.count(),
                             attachment.quality(), attachment.background())));
@@ -1301,6 +1305,7 @@ public final class MailboxScreen extends AnimatedQuestScreen {
 
     @Override
     public void removed() {
+        detailCompositor.close();
         rowCompositor.close();
         super.removed();
     }

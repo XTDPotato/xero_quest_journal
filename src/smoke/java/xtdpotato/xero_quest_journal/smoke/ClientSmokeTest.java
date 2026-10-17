@@ -88,6 +88,7 @@ public final class ClientSmokeTest {
     public static void tick(ClientTickEvent.Post event) {
         if ((!Boolean.getBoolean("xero.smokeTest") && !Boolean.getBoolean("xero.mailboxTest") && !Boolean.getBoolean("xero.mailReferenceTest")
                 && !Boolean.getBoolean("xero.authoringDocsTest")
+                && !Boolean.getBoolean("xero.anecdoteTest")
                 && !Boolean.getBoolean("xero.popupAnimationTest")
                 && !Boolean.getBoolean("xero.mailBodyEditorTest")
                 && !Boolean.getBoolean("xero.mailAdminTest")
@@ -129,7 +130,9 @@ public final class ClientSmokeTest {
             xtdpotato.xero_quest_journal.client.ClientEditMode.set(true);
         }
         try {
-            require(System.nanoTime() - START < 360_000_000_000L, "Client test timed out at stage " + stage);
+            long timeout = Boolean.getBoolean("xero.anecdoteTest")
+                    ? 90_000_000_000L : 360_000_000_000L;
+            require(System.nanoTime() - START < timeout, "Client test timed out at stage " + stage);
             if (game.getOverlay() != null || --waitTicks > 0) {
                 return;
             }
@@ -242,16 +245,16 @@ public final class ClientSmokeTest {
                 if (++lootEditorWait < 12) return;
                 require(game.getWindow().getWidth() >= 1600 && game.getWindow().getHeight() >= 900,
                         "Loot editor regression did not run at desktop size");
-                require(game.screen.children().stream().anyMatch(child ->
+                if (lootEditorWait == 12) require(game.screen.children().stream().anyMatch(child ->
                                 child instanceof net.minecraft.client.gui.components.AbstractWidget widget
                                         && widget instanceof xtdpotato.xero_quest_journal.client.StyledChoiceButton<?>
                                         && ((xtdpotato.xero_quest_journal.client.StyledChoiceButton<?>) widget)
                                         .styleId().equals("loot-entry-quality-0")),
                         "Loot item editor did not expose its quality selector");
-                capture(game, "loot-editor-desktop");
+                if (!LootDisplayRegression.tick(game)) return;
                 Files.createDirectories(OUTPUT);
                 Files.writeString(OUTPUT.resolve("loot-table-result.txt"),
-                        "PASS: 100-point slider redistribution, disabled entry preservation, deterministic remainder allocation, loot quality/background table round-trip and freeze, quality selector, and desktop-sized loot editor launch.\n");
+                        "PASS: weight redistribution, quality/background round-trip, legacy gift fallback, display icon save/reload, frozen choice icon, catalog cache, mailbox NBT and network round-trips, picker Apply/reset/undo/redo, desktop/compact non-overlap geometry, smooth scrolling, Chinese 1920x1080 editor/mail screenshots.\n");
                 Files.copy(OUTPUT.resolve("loot-table-result.txt"), OUTPUT.resolve("result.txt"),
                         java.nio.file.StandardCopyOption.REPLACE_EXISTING);
                 finished = true;
@@ -455,8 +458,10 @@ public final class ClientSmokeTest {
                     Files.writeString(OUTPUT.resolve("result.txt"),
                             "PASS: overview hover/press/release cancellation and sequential exit/navigation; "
                                     + "chapter background round-trip and rapid crossfade, reversible tab underlines, "
+                                    + "active-tab bottom progress bounds, half-size and half-opacity marker, "
                                     + "selected-tab no-op, tab/content swipes, frame-independent scrolling, "
                                     + "branch layout, reduced motion, compact scaling, task return and background editor; "
+                                    + "interactive condition cards, pinned reward footer and item-source inspection; "
                                     + "chapter/global icon and text offset editor, preview, picker, validation, "
                                     + "cancel/reset, persistence, inheritance and network round-trip; "
                                     + "continuous chapter crossing/reversal, vertical wheel/scrollbar limits, "
@@ -476,7 +481,9 @@ public final class ClientSmokeTest {
                             "PASS: inline coordinates, zoom keyboard steps, per-task canvas dimensions,\n"
                                     + "default 395x275, context canvas settings, preview-only pointer zoom,\n"
                                     + "middle pan/double-click reset, scrolling and coordinate round-trip,\n"
-                                    + "source undo/redo/format and resize.\n");
+                                    + (Boolean.getBoolean("xero.canvasHistoryOnly")
+                                    ? "saved canvas size undo/redo on the server; source/structure suites excluded.\n"
+                                    : "source undo/redo/format and resize.\n"));
                     Files.copy(OUTPUT.resolve("canvas-editor-result.txt"), OUTPUT.resolve("result.txt"),
                             java.nio.file.StandardCopyOption.REPLACE_EXISTING);
                     finished = true;
@@ -646,7 +653,10 @@ public final class ClientSmokeTest {
                             "PASS: All-scope task/group/chapter menus, ungrouped task creation,\n"
                             + "group/chapter destination selectors, chapter retained across template selection,\n"
                             + "icon/image/background/item pickers, draft preservation, validation,\n"
-                            + "resource search, small-window picker bounds, layout save/reopen.\n");
+                            + "resource search, small-window picker bounds, layout save/reopen;\n"
+                            + "saved task/reward/condition undo-redo, atomic batch/group deletion restore,\n"
+                            + "reference recovery, conflict protection, permissions, unchanged player progress,\n"
+                            + "journal toolbar/keyboard and history retained across screen reopening.\n");
                     finished = true;
                     game.stop();
                 }
@@ -732,6 +742,25 @@ public final class ClientSmokeTest {
                 if (GeneratedDeletionRegression.tick(game)) {
                     finished = true;
                     XeroQuestJournal.LOGGER.info("XERO_GENERATED_DELETION_PASS");
+                    game.stop();
+                }
+                return;
+            }
+            if (Boolean.getBoolean("xero.anecdoteTest") && stage >= 2) {
+                if (game.player == null || game.level == null) return;
+                if (AnecdoteRegression.tick(game)) {
+                    Files.createDirectories(OUTPUT);
+                    Files.writeString(OUTPUT.resolve("anecdote-result.txt"),
+                            "PASS: command/selector parsing and permission checks, queue payload codec,\n"
+                                    + "single-shot playback, serial queue including 24 identical requests, full fade-out gate,\n"
+                                    + "no idle replay, world/screen overlays, reduced motion, disconnect cleanup,\n"
+                                    + "1920x1080 and compact screenshots with transparent outer background;\n"
+                                    + "independent JSON entries, hidden/discovered state and NBT round-trip,\n"
+                                    + "multiple records per entry, press/release selection, outside-release cancellation,\n"
+                                    + "right-click author editor, recent completed sticker page and chronicle screenshot.\n");
+                    Files.copy(OUTPUT.resolve("anecdote-result.txt"), OUTPUT.resolve("result.txt"),
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    finished = true;
                     game.stop();
                 }
                 return;

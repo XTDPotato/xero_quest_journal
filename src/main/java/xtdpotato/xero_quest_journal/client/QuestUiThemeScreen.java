@@ -53,7 +53,8 @@ public final class QuestUiThemeScreen extends AnimatedQuestScreen {
         int footer = height - 45;
         addRenderableWidget(new EditorIconButton(x, footer, Component.translatable("gui.back"),
                 () -> { if (page > 0) { page--; init(); } }, styles, "theme-prev", "back"));
-        addRenderableWidget(new EditorIconButton(x + 27, footer, Component.translatable("gui.next"),
+        addRenderableWidget(new EditorIconButton(x + 27, footer,
+                Component.translatable("screen.xero_quest_journal.theme.next"),
                 () -> { if (page + 1 < pageCount()) { page++; init(); } }, styles, "theme-next", "forward"));
         addRenderableWidget(new StyledButton(x + w - 158, footer, 75, 22,
                 Component.translatable("screen.xero_quest_journal.theme.save"),

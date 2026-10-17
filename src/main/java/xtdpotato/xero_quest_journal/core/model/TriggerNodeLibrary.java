@@ -7,13 +7,15 @@ public final class TriggerNodeLibrary {
     public static final List<String> CATEGORIES = List.of("chapter_event", "player_event", "player_value", "world_event",
             "world_value", "control_event", "control_value", "complete", "advance_step", "activate", "unlock", "lock",
             "set_property",
-            "reset_property", "set_task_property", "set_theme", "set_overview_background", "set_hot_event_background", "reward", "condition", "script_condition",
+            "reset_property", "set_task_property", "discover_anecdote", "complete_anecdote",
+            "set_theme", "set_overview_background", "set_hot_event_background", "reward", "condition", "script_condition",
             "kubejs_call", "kubejs_script", "delay", "set_context",
             "variable", "set_variable", "calculate_variable", "command", "mail_send", "mail_check", "mail_delete", "mail_set_property",
             "mail_lock_task", "mail_unlock_task",
             "locate_structure", "locate_biome", "teleport", "enter_structure", "end");
     private static final Map<String, List<String>> GROUPS = Map.of(
-            "task_actions", List.of("complete", "advance_step", "activate", "unlock", "lock", "set_task_property",
+            "task_actions", List.of("complete", "advance_step", "activate", "unlock", "lock",
+                    "set_task_property", "discover_anecdote", "complete_anecdote",
                     "command"),
             "control_properties", List.of("set_property", "reset_property"),
             "logic", List.of("condition", "script_condition", "variable", "set_variable", "calculate_variable"),
@@ -79,6 +81,8 @@ public final class TriggerNodeLibrary {
             case "script_condition" -> Map.of("mode", "script", "script", "eventType === 'jump'");
             case "set_property" -> Map.of("property", "visibility", "value", "visible");
             case "set_task_property" -> Map.of("property", "hidden", "value", "true");
+            case "discover_anecdote" -> Map.of("target", "");
+            case "complete_anecdote" -> Map.of("entry", "", "record", "");
             case "reset_property" -> Map.of("property", "visibility", "all", "false");
             case "set_theme" -> Map.of("key", "accent", "value", "#F2D29A", "once", "true");
             case "set_overview_background" -> Map.of("source", "", "scope", "player", "once", "true");

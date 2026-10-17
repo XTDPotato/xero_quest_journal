@@ -2,7 +2,7 @@
 
 [项目首页](../README.md) · [使用指南](guide.md) · [JavaScript](javascript.md) · [判断节点](trigger-conditions.md)
 
-本模组注册三个根命令：`/xero_quest`、`/xero_toast`、`/xero_structure`。
+本模组注册四个根命令：`/xero_quest`、`/xero_toast`、`/xero_structure`、`/xero_anecdote`。
 聊天中包含 `/`，服务器控制台通常省略 `/`。
 本文适用于已经完成的 1.20.1 Forge/Fabric 和 1.21.1 NeoForge/Fabric 目标；
 不代表 26.x 已经可运行。
@@ -51,6 +51,7 @@
 ```text
 /xero_quest open journal [targets]
 /xero_quest open overview [targets]
+/xero_quest open anecdotes [targets]
 /xero_quest open mailbox [targets]
 /xero_quest open settings [targets]
 /xero_quest open templates [targets]
@@ -63,6 +64,7 @@
 
 ```text
 /xero_quest open task welcome
+/xero_quest open anecdotes
 /xero_quest open mailbox @a
 /xero_quest open settings @s
 ```
@@ -309,8 +311,8 @@
 
 ## 可执行命令树
 
-下面的 64 条共享叶子路径由 NeoForge/Fabric 实际游戏内 Brigadier 命令树导出，
-包含可选参数对应的各个实际分支。Forge 1.20.1 共 65 条，另有上述 `/xero_quest status`。
+下面的 71 条共享叶子路径由 NeoForge/Fabric 实际游戏内 Brigadier 命令树导出，
+包含可选参数对应的各个实际分支。Forge 1.20.1 另有专用 `/xero_quest status`。
 这份树与上面的用途、权限和例子配合使用。
 
 <!-- COMMAND_ROUTES_START -->
@@ -353,6 +355,8 @@
 | `/xero_quest mail star <targets> <id>` | 2 |
 | `/xero_quest open journal` | 0 |
 | `/xero_quest open journal <targets>` | 2 |
+| `/xero_quest open anecdotes` | 0 |
+| `/xero_quest open anecdotes <targets>` | 2 |
 | `/xero_quest open mailbox` | 0 |
 | `/xero_quest open mailbox <targets>` | 2 |
 | `/xero_quest open overview` | 0 |
@@ -382,7 +386,53 @@
 | `/xero_structure reset` | 0 |
 | `/xero_structure save` | 2 |
 | `/xero_toast <targets> <content>` | 2 |
+| `/xero_anecdote <targets>` | 2 |
+| `/xero_anecdote <targets> <x>` | 2 |
+| `/xero_anecdote <targets> <x> <y>` | 2 |
+| `/xero_anecdote <targets> <x> <y> <scale>` | 2 |
+| `/xero_anecdote <targets> <x> <y> <scale> <position>` | 2 |
 <!-- COMMAND_ROUTES_END -->
+
+## 逸闻记录弹窗
+
+`/xero_quest open anecdotes` 打开逸闻纪事双页书册。左侧卡片目录和右侧记录均支持
+平滑滚动；左键必须在同一项目内释放才会选中，右键可在作者模式进入条目/记录编辑器。
+条目定义独立存放在服务器 `config/xero_quest/anecdotes/<id>.json`，每条记录可以配置
+完成贴纸图。任务图节点 `discover_anecdote` 可解锁条目，`complete_anecdote` 可登记
+某条记录完成；完成记录不会从逸闻册或其详情列表消失。右上角奖励页按完成时间倒序
+展示贴纸；未读贴纸依次缩小进入，动画播放完毕后才标记已阅。完成状态、时间戳和贴纸
+未读状态写入世界任务进度存档。
+
+```text
+/xero_anecdote <targets>
+/xero_anecdote @s
+/xero_anecdote @a
+/xero_anecdote @s 16 -8 0.7 top,left
+/xero_anecdote @a 0 0 1.1 bottom,right
+/xero_anecdote @s 0 0 0.7 center
+/execute as 玩家名 run xero_anecdote @s
+```
+
+要求权限等级 2，可由玩家、命令方块、函数或服务器控制台执行。`@s` 要求命令源是玩家；
+控制台使用玩家名或 `@a`。返回值为收到通知的在线玩家数量。
+参数按 `x y scale position` 顺序提供；后续参数需要前面的参数占位。X/Y 是锚点之外的屏幕像素偏移，
+缩放范围为 `0.1`–`2`。默认 `x=0`、`y=0`、`scale=0.7`、`position=top`。
+
+位置可以用逗号组合：`top` / `bottom` 选择纵向锚点，`left` / `start` 与 `right` / `end`
+选择横向锚点；`center` 是任一未指定轴的居中锚点。因此 `top,center` 表示顶部居中，
+`left,center` 表示左侧垂直居中，`center` 则表示屏幕中心。没有指定横向锚点时默认居中，
+没有指定纵向锚点时也默认居中。`top,bottom` 和 `left,right` 属于冲突组合，会被拒绝。
+默认顶部锚点距屏幕上边 4px，横幅宽度按屏幕自适应。
+
+显示透明书册徽章、金橙色半透明横幅和“逸闻已记录在册”。每次执行只播放一次，
+文字会随整条通知缩放；整体默认缩放为 70%，标题不超过旧版尺寸，且会按横幅宽度自动适配。
+完整一轮约 3.2 秒，包含淡入、轻微缩放、光点扫过与淡出；不打开界面，不拦截操作，
+不叠加整屏黑色背景。连续执行按接收顺序排队，上一轮完全淡出后才开始下一轮，
+相同命令不会被合并。退出服务器清空待播放通知，重新连接不会重播。
+开启“减少动态效果”时关闭位移、缩放和光点，保留淡入淡出。
+中文及英文显示跟随客户端语言，可通过资源包替换
+`screen.xero_quest_journal.anecdote.recorded` 和
+`assets/xero_quest_journal/textures/gui/anecdote_emblem.png`。
 
 ## 实现依据
 

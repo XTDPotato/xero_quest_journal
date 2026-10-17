@@ -112,6 +112,7 @@ public final class QuestRepository {
 
     public static synchronized void reload() {
         QuestLootStore.reload();
+        AnecdoteStore.refresh();
         QuestVariableStore.refresh();
         xtdpotato.xero_quest_journal.core.QuestTemplateStore.refresh();
         xtdpotato.xero_quest_journal.core.QuestTypeStore.refresh();
@@ -253,6 +254,10 @@ public final class QuestRepository {
     }
 
     public static synchronized void templatesChanged() {
+        revision++;
+    }
+
+    public static synchronized void lootPresentationChanged() {
         revision++;
     }
 

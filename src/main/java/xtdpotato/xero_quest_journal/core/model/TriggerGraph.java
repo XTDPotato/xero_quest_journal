@@ -13,7 +13,7 @@ public record TriggerGraph(List<Node> nodes, List<Edge> edges) {
             "chapter_switch_after", "chapter_switch_before");
     public static final List<String> CONTROL_EVENTS = List.of("click", "hover", "press", "release", "hold");
     public static final List<String> ACTIONS = List.of("complete", "advance_step", "activate", "unlock", "lock",
-            "set_task_property", "command",
+            "set_task_property", "discover_anecdote", "complete_anecdote", "command",
             "set_property", "reset_property",
             "set_theme", "set_overview_background", "set_hot_event_background", "reward", "kubejs_call", "kubejs_script", "set_variable",
             "set_context", "end", "context");
@@ -36,7 +36,8 @@ public record TriggerGraph(List<Node> nodes, List<Edge> edges) {
                     || !List.of("event", "js", "variable", "context", "complete", "advance_step", "activate",
                     "unlock", "lock", "reset_property",
                     "set_theme", "set_overview_background", "set_hot_event_background", "reward", "kubejs_call", "kubejs_script", "set_property",
-                    "set_task_property", "set_variable", "calculate_variable", "command", "end",
+                    "set_task_property", "discover_anecdote", "complete_anecdote",
+                    "set_variable", "calculate_variable", "command", "end",
                     "set_context", "delay",
                     "mail_send", "mail_check", "mail_delete", "mail_set_property", "mail_lock_task", "mail_unlock_task",
                     "locate_structure", "locate_biome", "teleport", "enter_structure").contains(type))
@@ -69,6 +70,12 @@ public record TriggerGraph(List<Node> nodes, List<Edge> edges) {
                         || data.getOrDefault("target", "").length() > 256)
                     throw new IllegalArgumentException("Invalid task property");
             }
+            if (type.equals("discover_anecdote")
+                    && data.getOrDefault("target", "").length() > 64)
+                throw new IllegalArgumentException("Invalid anecdote target");
+            if (type.equals("complete_anecdote") && (data.getOrDefault("entry", "").length() > 64
+                    || data.getOrDefault("record", "").length() > 64))
+                throw new IllegalArgumentException("Invalid anecdote record target");
             if (type.equals("command")) {
                 String command = data.getOrDefault("command", "");
                 if (command.length() > 4096 || command.indexOf('\n') >= 0

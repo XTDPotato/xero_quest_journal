@@ -54,7 +54,10 @@ final class QuestPresentationClient {
         var removed = layout.elements().values().stream().filter(e -> e.quest().equals(quest.id()))
                 .map(LayoutEditorState.Element::id).toList();
         removed.forEach(id -> { layout.elements().remove(id); layout.positions().remove(id); layout.parents().remove(id); });
-        if (!presentation.authored()) return;
+        if (!presentation.authored()) {
+            layout.setTaskCanvas(quest.id(), LayoutEditorState.DEFAULT_TASK_WIDTH, LayoutEditorState.DEFAULT_TASK_HEIGHT);
+            return;
+        }
         layout.setTaskCanvas(quest.id(), presentation.width(), presentation.height());
         for (var control : presentation.controls()) {
             var properties = new LinkedHashMap<>(control.properties());

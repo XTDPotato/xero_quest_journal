@@ -344,7 +344,7 @@ final class AuthoringDocumentationRegression {
         var gson = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
         var routes = new TreeMap<String, Integer>();
         var dispatcher = player.server.getCommands().getDispatcher();
-        for (String name : List.of("xero_quest", "xero_toast", "xero_structure")) {
+        for (String name : List.of("xero_quest", "xero_toast", "xero_structure", "xero_anecdote")) {
             var root = dispatcher.getRoot().getChild(name);
             require(root != null, "Missing command root " + name);
             for (int permission : new int[]{0, 2, 4})

@@ -11,6 +11,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import org.lwjgl.glfw.GLFW;
 import xtdpotato.xero_quest_journal.core.io.QuestAuthoring;
+import xtdpotato.xero_quest_journal.core.io.QuestAuthoringHistory;
 import xtdpotato.xero_quest_journal.core.io.QuestRepository;
 import xtdpotato.xero_quest_journal.core.io.QuestClipboard;
 import xtdpotato.xero_quest_journal.core.io.QuestBatchAuthoring;
@@ -57,6 +58,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
     private String revealTaskRow = "";
     private String revealGroupRow = "";
     private EditBox taskSearch;
+    private boolean searchableTasks;
     private String searchQuery = "";
     private boolean searchDirty;
     private final JournalSearch journalSearch = new JournalSearch();
@@ -130,6 +132,9 @@ public final class QuestScreen extends AnimatedQuestScreen {
     private final List<StyledButton> menu = new ArrayList<>();
     private final Deque<String> undo = new ArrayDeque<>();
     private final Deque<String> redo = new ArrayDeque<>();
+    private CompletableFuture<QuestAuthoringHistory.Result> historyPending;
+    private long historyRevision;
+    private boolean historyRedo;
     private String menuTarget;
     private String dragTarget;
     private double dragX;
@@ -215,6 +220,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
     private boolean hotEventPropertyOnly;
     private final UiMotion overviewFeatureHover = new UiMotion(false, System.nanoTime());
     private UiMotion detailReveal = new UiMotion(false, System.nanoTime());
+    private final UiCompositor detailCompositor = new UiCompositor();
     private QuestTemplate previewTemplate;
     private QuestDefinition previewQuest;
     private Viewport previewViewport;
@@ -610,6 +616,16 @@ public final class QuestScreen extends AnimatedQuestScreen {
             // tasks keep "track" at the far right with the action button beside it when there is room.
             register("system:track", track);
         }
+        if (!editMode && !overviewMode && selected != null && JourneyScreen.containsQuest(selected.id())) {
+            int actionX = width - 136 - (dualFooter() ? 128 : 0);
+            var journey = new MailboxActionButton(actionX - 128, height - 34, 120, 24,
+                    text("journey.open"), ignored -> minecraft.setScreen(new JourneyScreen(this, selected.id())),
+                    styles, "open-journey", JournalNavButton.Kind.ACTION, "guide", "claim_all")
+                    .compactContent();
+            journey.setTooltip(Tooltip.create(text("journey.open")));
+            journey.active = actionPending == null && !editMode;
+            register("system:open-journey", journey);
+        }
         if (!editMode && !overviewMode && selected != null && selectedView != null && selectedView.status().equals("active")
                 && manualCondition(QuestText.activeConditions(selected))) {
             StyledButton complete = new MailboxActionButton(width - 136 - (dualFooter() ? 128 : 0), height - 34, 120, 24,
@@ -640,8 +656,21 @@ public final class QuestScreen extends AnimatedQuestScreen {
         if (editMode && (!movingTask.isBlank() || !movingTab.isBlank())) {
             initOrderControls();
         } else if (editMode) {
-            action("undo", "", "undo", 16, height - 28, 24, () -> restoreHistory(undo, redo)).active = !undo.isEmpty();
-            action("redo", "", "redo", 44, height - 28, 24, () -> restoreHistory(redo, undo)).active = !redo.isEmpty();
+            var history = authoringHistory();
+            historyRevision = history.revision();
+            var undoButton = action("undo", "", "undo", 16, height - 28, 24, () -> undoAuthoring(false));
+            var redoButton = action("redo", "", "redo", 44, height - 28, 24, () -> undoAuthoring(true));
+            boolean local = systemLayout || !canAuthor();
+            boolean available = historyPending == null && pending == null && batchPending == null
+                    && orderPending == null && templatePending == null;
+            undoButton.active = available
+                    && (local ? !undo.isEmpty() : history.undoCount() > 0 || presentationWriter.busy());
+            redoButton.active = available
+                    && (local ? !redo.isEmpty() : history.redoCount() > 0);
+            if (!local) {
+                undoButton.setTooltip(Tooltip.create(historyTooltip(false, history)));
+                redoButton.setTooltip(Tooltip.create(historyTooltip(true, history)));
+            }
             action("hierarchy", "", hierarchyOpen ? "hierarchy.hide" : "hierarchy.show",
                     72, height - 28, 24, () -> {
                 hierarchyOpen = !hierarchyOpen;
@@ -754,7 +783,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
         Set<String> chapterTasks = chapterId.isEmpty() ? Set.of() : chapters.stream()
                 .filter(chapter -> chapter.id().equals(chapterId)).findFirst()
                 .map(chapter -> Set.copyOf(chapter.quests())).orElse(Set.of());
-        List<QuestDefinition> baseQuests = allTasks.stream()
+        List<QuestDefinition> scopedQuests = allTasks.stream()
                 .filter(quest -> editMode || !lockedGeneratedTask(quest))
                 .filter(quest -> editMode || category.equals("active") || category.equals("completed")
                         || ClientQuestProgress.view(quest.id()) == null
@@ -767,6 +796,8 @@ public final class QuestScreen extends AnimatedQuestScreen {
                 .filter(quest -> !chapterId.isEmpty() || groupId.isEmpty()
                         || ClientQuestDefinitions.groupOf(quest.id()).equals(groupId))
                 .filter(quest -> chapterId.isEmpty() || chapterTasks.contains(quest.id()))
+                .toList();
+        List<QuestDefinition> baseQuests = scopedQuests.stream()
                 .filter(quest -> {
                     var filters = ClientPreferences.get().questSearchFilters;
                     Set<String> groupsForFilter = QuestSearchFilters.selected(filters, "group");
@@ -776,6 +807,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
                             && QuestSearchFilters.matchesStatus(quest, filters);
                 })
                 .toList();
+        searchableTasks = !baseQuests.isEmpty();
         if (searchQuery.isBlank()) {
             quests = baseQuests;
         } else {
@@ -1040,6 +1072,8 @@ public final class QuestScreen extends AnimatedQuestScreen {
     }
 
     private void initTaskSearch() {
+        taskSearch = null;
+        if (!editMode && !searchableTasks) return;
         int y = searchY();
         int width = Math.max(80, listWidth - (overviewMode && editMode ? 26 : 0));
         int settingsX = listLeft() + width - 22;
@@ -1384,6 +1418,11 @@ public final class QuestScreen extends AnimatedQuestScreen {
         if (Objects.equals(category, value)) return;
         initialTaskResolved = true;
         selected = null;
+        selectedId = "";
+        selectedTaskIds.clear();
+        selectedLayoutIds.clear();
+        selectedLayoutId = null;
+        detailScroll = detailTargetScroll = 0;
         revealTaskRow = "";
         revealSelectedPage = false;
         category = value;
@@ -1635,7 +1674,8 @@ public final class QuestScreen extends AnimatedQuestScreen {
                 new OverviewEntry("main", "overview.category.travel", "guide"),
                 new OverviewEntry("legendary", "overview.category.legendary", "minecraft:totem_of_undying"),
                 new OverviewEntry("hot_events", "overview.category.hot_events", "recommended"),
-                new OverviewEntry("world", "overview.category.world", "other"));
+                new OverviewEntry("world", "overview.category.world", "other"),
+                new OverviewEntry("anecdotes", "overview.category.anecdotes", "guide"));
         for (int index = 0; index < entries.size(); index++) {
             OverviewEntry entry = entries.get(index);
             JournalNavButton row = new OverviewCategoryCard(rowLeft, rowTop + index * (rowHeight + rowGap),
@@ -1644,6 +1684,8 @@ public final class QuestScreen extends AnimatedQuestScreen {
                         if (entry.id().equals("main")) closeTo(new JourneyScreen(overviewJournal()));
                         else if (entry.id().equals("hot_events")) closeTo(new HotEventsScreen(this));
                         else if (entry.id().equals("legendary")) closeTo(new LegendaryScreen(this));
+                        else if (entry.id().equals("anecdotes"))
+                            closeTo(new AnecdoteScreen(this));
                         else openOverviewCategory(entry.id());
                     }, styles, "overview-" + entry.id(), entry.glyph());
             row.setLimitedRewardBadge(hasLimitedRewardForOverview(entry.id()));
@@ -2354,7 +2396,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
         changed |= addBuiltIn("icon", "quest_icon", Math.max(0, layout.canvasWidth() - 28), 24, 16, 16,
                 Map.of("layout_width", "16", "layout_height", "16", "visibility", "gone"));
         if (changed) {
-            saveLayout();
+            saveLayout(false);
         }
     }
 
@@ -2403,7 +2445,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
                     element.kind(), element.value(), element.width(), element.height(), attributes));
             changed = true;
         }
-        if (changed) saveLayout();
+        if (changed) saveLayout(false);
     }
 
     private String builtInId(String suffix) {
@@ -4849,6 +4891,24 @@ public final class QuestScreen extends AnimatedQuestScreen {
     @Override
     public void tick() {
         updateActionMessageTimeout();
+        if (historyPending != null) {
+            if (!historyPending.isDone()) return;
+            try {
+                var result = historyPending.join();
+                if (result.successful()) {
+                    if (ClientQuestDefinitions.find(result.id()) != null) selectedId = result.id();
+                    revealSelectedPage = true;
+                    selectedLayoutIds.clear(); selectedLayoutId = null;
+                    selectedTaskIds.clear(); selectedGroupIds.clear();
+                    undo.clear(); redo.clear();
+                    error = null;
+                    actionMessage = "history_" + (historyRedo ? "redone" : "undone");
+                } else error = "history.error." + result.error();
+            } catch (RuntimeException failure) { error = "history.error.save"; }
+            historyPending = null;
+            init();
+            return;
+        }
         if (orderPending != null && orderPending.isDone()) {
             try {
                 String result = orderPending.join();
@@ -5024,6 +5084,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
         } else if (form == null && !moving && !listDragCandidate && !listScrollbarDragging && menu.isEmpty()
                 && batchPending == null && !(overviewMode && overviewCardInteracting())
                 && (revision != ClientQuestDefinitions.revision()
+                || editMode && historyRevision != authoringHistory().revision()
                 || progressRevision != ClientQuestProgress.listRevision())) {
             init();
         }
@@ -5130,27 +5191,10 @@ public final class QuestScreen extends AnimatedQuestScreen {
                     listBottom() + 10, 0xFFCCD5DE, false);
         }
         int contentTop = detailsTop();
-        g.fill(detailsLeft, contentTop, width - 16, canvasBottom(),
-                themeColor("panel", editMode ? 0xFF292E36 : 0x00292E36));
         if (!editMode) MailDecor.divider(g, 16, width - 16,
                 height - (stackedFocusControl() ? 68 : 42), 0x408FA5AA);
         if (editMode) renderGrid(g);
-        if (selected != null) {
-            if (!hasBuiltInElements()) {
-                g.enableScissor(detailsLeft, contentTop, width - 16, detailContentBottom());
-                JournalDetailRenderer.renderBody(g, font, selected, detailsLeft, contentTop, width - 14,
-                        (int) Math.floor(detailScroll));
-                g.disableScissor();
-            }
-        } else {
-            renderEmptyJournal(g, contentTop);
-        }
-        renderElements(g, mouseX, mouseY);
-        if (selected != null && rewardFooterHeight() > 0) {
-            JournalDetailRenderer.renderFooter(g, font, selected, displayedRewards(), detailsLeft,
-                    detailContentBottom(), width - 14, mouseX, mouseY, controls.containsKey("system:daily-bonus"));
-        }
-        renderDetailReveal(g);
+        renderTaskDetails(g, mouseX, mouseY);
         if (editMode) {
             g.drawString(font, font.plainSubstrByWidth((actionMessage == null
                             ? text(systemLayout ? "system_layout" : "edit_mode") : actionText(actionMessage)).getString(),
@@ -5218,12 +5262,34 @@ public final class QuestScreen extends AnimatedQuestScreen {
                 StatusToastRenderer.lifetimeProgress(actionMessageStartedAt, 3000));
     }
 
-    private void renderDetailReveal(GuiGraphics graphics) {
-        if (detailReveal.settled()) return;
+    private void renderTaskDetails(GuiGraphics graphics, int mouseX, int mouseY) {
         detailReveal.advance(System.nanoTime(), popupAnimationMillis());
-        int alpha = Math.round((1 - detailReveal.eased()) * 210);
-        if (alpha > 0) graphics.fill(detailsLeft, detailsTop(), width - 16, canvasBottom(),
-                alpha << 24 | 0x202A36);
+        Runnable draw = () -> {
+            graphics.fill(detailsLeft, detailsTop(), width - 16, canvasBottom(),
+                    themeColor("panel", editMode ? 0xFF292E36 : 0x00292E36));
+            if (selected == null) {
+                renderEmptyJournal(graphics, detailsTop());
+            } else if (!hasBuiltInElements()) {
+                graphics.enableScissor(detailsLeft, detailsTop(), width - 16, detailContentBottom());
+                JournalDetailRenderer.renderBody(graphics, font, selected, detailsLeft, detailsTop(), width - 14,
+                        (int) Math.floor(detailScroll));
+                graphics.disableScissor();
+            }
+            renderElements(graphics, mouseX, mouseY);
+            if (selected != null && rewardFooterHeight() > 0) {
+                JournalDetailRenderer.renderFooter(graphics, font, selected, displayedRewards(), detailsLeft,
+                        detailContentBottom(), width - 14, mouseX, mouseY, controls.containsKey("system:daily-bonus"));
+            }
+        };
+        if (editMode || selected == null || detailReveal.settled()) {
+            detailCompositor.close();
+            draw.run();
+        } else {
+            // Fade the complete content surface; empty pixels retain the world background.
+            detailCompositor.capture(graphics, draw);
+            detailCompositor.centered(graphics, width, height, detailsLeft, detailsTop(),
+                    width - 14, canvasBottom(), 1, detailReveal.eased());
+        }
     }
 
     private void revealDetails() {
@@ -7076,6 +7142,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
 
     @Override
     public boolean mouseClicked(double x, double y, int button) {
+        if (historyPending != null) return true;
         clearFrameElements();
         if (inputBlocked()) return true;
         if (button == 1 && (!movingTask.isBlank() || !movingTab.isBlank())
@@ -7172,7 +7239,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
             var hit = JournalDetailRenderer.cardAt(font, selected, displayedRewards(), detailsLeft,
                     detailContentBottom(), width - 14, x, y);
             if (hit != null) {
-                minecraft.setScreen(new QuestRewardPopupScreen(this, hit.reward()));
+                minecraft.setScreen(LootTablePopupScreen.inspect(this, hit.reward()));
                 return true;
             }
         }
@@ -7226,7 +7293,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
             int rewardIndex = rewardIndexAt(layout.elements().get(target), x, y);
             List<QuestDefinition.Reward> rewards = displayedRewards();
             if (rewardIndex >= 0 && rewardIndex < rewards.size()) {
-                minecraft.setScreen(new QuestRewardPopupScreen(this, rewards.get(rewardIndex)));
+                minecraft.setScreen(LootTablePopupScreen.inspect(this, rewards.get(rewardIndex)));
                 return true;
             }
         }
@@ -7426,6 +7493,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
 
     @Override
     public boolean mouseDragged(double x, double y, int button, double dx, double dy) {
+        if (historyPending != null) return true;
         if (dragChoicePopup(x, y, button, dx, dy)) return true;
         if (button == 0 && pressedStructurePreviewId != null) {
             if (Math.abs(x - structurePreviewPressX) >= 4 || Math.abs(y - structurePreviewPressY) >= 4)
@@ -7801,11 +7869,49 @@ public final class QuestScreen extends AnimatedQuestScreen {
         }
     }
 
+    private QuestAuthoringHistory.State authoringHistory() {
+        return QuestAuthoringHistory.state(minecraft == null || minecraft.player == null
+                || minecraft.getSingleplayerServer() == null ? null
+                : minecraft.getSingleplayerServer().getPlayerList().getPlayer(minecraft.player.getUUID()));
+    }
+
+    private Component historyTooltip(boolean redoAction, QuestAuthoringHistory.State state) {
+        String kind = redoAction ? state.redoKind() : state.undoKind();
+        return Component.translatable("screen.xero_quest_journal.history." + (redoAction ? "redo" : "undo"),
+                Component.translatable("screen.xero_quest_journal.history.kind." + (kind.isEmpty() ? "none" : kind)),
+                redoAction ? state.redoCount() : state.undoCount());
+    }
+
+    private void undoAuthoring(boolean redoAction) {
+        if (historyPending != null || pending != null || batchPending != null || orderPending != null
+                || templatePending != null || form != null) return;
+        if (systemLayout || !canAuthor()) {
+            restoreHistory(redoAction ? redo : undo, redoAction ? undo : redo);
+            return;
+        }
+        if (presentationWriter.busy()) {
+            afterPublication = () -> undoAuthoring(redoAction);
+            return;
+        }
+        var server = minecraft.getSingleplayerServer();
+        UUID player = minecraft.player.getUUID();
+        historyRedo = redoAction;
+        historyPending = CompletableFuture.supplyAsync(() -> redoAction
+                ? QuestAuthoringHistory.redo(server.getPlayerList().getPlayer(player))
+                : QuestAuthoringHistory.undo(server.getPlayerList().getPlayer(player)), server);
+        init();
+    }
+
     private void saveLayout() {
+        saveLayout(true);
+    }
+
+    private void saveLayout(boolean publish) {
         clearFrameElements();
         if (!LayoutStore.save("journal", layout)) {
             error = "create.error.save";
         }
+        if (!publish) return;
         publishTemplateChanges();
         if (editMode && canAuthor() && selected != null && pending == null) {
             try { presentationWriter.queue(selected.id(), layout); }
@@ -7985,6 +8091,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
 
     @Override
     public boolean keyPressed(int key, int scan, int modifiers) {
+        if (historyPending != null) return true;
         if (inputBlocked()) return true;
         if (key == GLFW.GLFW_KEY_ESCAPE && taskReorderDragging) {
             listDragCandidate = listDragMoved = false;
@@ -8092,11 +8199,11 @@ public final class QuestScreen extends AnimatedQuestScreen {
             }
         }
         if (editMode && (modifiers & GLFW.GLFW_MOD_CONTROL) != 0 && key == GLFW.GLFW_KEY_Z) {
-            restoreHistory(undo, redo);
+            undoAuthoring((modifiers & GLFW.GLFW_MOD_SHIFT) != 0);
             return true;
         }
         if (editMode && (modifiers & GLFW.GLFW_MOD_CONTROL) != 0 && key == GLFW.GLFW_KEY_Y) {
-            restoreHistory(redo, undo);
+            undoAuthoring(true);
             return true;
         }
         if (editMode && menu.isEmpty() && key == GLFW.GLFW_KEY_DELETE && !selectedLayoutIds.isEmpty()) {
@@ -8140,7 +8247,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
 
     @Override
     public void onClose() {
-        if (pending == null && batchPending == null) {
+        if (pending == null && batchPending == null && historyPending == null) {
             rememberSelectedQuest(selectedId);
             if (overviewMode && parent instanceof QuestScreen journal) journal.layout = LayoutStore.load("journal");
             closeTo(parent);
@@ -8149,6 +8256,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
 
     @Override
     public void removed() {
+        detailCompositor.close();
         journalSearch.suspend();
         cancelTaskReorder();
         listDragCandidate = listDragMoved = false;

@@ -23,6 +23,10 @@ public final class QuestClientInbox {
             new java.util.ArrayDeque<>();
     private static final java.util.ArrayDeque<QuestNetwork.ToastPayload> toasts =
             new java.util.ArrayDeque<>();
+    private static final java.util.ArrayDeque<QuestNetwork.AnecdotePayload> anecdotes =
+            new java.util.ArrayDeque<>();
+    private static AnecdoteNetwork.Snapshot anecdoteSnapshot;
+    private static AnecdoteNetwork.Result anecdoteResult;
     private static QuestNetwork.OpenScreenPayload openScreen;
     private static final java.util.ArrayDeque<QuestNetwork.LocatedQuestPayload> locatedQuests =
             new java.util.ArrayDeque<>();
@@ -128,6 +132,27 @@ public final class QuestClientInbox {
         return toasts.pollFirst();
     }
 
+    public static synchronized void accept(QuestNetwork.AnecdotePayload payload) {
+        anecdotes.addLast(payload);
+    }
+
+    public static synchronized QuestNetwork.AnecdotePayload takeAnecdote() {
+        return anecdotes.pollFirst();
+    }
+
+    public static synchronized void accept(AnecdoteNetwork.Snapshot payload) { anecdoteSnapshot = payload; }
+    public static synchronized AnecdoteNetwork.Snapshot takeAnecdoteSnapshot() {
+        var next = anecdoteSnapshot;
+        anecdoteSnapshot = null;
+        return next;
+    }
+    public static synchronized void accept(AnecdoteNetwork.Result payload) { anecdoteResult = payload; }
+    public static synchronized AnecdoteNetwork.Result takeAnecdoteResult() {
+        var next = anecdoteResult;
+        anecdoteResult = null;
+        return next;
+    }
+
     public static synchronized void accept(QuestNetwork.MailboxActionResultPayload payload) {
         mailboxActionResults.put(payload.requestId(), payload);
         while (mailboxActionResults.size() > 64) {
@@ -218,6 +243,9 @@ public final class QuestClientInbox {
         mailTemplates = null;
         openScreen = null;
         toasts.clear();
+        anecdotes.clear();
+        anecdoteSnapshot = null;
+        anecdoteResult = null;
         automaticClaims.clear();
         actionResults.clear();
         mailboxActionResults.clear();

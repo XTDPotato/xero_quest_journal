@@ -25,6 +25,7 @@ public abstract class AnimatedQuestScreen extends Screen {
     private boolean popupSurfaceIsolated;
     private boolean entered;
     private boolean closing;
+    private boolean closingBook;
     private boolean capturing;
     private Screen destination;
     private int backdrop = 0xE51D2025;
@@ -79,11 +80,26 @@ public abstract class AnimatedQuestScreen extends Screen {
 
     protected final void closeTo(Screen next) {
         if (closing) return;
+        closingBook = false;
         if (screenAnimationMillis() == 0 || !entered) {
             minecraft.setScreen(next);
             return;
         }
         closing = true;
+        destination = next;
+        motion.target(false, System.nanoTime(), screenAnimationMillis());
+        resetInteraction();
+    }
+
+    /** Reusable horizontal page-fold transition for book-like full-screen surfaces. */
+    protected final void closeBookTo(Screen next) {
+        if (closing) return;
+        if (screenAnimationMillis() == 0 || !entered) {
+            minecraft.setScreen(next);
+            return;
+        }
+        closing = true;
+        closingBook = true;
         destination = next;
         motion.target(false, System.nanoTime(), screenAnimationMillis());
         resetInteraction();
@@ -173,6 +189,12 @@ public abstract class AnimatedQuestScreen extends Screen {
             capturing = false;
         }
         float alpha = motion.eased();
+        if (closingBook) {
+            int color = (backdrop & 0xFFFFFF) | Math.round((backdrop >>> 24) * alpha) << 24;
+            graphics.fill(0, 0, width, height, color);
+            compositor.bookClose(graphics, width, height, 1 - alpha);
+            return;
+        }
         int color = (backdrop & 0xFFFFFF) | Math.round((backdrop >>> 24) * alpha) << 24;
         graphics.fill(0, 0, width, height, color);
         if (popupKey() != null) {
@@ -467,6 +489,7 @@ public abstract class AnimatedQuestScreen extends Screen {
         // Returning from a child restores the same page, not a second entrance animation.
         if (entered) {
             closing = false;
+            closingBook = false;
             destination = null;
             motion.target(true, System.nanoTime(), 0);
         }

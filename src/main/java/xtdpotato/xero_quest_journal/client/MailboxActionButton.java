@@ -44,6 +44,7 @@ public final class MailboxActionButton extends JournalNavButton {
                         getWidth() - inset * 2, 0xFF505A6B);
             }
         } else if (mailKind == Kind.ACTION && (mailGlyph.equals("delete") || mailGlyph.equals("mail_claim")
+                || mailGlyph.equals("mail_claim_single")
                 || mailGlyph.equals("cancel_choice") || mailGlyph.equals("confirm_choice"))) {
             MailDecor.circle(g, getX() + 5, getY() + 3, getHeight() - 6, 0xFF34373A);
             if (mailGlyph.endsWith("_choice")) {
@@ -51,8 +52,10 @@ public final class MailboxActionButton extends JournalNavButton {
                     MailDecor.circle(g, getX() + 10, getY() + 8, getHeight() - 16, 0xFFFFD900);
                     MailDecor.circle(g, getX() + 12, getY() + 10, getHeight() - 20, 0xFF34373A);
                 } else drawIcon(g, "close", getX() + 9, getY() + 7, getHeight() - 14, 0xFF00B9E8);
-            } else drawIcon(g, mailGlyph, getX() + 8, getY() + 6, getHeight() - 12,
-                    mailGlyph.equals("delete") ? 0xFFF05D70 : 0xFFFFD900);
+            } else drawIcon(g, mailGlyph.equals("mail_claim_single") ? "mail_claim" : mailGlyph,
+                    getX() + 8, getY() + 6, getHeight() - 12,
+                    mailGlyph.equals("delete") ? 0xFFF05D70
+                            : mailGlyph.equals("mail_claim_single") ? 0xFFA8CE58 : 0xFFFFD900);
             var font = net.minecraft.client.Minecraft.getInstance().font;
             String label = font.plainSubstrByWidth(getMessage().getString(), Math.max(1, getWidth() - getHeight() - 10));
             g.drawString(font, label, getX() + getHeight() + (getWidth() - getHeight() - font.width(label)) / 2,

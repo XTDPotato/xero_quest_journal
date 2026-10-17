@@ -95,6 +95,7 @@ public final class QuestRewards {
             List<QuestDefinition.Reward> choices = eligible.stream().map(LootDefinition.Entry::reward).toList();
             var encoded = new com.google.gson.JsonObject();
             encoded.addProperty("title", table.choiceTitle());
+            encoded.addProperty("displayIcon", table.displayIcon());
             encoded.add("choices", GSON.toJsonTree(choices));
             return List.of(new QuestDefinition.Reward("loot_choice", encoded.toString(), 1));
         }
@@ -147,6 +148,17 @@ public final class QuestRewards {
         } catch (RuntimeException ignored) {
         }
         return "";
+    }
+
+    /** Frozen choice metadata travels with the reward, including old mailbox saves. */
+    public static String choiceDisplayIcon(String target) {
+        try {
+            var parsed = GSON.fromJson(target, com.google.gson.JsonElement.class);
+            if (parsed != null && parsed.isJsonObject() && parsed.getAsJsonObject().has("displayIcon"))
+                return LootDefinition.normalizeDisplayIcon(parsed.getAsJsonObject().get("displayIcon").getAsString());
+        } catch (RuntimeException ignored) {
+        }
+        return LootDefinition.DEFAULT_DISPLAY_ICON;
     }
 
     private static boolean validQuestTargets(String value) {

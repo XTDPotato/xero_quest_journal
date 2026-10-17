@@ -131,6 +131,39 @@ final class UiCompositor implements AutoCloseable {
         RenderSystem.enableDepthTest();
     }
 
+    void bookClose(GuiGraphics graphics, int width, int height, float progress) {
+        if (surface == null) return;
+        float p = Math.clamp(progress, 0, 1);
+        float center = width / 2F;
+        float half = center * (1 - p);
+        float top = height * .025F * p;
+        float bottom = height - top;
+        float fold = height * .045F * p;
+        graphics.flush();
+        RenderSystem.enableBlend();
+        RenderSystem.blendFunc(GlStateManager.SourceFactor.ONE, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA);
+        RenderSystem.disableDepthTest();
+        RenderSystem.setShader(GameRenderer::getPositionTexColorShader);
+        RenderSystem.setShaderTexture(0, surface.getColorTextureId());
+        var matrix = graphics.pose().last().pose();
+        var buffer = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR);
+        buffer.addVertex(matrix, center - half, top, 0).setUv(0, 1 - top / height).setColor(1, 1, 1, 1);
+        buffer.addVertex(matrix, center, top + fold, 0).setUv(.5F, 1 - (top + fold) / height).setColor(1, 1, 1, 1);
+        buffer.addVertex(matrix, center, bottom - fold, 0).setUv(.5F, 1 - (bottom - fold) / height).setColor(1, 1, 1, 1);
+        buffer.addVertex(matrix, center - half, bottom, 0).setUv(0, 1 - bottom / height).setColor(1, 1, 1, 1);
+        buffer.addVertex(matrix, center, top + fold, 0).setUv(.5F, 1 - (top + fold) / height).setColor(1, 1, 1, 1);
+        buffer.addVertex(matrix, center + half, top, 0).setUv(1, 1 - top / height).setColor(1, 1, 1, 1);
+        buffer.addVertex(matrix, center + half, bottom, 0).setUv(1, 1 - bottom / height).setColor(1, 1, 1, 1);
+        buffer.addVertex(matrix, center, bottom - fold, 0).setUv(.5F, 1 - (bottom - fold) / height).setColor(1, 1, 1, 1);
+        BufferUploader.drawWithShader(buffer.buildOrThrow());
+        if (p > .2F) {
+            graphics.fill((int) center - 1, (int) top, (int) center + 1, (int) bottom,
+                    Math.round(96 * p) << 24 | 0x513E2C);
+        }
+        RenderSystem.defaultBlendFunc();
+        RenderSystem.enableDepthTest();
+    }
+
     @Override
     public void close() {
         if (surface != null) {

@@ -73,7 +73,7 @@ def smokeModes = [
         "trackingHudTest", "lootTableTest", "canvasEditorTest", "locationItemTest", "mediaTest",
         "controlGraphTest", "unlockGraphTest", "rewardPopupTest", "claimReceiptTest",
         "rewardQualityTest", "creationTest", "animationTest", "runtimeTest", "structureSceneTest",
-        "buttonImageTest", "rewardsTest", "templateTest", "authoringDocsTest"
+        "buttonImageTest", "rewardsTest", "templateTest", "authoringDocsTest", "anecdoteTest"
 ]
 def requestedModes = smokeModes.findAll { project.hasProperty("fabric${it.capitalize()}") }
 def includeSmoke = !requestedModes.isEmpty()

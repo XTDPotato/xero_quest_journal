@@ -72,6 +72,7 @@ public final class ClientMailbox {
             deadlines.clear();
             MailArrivalToast.clear();
             XeroToast.clear();
+            AnecdoteToast.clear();
             pollTicks = 0;
             revision++;
         }

@@ -36,6 +36,20 @@ public final class QuestJourneyNetwork {
     }
 
     public static void register(PayloadRegistrar registrar) {
+        registrar.playToServer(History.TYPE, History.CODEC, (payload, context) -> {
+            if (!(context.player() instanceof ServerPlayer player)) return;
+            var result = payload.redo()
+                    ? xtdpotato.xero_quest_journal.core.io.QuestAuthoringHistory.redo(player)
+                    : xtdpotato.xero_quest_journal.core.io.QuestAuthoringHistory.undo(player);
+            if (result.successful() || result.error().equals("conflict")) {
+                try { QuestNetwork.replyCatalog(context, xtdpotato.xero_quest_journal.core.io.QuestRepository.revision(),
+                        QuestCatalog.serverJson()); }
+                catch (IllegalArgumentException ignored) { }
+            }
+            context.reply(new QuestNetwork.ActionResultPayload(payload.requestId(),
+                    result.successful() ? payload.redo() ? "journey_history_redone" : "journey_history_undone"
+                            : "journey_history_" + result.error()));
+        });
         registrar.playToServer(Update.TYPE, Update.CODEC, (payload, context) -> {
             String result;
             try {
@@ -62,6 +76,21 @@ public final class QuestJourneyNetwork {
             xtdpotato.xero_quest_journal.core.runtime.QuestEventGraphs.fire(player,
                     payload.after() ? "chapter_switch_after" : "chapter_switch_before", payload.chapter());
         });
+    }
+
+    public record History(long requestId, boolean redo) implements CustomPacketPayload {
+        public static final Type<History> TYPE = new Type<>(
+                ResourceLocation.fromNamespaceAndPath("xero_quest_journal", "journey_history"));
+        public static final StreamCodec<RegistryFriendlyByteBuf, History> CODEC = new StreamCodec<>() {
+            @Override public History decode(RegistryFriendlyByteBuf buffer) {
+                return new History(buffer.readVarLong(), buffer.readBoolean());
+            }
+            @Override public void encode(RegistryFriendlyByteBuf buffer, History value) {
+                buffer.writeVarLong(value.requestId());
+                buffer.writeBoolean(value.redo());
+            }
+        };
+        @Override public Type<History> type() { return TYPE; }
     }
     private static final java.util.Map<ServerPlayer, SwitchState> SWITCHES = new java.util.WeakHashMap<>();
     private static final class SwitchState {

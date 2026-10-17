@@ -46,6 +46,10 @@
 | [rewards-editor-zh-1920.png](rewards-editor-zh-1920.png) | 奖励类型、数量、品质与背景 |
 | [reward-receipt-zh-1920.png](reward-receipt-zh-1920.png) | 奖励收据 |
 | [loot-editor-zh-1920.png](loot-editor-zh-1920.png) | 战利品模式、权重与品质 |
+| [loot-display-editor-zh-1920.png](loot-display-editor-zh-1920.png) | 战利品外显图标选择与编辑 |
+| [loot-display-compact-zh-1920.png](loot-display-compact-zh-1920.png) | 紧凑布局及平滑滚动末项 |
+| [loot-display-mail-zh-1920.png](loot-display-mail-zh-1920.png) | 邮件战利品自定义图标及默认礼盒 |
+| [loot-display-contents-zh-1920.png](loot-display-contents-zh-1920.png) | 战利品内容、条目图标与概率 |
 | [mailbox-current-zh-1920.png](mailbox-current-zh-1920.png) | 当前邮箱正文和附件 |
 | [mail-compose-zh-1920.png](mail-compose-zh-1920.png) | 编辑/发送邮件 |
 | [mail-attachments-zh-1920.png](mail-attachments-zh-1920.png) | 邮件附件及品质编辑 |

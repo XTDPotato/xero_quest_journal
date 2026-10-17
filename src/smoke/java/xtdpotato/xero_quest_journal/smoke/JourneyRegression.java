@@ -6,13 +6,16 @@ import net.minecraft.client.gui.components.EditBox;
 import org.lwjgl.glfw.GLFW;
 import xtdpotato.xero_quest_journal.client.ClientQuestDefinitions;
 import xtdpotato.xero_quest_journal.client.JourneyScreen;
+import xtdpotato.xero_quest_journal.client.JourneyTaskColumns;
 import xtdpotato.xero_quest_journal.client.QuestScreen;
 import xtdpotato.xero_quest_journal.client.StyledButton;
 import xtdpotato.xero_quest_journal.client.ClientPreferences;
 import xtdpotato.xero_quest_journal.client.UiMotion;
+import xtdpotato.xero_quest_journal.client.AnimatedQuestScreen;
 import xtdpotato.xero_quest_journal.core.QuestConfig;
 import xtdpotato.xero_quest_journal.core.io.QuestRepository;
 import xtdpotato.xero_quest_journal.core.model.JourneyBackdrop;
+import xtdpotato.xero_quest_journal.core.model.QuestDefinition;
 import xtdpotato.xero_quest_journal.core.network.QuestCatalog;
 
 import java.lang.reflect.Constructor;
@@ -50,6 +53,7 @@ final class JourneyRegression {
         if (--wait > 0) return false;
         switch (stage) {
             case 0 -> {
+                verifyGeneratedColumns();
                 originalReducedMotion = ClientPreferences.get().reducedMotion;
                 originalDuration = QuestConfig.defaults().uiAnimationMillis;
                 ClientPreferences.get().reducedMotion = false;
@@ -71,14 +75,23 @@ final class JourneyRegression {
                         StringBuilder quests = new StringBuilder();
                         for (int i = 0; i < 6; i++) {
                             String questId = ID + "_task_" + i;
+                            Files.deleteIfExists(group.resolve(questId + ".html"));
+                            Files.deleteIfExists(group.resolve(questId + ".json"));
                             if (i > 0) quests.append(',');
                             quests.append('"').append(questId).append('"');
-                            Files.writeString(group.resolve(questId + ".html"),
-                                    "<quest id=\"" + questId + "\" name=\"Journey " + i + "\" type=\"main\" icon=\"" + IMAGE_A
-                                            + "\"><trigger type=\"confirm\"/></quest>");
+                            Files.writeString(group.resolve(questId + ".json"), """
+                                    {"id":"%s","title":"Journey %d","type":"main","icon":"%s",
+                                     "triggers":[
+                                       {"type":"item_hold","item":"minecraft:diamond","count":2},
+                                       {"type":"location","item":"structure|minecraft:overworld|minecraft:village_plains","count":1}
+                                     ],
+                                     "rewards":[{"type":"experience","count":8}]}
+                                    """.formatted(questId, i, IMAGE_A));
                         }
                         for (int i = 0; i < 5; i++) {
                             String questId = ID + "_branch_" + i;
+                            Files.deleteIfExists(group.resolve(questId + ".html"));
+                            Files.deleteIfExists(group.resolve(questId + ".json"));
                             quests.append(",\"").append(questId).append('"');
                             Files.writeString(group.resolve(questId + ".json"),
                                     "{\"id\":\"" + questId + "\",\"title\":\"Side story " + i
@@ -235,14 +248,44 @@ final class JourneyRegression {
                         "Scroll did not switch backdrop");
                 require(scroll("tabs") > 0, "Tab strip did not scroll");
                 var horizontal = field(journey, "timelineX");
-                double horizontalRange = (double) invoke(horizontal, "maximum")
-                        - (double) invoke(horizontal, "minimum");
-                double expectedProgress = horizontalRange <= 0 ? 0
-                        : Math.clamp((scroll("timelineX") - (double) invoke(horizontal, "minimum"))
-                        / horizontalRange, 0, 1);
+                Object activeSection = section(field(journey, "sections"), (int) field(journey, "chapterIndex"));
+                double chapterStart = number(activeSection, "start");
+                double chapterRange = Math.max(0, number(activeSection, "width")
+                        - (double) invoke(journey, "viewWidth"));
+                double expectedProgress = chapterRange <= 0 ? 0
+                        : Math.clamp((scroll("timelineX") - chapterStart) / chapterRange, 0, 1);
                 require(Math.abs((double) invoke(journey, "timelineProgress") - expectedProgress) < .001
                                 && expectedProgress > 0,
-                        "Timeline progress marker did not follow horizontal content scrolling");
+                        "The current chapter's progress marker did not follow its horizontal scroll range");
+                int[] progressBounds = (int[]) invoke(journey, "timelineProgressBounds");
+                int tabWidth = (int) invoke(journey, "tabWidth");
+                int tabLeft = (int) invoke(journey, "tabsLeft") + (int) field(journey, "chapterIndex") * tabWidth
+                        - (int) Math.round(scroll("tabs")) + 3;
+                require(progressBounds[0] == tabLeft && progressBounds[2] == tabLeft + tabWidth - 6
+                                && progressBounds[1] == (int) invoke(journey, "tabsTop") + 29
+                                && progressBounds[3] == progressBounds[1] + 1,
+                        "Timeline progress is not a one-pixel bar in the active tab underline");
+                require((int) staticField(JourneyScreen.class, "PROGRESS_MARKER_WIDTH") == 6
+                                && (int) staticField(JourneyScreen.class, "PROGRESS_MARKER_HEIGHT") == 12
+                                && (int) staticField(JourneyScreen.class, "PROGRESS_ALPHA") == 0x80,
+                        "Timeline progress marker is not half-size and half-opacity");
+                double savedTimelineX = scroll("timelineX");
+                int trackY = progressBounds[1];
+                int trackStart = progressBounds[0] + 1;
+                int trackEnd = progressBounds[2] - 1;
+                require((boolean) invoke(journey, "timelineProgressHit",
+                                new Class<?>[]{double.class, double.class}, (trackStart + trackEnd) / 2.0, trackY)
+                                && !(boolean) invoke(journey, "timelineProgressHit",
+                                new Class<?>[]{double.class, double.class}, (double) trackStart, trackY + 12),
+                        "Chapter progress slider hover hitbox is incorrect");
+                int scrubX = trackStart + Math.round((trackEnd - trackStart) * .35F);
+                journey.mouseClicked(trackStart, trackY, 0);
+                journey.mouseDragged(scrubX, trackY, 0, scrubX - trackStart, 0);
+                journey.mouseReleased(scrubX, trackY, 0);
+                require(Math.abs(scroll("timelineX") - (chapterStart + chapterRange * .35)) < 1.5,
+                        "Dragging the chapter progress line did not seek within the active chapter");
+                invoke(field(journey, "timelineX"), "jump", new Class<?>[]{double.class}, savedTimelineX);
+                invoke(journey, "followTimeline");
                 capture(game, "journey-scrolled");
                 selectTab(SECOND);
                 require(journey.visibleQuestCount() == 1
@@ -312,28 +355,69 @@ final class JourneyRegression {
                 journey.mouseDragged(x, y, 0, 25, 0);
                 journey.mouseReleased(x, y, 0);
                 require(game.screen == journey, "Returning swipe fired quest click");
-                invoke(field(journey, "timelineX"), "jump", new Class<?>[]{double.class}, savedX);
+                resize(game, 1920, 1080);
+                wait = 5;
+            }
+            case 14 -> {
+                double scale = (double) invoke(journey, "scale");
+                var sections = (List<?>) field(journey, "sections");
+                double start = (int) invoke(sections.get((int) field(journey, "chapterIndex")), "start");
+                double savedX = scroll("timelineX");
+                double x = (start + 192 + 84 - savedX) * scale;
+                double y = (int) invoke(journey, "top")
+                        + ((int) invoke(journey, "lineY") - 55 - scroll("timelineY")) * scale;
                 journey.mouseClicked(x, y, 0);
                 journey.mouseReleased(x, y, 0);
                 require(game.screen.getClass().getSimpleName().equals("JourneyQuestPopupScreen"),
                         "Journey task click did not open the details popup");
+                wait = 5;
+            }
+            case 15 -> {
+                Object popup = game.screen;
+                require(popup.getClass().getSimpleName().equals("JourneyQuestPopupScreen"),
+                        "Journey details popup closed before its content was checked");
+                capture(game, "journey-task-details");
+                var conditions = (List<?>) invoke(popup, "conditionRows");
+                require(conditions.size() == 2
+                                && ((QuestDefinition.Trigger) invoke(conditions.getFirst(), "trigger"))
+                                .type().equals("item_hold")
+                                && ((QuestDefinition.Trigger) invoke(conditions.get(1), "trigger"))
+                                .type().equals("location"),
+                        "Popup did not expose item and structure completion conditions");
+                require(!((List<?>) invoke(popup, "displayedRewards")).isEmpty()
+                                && (int) invoke(popup, "footerTop")
+                                < button((net.minecraft.client.gui.screens.Screen) popup,
+                                "journey-quest-popup-open").getY(),
+                        "Popup rewards are not pinned above its bottom action");
+                ClientPreferences.get().reducedMotion = true;
+                ((AnimatedQuestScreen) popup).advanceTransition();
+                var hit = ((List<?>) field(popup, "conditionHits")).getFirst();
+                double itemX = (int) invoke(hit, "cardLeft") + 8;
+                double itemY = (int) invoke(hit, "top") + 10;
+                require(((AnimatedQuestScreen) popup).mouseClicked(itemX, itemY, 0)
+                                && game.screen instanceof xtdpotato.xero_quest_journal.client.QuestRewardPopupScreen,
+                        "Clicking an item condition did not open its source details");
                 game.screen.onClose();
-                require(game.screen == journey, "Closing task popup did not restore the journey");
-                journey.mouseClicked(x, y, 0);
-                journey.mouseReleased(x, y, 0);
-                button(game.screen, "journey-quest-popup-open").onPress();
+                require(game.screen == popup, "Closing item sources did not restore journey details");
+                var structureHit = ((List<?>) field(popup, "conditionHits")).get(1);
+                double structureX = (int) invoke(structureHit, "cardLeft") + 8;
+                double structureY = (int) invoke(structureHit, "top") + 10;
+                require(((AnimatedQuestScreen) popup).mouseClicked(structureX, structureY, 0)
+                                && (int) field(popup, "expandedCondition") == 1,
+                        "Clicking a structure condition did not reveal its inspection details");
+                button((net.minecraft.client.gui.screens.Screen) popup, "journey-quest-popup-open").onPress();
                 require(game.screen instanceof QuestScreen, "Popup navigation did not open the quest journal");
                 game.screen.onClose();
                 require(game.screen == journey, "Closing task journal did not return to the journey");
                 journey.onClose();
                 wait = 5;
             }
-            case 14 -> {
+            case 16 -> {
                 require(game.screen instanceof QuestScreen, "Journey close did not return to journal");
                 verifyEditor(game, (QuestScreen) game.screen);
                 wait = 12;
             }
-            case 15 -> {
+            case 17 -> {
                 require(game.screen instanceof QuestScreen, "Background editor did not return to parent");
                 overview = QuestScreen.overview(null);
                 game.setScreen(overview);
@@ -344,7 +428,7 @@ final class JourneyRegression {
                 card.keyReleased(GLFW.GLFW_KEY_ENTER, 0, 0);
                 require(game.screen instanceof JourneyScreen, "Reduced-motion keyboard release failed");
             }
-            case 16 -> {
+            case 18 -> {
                 if (!JourneyAppearanceRegression.tick(game, FIRST)) return false;
                 ClientPreferences.get().reducedMotion = originalReducedMotion;
                 QuestConfig.defaults().uiAnimationMillis = originalDuration;
@@ -430,6 +514,49 @@ final class JourneyRegression {
         invoke(vertical, "jump", new Class<?>[]{double.class}, 0.);
     }
 
+    private static void verifyGeneratedColumns() {
+        var collectA = generated("auto_item_collect_a", "generate.xero_quest_journal.title.collect",
+                new QuestDefinition.Trigger("item_hold", "minecraft:coal", 1));
+        var collectB = generated("auto_item_collect_b", "generate.xero_quest_journal.title.collect",
+                new QuestDefinition.Trigger("item_hold", "minecraft:iron_ingot", 1));
+        var craft = generated("auto_item_craft", "generate.xero_quest_journal.title.craft",
+                new QuestDefinition.Trigger("item_hold", "minecraft:anvil", 1));
+        var structure = generated("auto_structure_village", "",
+                new QuestDefinition.Trigger("location", "structure|minecraft:overworld|minecraft:village_plains", 1));
+        var cells = JourneyTaskColumns.layout("auto_minecraft",
+                List.of(collectA, craft, structure, collectB));
+        var acquisition = cells.stream().filter(cell -> cell.category().equals("acquisition")).toList();
+        require(acquisition.size() == 2 && acquisition.get(0).column() == acquisition.get(1).column()
+                        && acquisition.get(0).row() == 0 && acquisition.get(1).row() == 1,
+                "Generated acquisition tasks did not share a vertical lane");
+        require(cells.stream().map(JourneyTaskColumns.Cell::category).distinct().count() == 3
+                        && cells.stream().filter(cell -> cell.category().equals("structure"))
+                        .findFirst().orElseThrow().column() != acquisition.getFirst().column(),
+                "Generated structure/crafting categories were not separated into columns");
+        require(JourneyTaskColumns.layout("manual_group", List.of(collectA)).isEmpty(),
+                "Manual chapters were unexpectedly rearranged");
+        var chapterEdge = new xtdpotato.xero_quest_journal.core.model.JourneyTimeline.Connection(
+                collectA.id(), xtdpotato.xero_quest_journal.core.model.JourneyTimeline.CHAPTER_POINT);
+        require(new com.google.gson.Gson().fromJson(new com.google.gson.Gson().toJson(chapterEdge),
+                        xtdpotato.xero_quest_journal.core.model.JourneyTimeline.Connection.class).equals(chapterEdge),
+                "Chapter marker connection endpoint did not survive serialization");
+    }
+
+    private static QuestDefinition generated(String id, String titleKey, QuestDefinition.Trigger trigger) {
+        return new QuestDefinition(id, id, "", "world", "minecraft:diamond", true, false, 0, null,
+                titleKey, "", "", id, List.of(), List.of(trigger), List.of(), "default");
+    }
+
+    private static Object section(Object sections, int index) {
+        return ((List<?>) sections).get(index);
+    }
+
+    private static double number(Object target, String method) throws Exception {
+        var accessor = target.getClass().getDeclaredMethod(method);
+        accessor.setAccessible(true);
+        return ((Number) accessor.invoke(target)).doubleValue();
+    }
+
     @SuppressWarnings("unchecked")
     private static void verifyEditor(Minecraft game, QuestScreen parent) throws Exception {
         Class<?> type = Class.forName("xtdpotato.xero_quest_journal.client.JourneyBackgroundScreen");
@@ -480,6 +607,12 @@ final class JourneyRegression {
         var member = target.getClass().getDeclaredField(name);
         member.setAccessible(true);
         return member.get(target);
+    }
+
+    private static Object staticField(Class<?> target, String name) throws Exception {
+        var member = target.getDeclaredField(name);
+        member.setAccessible(true);
+        return member.get(null);
     }
 
     private static Object invoke(Object target, String name) throws Exception {
