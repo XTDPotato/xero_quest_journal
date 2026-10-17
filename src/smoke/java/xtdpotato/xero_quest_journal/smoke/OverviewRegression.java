@@ -108,6 +108,10 @@ final class OverviewRegression {
             case 8 -> {
                 checkLayout(game);
                 capture(game, "overview-background-small");
+                button(game, "overview-anecdotes");
+                require(game.screen instanceof AnecdoteScreen,
+                        "Anecdote Chronicle category button did not open the chronicle");
+                game.setScreen(screen);
                 button(game, "overview-journal");
                 require(game.screen instanceof QuestScreen && !(boolean) field(game.screen, "overviewMode"),
                         "Guide notes navigation failed");

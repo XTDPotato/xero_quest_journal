@@ -36,6 +36,13 @@ public final class SuggestedEditBox extends EditBox {
 
     public void withoutMenu() { menu = false; }
     private int menuWidth() { return menu && width >= 40 ? 18 : 0; }
+    private Component editorTooltip() {
+        if (context.equals("item")) {
+            String localized = QuestIcons.localizedName(getValue());
+            if (!localized.isBlank()) return Component.literal(localized);
+        }
+        return QuestIcons.tooltip(getValue());
+    }
     @Override public int getInnerWidth() { return Math.max(1, super.getInnerWidth() - menuWidth()); }
     @Override public void setEditable(boolean editable) { super.setEditable(editable); this.editable = editable; }
 
@@ -68,13 +75,20 @@ public final class SuggestedEditBox extends EditBox {
             graphics.renderOutline(getX(), getY(), width, height, 0xFFA0A0A0);
             graphics.drawString(font, font.plainSubstrByWidth(QuestIcons.displayName(getValue()), getInnerWidth()),
                     getX() + 4, getY() + (height - 8) / 2, active ? 0xFFE0E0E0 : 0xFF707070);
-            setTooltip(net.minecraft.client.gui.components.Tooltip.create(QuestIcons.tooltip(getValue())));
+            setTooltip(net.minecraft.client.gui.components.Tooltip.create(editorTooltip()));
         } else super.renderWidget(graphics, mouseX, mouseY, tick);
-        if (menuWidth() == 0) return;
+        if (menuWidth() == 0) {
+            if (context.equals("item")) {
+                String localized = QuestIcons.localizedName(getValue());
+                if (!localized.isBlank())
+                    setTooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal(localized)));
+            }
+            return;
+        }
         int left = getRight() - menuWidth();
         boolean hover = mouseX >= left && mouseX < getRight() && mouseY >= getY() && mouseY < getBottom();
         setTooltip(net.minecraft.client.gui.components.Tooltip.create(hover ? Component.translatable(
-                "screen.xero_quest_journal.value_picker.open") : item ? QuestIcons.tooltip(getValue()) : getMessage()));
+                "screen.xero_quest_journal.value_picker.open") : item ? editorTooltip() : getMessage()));
         graphics.fill(left, getY() + 1, getRight() - 1, getBottom() - 1,
                 active && editable && hover ? 0xFF44505C : 0xFF252B32);
         graphics.drawCenteredString(font, "\u25be", left + menuWidth() / 2, getY() + (height - 8) / 2,
