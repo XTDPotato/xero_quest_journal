@@ -3,6 +3,7 @@ package xtdpotato.xero_quest_journal.client;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.components.Checkbox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
@@ -19,7 +20,8 @@ final class PopupAnimationEditorScreen extends AnimatedQuestScreen {
             ClientPreferences.get().popupAnimation.keyframes());
     private int selected;
     private double playhead;
-    private boolean timelineDragging, playing;
+    private boolean timelineDragging, playing, repeatPreview;
+    private int draggingFrame = -1;
     private long playbackStarted;
     private String timeValue, scaleValue, xValue, yValue, rotationValue, opacityValue;
     private String message = "";
@@ -89,6 +91,8 @@ final class PopupAnimationEditorScreen extends AnimatedQuestScreen {
         addRenderableWidget(new StyledButton(footerX, footerY(), footerW, 22,
                 label(playing ? "animation.pause_preview" : "animation.preview"),
                 ignored -> togglePreview(), styles, "popup-animation-preview"));
+        addRenderableWidget(Checkbox.builder(label("animation.repeat"), font).pos(footerX, footerY() - 24)
+                .selected(repeatPreview).onValueChange((box, value) -> repeatPreview = value).build());
         addRenderableWidget(new StyledButton(footerX + footerW + 6, footerY(), footerW, 22,
                 Component.translatable("gui.cancel"), ignored -> onClose(), styles, "popup-animation-cancel"));
         addRenderableWidget(new StyledButton(footerX + (footerW + 6) * 2, footerY(), footerW, 22,
@@ -125,8 +129,15 @@ final class PopupAnimationEditorScreen extends AnimatedQuestScreen {
             case 5 -> opacityValue = value;
         }
         if (index == 0) {
-            try { playhead = Math.clamp(Double.parseDouble(value.strip()) / 100, 0, 1); }
-            catch (RuntimeException ignored) {}
+            try {
+                double time = Math.clamp(Double.parseDouble(value.strip()) / 100, 0, 1);
+                playhead = time;
+                if (selected > 0 && selected + 1 < frames.size()
+                        && time > frames.get(selected - 1).time()
+                        && time < frames.get(selected + 1).time()) {
+                    replace(selectedFrame().at(time));
+                }
+            } catch (RuntimeException ignored) {}
         }
     }
 
@@ -191,6 +202,7 @@ final class PopupAnimationEditorScreen extends AnimatedQuestScreen {
         if (!message.isEmpty()) return;
         playing = !playing;
         playbackStarted = System.nanoTime();
+        if (playing) playhead = 0;
         init();
     }
 
@@ -209,7 +221,12 @@ final class PopupAnimationEditorScreen extends AnimatedQuestScreen {
     @Override public void tick() {
         if (!playing) return;
         double duration = Math.max(100, ClientPreferences.get().popupAnimationMillis);
-        playhead = ((System.nanoTime() - playbackStarted) / 1_000_000.0 % duration) / duration;
+        double progress = (System.nanoTime() - playbackStarted) / 1_000_000.0 / duration;
+        if (!repeatPreview && progress >= 1) {
+            playhead = 1;
+            playing = false;
+            init();
+        } else playhead = repeatPreview ? progress % 1 : Math.min(1, progress);
     }
 
     private int timelineX(double time) {
@@ -288,7 +305,7 @@ final class PopupAnimationEditorScreen extends AnimatedQuestScreen {
         if (transform.rotation() != 0)
             g.pose().mulPose(com.mojang.math.Axis.ZP.rotationDegrees((float) transform.rotation()));
         g.pose().scale((float) scale, (float) scale, 1);
-        int boxW = Math.min(280, Math.max(1, w - 64)), boxH = Math.min(86, Math.max(1, h - 24));
+        int boxW = Math.min(720, Math.max(1, w - 64)), boxH = Math.min(260, Math.max(1, h - 80));
         int alpha = (int) Math.round(transform.opacity() * 255);
         int a = alpha << 24;
         int left = -boxW / 2, top = -boxH / 2;
@@ -306,17 +323,19 @@ final class PopupAnimationEditorScreen extends AnimatedQuestScreen {
         if (inputBlocked()) return true;
         if (button == 0 && mouseY >= trackY() - 14 && mouseY <= trackY() + 24
                 && mouseX >= trackLeft() && mouseX <= trackRight()) {
-            commitFields();
-            if (!message.isEmpty()) return true;
             int nearest = -1;
             double distance = Double.MAX_VALUE;
             for (int i = 0; i < frames.size(); i++) {
                 double next = Math.abs(mouseX - timelineX(frames.get(i).time()));
                 if (next < distance) { distance = next; nearest = i; }
             }
-            if (distance <= 9 && nearest >= 0) {
+            if (distance <= 16 && nearest >= 0) {
                 selected = nearest;
                 loadFields();
+                // The profile endpoints are fixed at 0% and 100%; they can be
+                // selected for inspection but only interior frames may move.
+                draggingFrame = nearest > 0 && nearest < frames.size() - 1 ? nearest : -1;
+                timelineDragging = draggingFrame >= 0;
                 init();
             } else {
                 timelineDragging = true;
@@ -339,15 +358,30 @@ final class PopupAnimationEditorScreen extends AnimatedQuestScreen {
 
     @Override public boolean mouseDragged(double x, double y, int button, double dx, double dy) {
         if (button == 0 && timelineDragging) {
-            playhead = timelineTime(x);
-            updateTimelineField();
+            double time = timelineTime(x);
+            if (draggingFrame >= 0) {
+                int previous = draggingFrame == 0 ? 0 : (int) Math.round(frames.get(draggingFrame - 1).time() * 100);
+                int next = draggingFrame == frames.size() - 1 ? 100
+                        : (int) Math.round(frames.get(draggingFrame + 1).time() * 100);
+                int frame = Math.clamp((int) Math.round(time * 100), previous + 1, next - 1);
+                replace(selectedFrame().at(frame / 100.0));
+                loadFields();
+                playhead = frame / 100.0;
+            } else {
+                playhead = time;
+                updateTimelineField();
+            }
             return true;
         }
         return super.mouseDragged(x, y, button, dx, dy);
     }
 
     @Override public boolean mouseReleased(double x, double y, int button) {
-        if (button == 0 && timelineDragging) { timelineDragging = false; return true; }
+        if (button == 0 && timelineDragging) {
+            timelineDragging = false;
+            draggingFrame = -1;
+            return true;
+        }
         return super.mouseReleased(x, y, button);
     }
 

@@ -1033,6 +1033,7 @@
   "screen.xero_quest_journal.config.animation.add_keyframe": "Add keyframe",
   "screen.xero_quest_journal.config.animation.remove_keyframe": "Delete keyframe",
   "screen.xero_quest_journal.config.animation.preview": "Preview",
+  "screen.xero_quest_journal.config.animation.repeat": "Loop preview",
   "screen.xero_quest_journal.config.animation.pause_preview": "Pause preview",
   "screen.xero_quest_journal.config.animation.preview_sample": "Popup preview",
   "screen.xero_quest_journal.config.animation.time_percent": "Preview time: %s%%",

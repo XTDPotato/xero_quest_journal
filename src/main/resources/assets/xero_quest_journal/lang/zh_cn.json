@@ -1033,6 +1033,7 @@
   "screen.xero_quest_journal.config.animation.add_keyframe": "添加关键帧",
   "screen.xero_quest_journal.config.animation.remove_keyframe": "删除关键帧",
   "screen.xero_quest_journal.config.animation.preview": "预览",
+  "screen.xero_quest_journal.config.animation.repeat": "循环播放",
   "screen.xero_quest_journal.config.animation.pause_preview": "暂停预览",
   "screen.xero_quest_journal.config.animation.preview_sample": "弹出菜单预览",
   "screen.xero_quest_journal.config.animation.time_percent": "预览时间：%s%%",
