@@ -187,7 +187,7 @@ final class JourneyQuestPopupScreen extends AnimatedQuestScreen {
         }
         int footerX = x + 14, footerRight = x + w - 14;
         JournalDetailRenderer.renderFooter(g, font, quest, displayedRewards(), footerX, footerTop(),
-                footerRight, mouseX, mouseY, false);
+                footerRight, mouseX, mouseY, false, false);
         var hit = JournalDetailRenderer.cardAt(font, quest, displayedRewards(), footerX, footerTop(),
                 footerRight, mouseX, mouseY);
         if (hit != null) {
