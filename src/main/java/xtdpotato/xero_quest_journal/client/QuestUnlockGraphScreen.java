@@ -40,6 +40,9 @@ public final class QuestUnlockGraphScreen extends AnimatedQuestScreen {
     private final Draft initial;
     private CompletableFuture<QuestAuthoring.Result> pending;
     private String error = "", searchText = "", selected = "", wireFrom = "";
+    private final String focusTask;
+    private boolean focusApplied;
+    private long focusUntilNanos;
     private Link selectedLink;
     private EditBox search;
     private double zoom = 1, panX, panY, dragX, dragY, originX, originY;
@@ -61,9 +64,15 @@ public final class QuestUnlockGraphScreen extends AnimatedQuestScreen {
     private EditBox coordinateX, coordinateY;
 
     public QuestUnlockGraphScreen(Screen parent) {
+        this(parent, "");
+    }
+
+    /** Opens the graph and optionally focuses a task requested by a task context menu. */
+    public QuestUnlockGraphScreen(Screen parent, String focusTask) {
         super(text("title"));
         this.parent = parent;
         tasks.forEach(task -> byId.put(task.id(), task));
+        this.focusTask = byId.containsKey(focusTask) ? focusTask : "";
         defaultPositions = QuestUnlockGraphLayout.initial(tasks);
         positions.putAll(defaultPositions);
         for (QuestDefinition task : tasks) {
@@ -124,9 +133,26 @@ public final class QuestUnlockGraphScreen extends AnimatedQuestScreen {
                 : (top() + bottom()) / 2. - (minY + maxY) * zoom / 2.;
     }
 
+    private void applyFocusTarget() {
+        if (focusApplied || focusTask.isBlank()) return;
+        var position = positions.get(focusTask);
+        if (position == null) {
+            focusApplied = true;
+            return;
+        }
+        selected = focusTask;
+        selectedTasks.clear();
+        selectedTasks.add(focusTask);
+        panX = width / 2. - drawerExtent() - (position.x() + CARD_W / 2.) * zoom;
+        panY = (top() + bottom()) / 2. - (position.y() + CARD_H / 2.) * zoom;
+        focusUntilNanos = System.nanoTime() + 3_000_000_000L;
+        focusApplied = true;
+    }
+
     @Override protected void init() {
         clearWidgets();
         if (panX == 0 && panY == 0) fit();
+        applyFocusTarget();
         addRenderableWidget(new EditorIconButton(12, 8, text("fit"), this::fit, styles,
                 "unlock-fit", "fit"));
         undoButton = addRenderableWidget(new EditorIconButton(42, 8, text("undo"),
@@ -602,6 +628,8 @@ public final class QuestUnlockGraphScreen extends AnimatedQuestScreen {
         boolean highlighted = !searchText.isBlank() && QuestIcons.matchesSearch(searchText,
                 task.id(), QuestText.title(task).getString());
         boolean chosen = task.id().equals(selected) || selectedTasks.contains(task.id());
+        boolean focusHighlighted = task.id().equals(focusTask)
+                && System.nanoTime() < focusUntilNanos;
         // Bright state band (complete gold, locked coral, available green) with a dark title.
         int top = complete ? 0xFFF2C75C : locked ? 0xFFF27F6E : 0xFF7DD9A4;
         int bottom = complete ? 0xFFE0AF42 : locked ? 0xFFDE6553 : 0xFF62C48C;
@@ -612,7 +640,17 @@ public final class QuestUnlockGraphScreen extends AnimatedQuestScreen {
             ControlAppearance.draw(g, x - 3, y - 3, w + 6, h + 6, "rounded", 8, 0, 0x38FFD27A, 1);
             ControlAppearance.draw(g, x - 2, y - 2, w + 4, h + 4, "rounded", 7, 0, 0xA0FFD27A, 1);
         }
-        int border = chosen || highlighted ? TriggerNodeStyle.GOLD : hoveredNode.equals(task.id()) ? 0xFF5C5C66
+        if (focusHighlighted) {
+            float pulse = ClientPreferences.get().reducedMotion ? 1F
+                    : (float) ((Math.sin(System.nanoTime() / 90_000_000.0) + 1) * .5);
+            int alpha = 0x70 + Math.round(pulse * 0x70);
+            ControlAppearance.draw(g, x - 7, y - 7, w + 14, h + 14, "rounded", 10,
+                    0, (alpha << 24) | 0x00F4D37B, 2);
+            ControlAppearance.draw(g, x - 4, y - 4, w + 8, h + 8, "rounded", 8,
+                    0, (0xB0 << 24) | 0x00FFF1B0, 1);
+        }
+        int border = focusHighlighted ? 0xFFFFE08A
+                : chosen || highlighted ? TriggerNodeStyle.GOLD : hoveredNode.equals(task.id()) ? 0xFF5C5C66
                 : TriggerNodeStyle.BODY_BORDER;
         ControlAppearance.draw(g, x, y, w, h, "rounded", 5, TriggerNodeStyle.BODY, border, 1);
         g.fillGradient(x + 1, y + 2, x + w - 1, y + header, top, bottom);
