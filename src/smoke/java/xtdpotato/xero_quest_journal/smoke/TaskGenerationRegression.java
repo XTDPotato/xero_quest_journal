@@ -158,6 +158,7 @@ final class TaskGenerationRegression {
         for (var task : generated) {
             require(!QuestText.title(task).getString().isBlank()
                     && !QuestText.title(task).getString().contains("%s"), "Unreadable generated task title");
+            require(!task.parents().contains(task.id()), "Generated task references itself as a prerequisite");
             if (!task.id().startsWith("auto_adv_"))
                 require(!QuestText.description(task).getString().isBlank(), "Generated description missing");
             require(QuestText.tooltip(task).getString().contains(QuestText.title(task).getString()),

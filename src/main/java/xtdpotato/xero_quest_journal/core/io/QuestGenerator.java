@@ -463,6 +463,7 @@ public final class QuestGenerator {
                 iterator.remove();
                 continue;
             }
+            removeSelfPrerequisite(data, task.id());
             legacy.put(task.id(), data);
             legacySources.put(task.id(), original);
         }
@@ -616,6 +617,24 @@ public final class QuestGenerator {
                         new xtdpotato.xero_quest_journal.core.model.HotEventData(true, "", "", 0, 0, false)));
             }
         }
+    }
+
+    /** Repairs older generated documents that accidentally listed themselves as a prerequisite. */
+    private static boolean removeSelfPrerequisite(JsonObject data, String taskId) {
+        if (data == null || taskId == null || !data.has("parents") || !data.get("parents").isJsonArray())
+            return false;
+        JsonArray parents = data.getAsJsonArray("parents");
+        JsonArray filtered = new JsonArray();
+        boolean changed = false;
+        for (JsonElement parent : parents) {
+            if (parent.isJsonPrimitive() && taskId.equals(parent.getAsString())) {
+                changed = true;
+            } else {
+                filtered.add(parent);
+            }
+        }
+        if (changed) data.add("parents", filtered);
+        return changed;
     }
 
     /** Existing group folder with the generated group ID, otherwise {@code groups/auto_<namespace>}. */
