@@ -1562,7 +1562,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
     private int overviewContentWidth() { return width < 480 ? width - 32 : Math.min(960, width * 3 / 4); }
     private int overviewTop() { return Math.max(50, height / 4); }
     private int overviewTypeRows() { return 4; }
-    private int overviewVisibleRows() { return 4; }
+    private int overviewVisibleRows() { return 5; }
     private int overviewColumnGap() { return Math.max(8, overviewContentWidth() / 14); }
     private int overviewFeatureWidth() {
         int available = Math.max(1, overviewContentWidth() - overviewColumnGap());
@@ -1672,10 +1672,10 @@ public final class QuestScreen extends AnimatedQuestScreen {
         int rowHeight = overviewRowHeight();
         List<OverviewEntry> entries = List.of(
                 new OverviewEntry("main", "overview.category.travel", "guide"),
+                new OverviewEntry("anecdotes", "overview.category.anecdotes", "mail_check"),
                 new OverviewEntry("legendary", "overview.category.legendary", "minecraft:totem_of_undying"),
                 new OverviewEntry("hot_events", "overview.category.hot_events", "recommended"),
-                new OverviewEntry("world", "overview.category.world", "other"),
-                new OverviewEntry("anecdotes", "overview.category.anecdotes", "guide"));
+                new OverviewEntry("world", "overview.category.world", "other"));
         for (int index = 0; index < entries.size(); index++) {
             OverviewEntry entry = entries.get(index);
             JournalNavButton row = new OverviewCategoryCard(rowLeft, rowTop + index * (rowHeight + rowGap),

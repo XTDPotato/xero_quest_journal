@@ -428,6 +428,25 @@ public final class QuestIcons {
         return path == null ? value : localRoot().relativize(path).toString().replace('\\', '/');
     }
 
+    /** Localized item name for editor fields; intentionally omits the registry ID suffix. */
+    public static String localizedName(String value) {
+        if (value == null || value.isBlank()) return "";
+        ItemStack stack = ItemStack.EMPTY;
+        var game = Minecraft.getInstance();
+        if (QuestItemStackValue.encoded(value) && game.player != null) {
+            stack = QuestItemStackValue.decode(value, game.player.registryAccess()).orElse(ItemStack.EMPTY);
+        } else {
+            ResourceLocation id = ResourceLocation.tryParse(value);
+            if (id != null && BuiltInRegistries.ITEM.containsKey(id)
+                    && BuiltInRegistries.ITEM.get(id) != net.minecraft.world.item.Items.AIR)
+                stack = new ItemStack(BuiltInRegistries.ITEM.get(id));
+        }
+        if (stack.isEmpty()) return "";
+        String name = stack.getHoverName().getString();
+        if (name.isBlank() || name.matches("(item|block|entity)\\.[a-zA-Z0-9_.-]+")) return "";
+        return name;
+    }
+
     private static IconChoice itemChoice(ResourceLocation id) {
         String value = id.toString();
         String display = itemDisplayName(id);
