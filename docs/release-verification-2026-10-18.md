@@ -150,3 +150,24 @@ Forge 1.20.1 与 Fabric 1.20.1 按顺序构建，避免后者转换来源目录�
 ![编辑状态与唯一 tooltip](images/journey-toolbar-exit-tooltip-zh-1920.png)
 
 ![章节任务选择](images/journey-toolbar-select-tooltip-zh-1920.png)
+
+## 预览 21：选中章节底条
+
+仅修改旅行历程选中章节的黄色底条高度，从 1 改为 5 GUI 像素，
+底边仍在标签局部坐标 30，未选中标签、细进度轨道及标记尺寸沿用原值。
+四个生产目标均重新构建通过。
+
+实际客户端截图像素检查通过：1920×1080、GUI 比例 2 时，
+选中条在第 64–73 行连续占 10 个画面像素，对应 5 个 GUI 像素。
+图中英文是作者测试章节/任务名称，界面语言为简体中文。
+
+本轮尝试 `runClient -PjourneyTest`，整套未通过：
+原始进度拖动检查忽略整像素落点，结构条件检查仍假定旧版行内展开。
+临时按实际落点及现有独立详情弹窗作诊断后，继续遇到
+`Appearance undo did not restore the previous draft` 断言失败。
+这些临时诊断改动未纳入提交，不以局部通过代替完整回归通过。
+初始、第二次及最终诊断日志分别为 `journey-underline-initial-run.log`、
+`journey-underline-second-run.log`、`journey-underline-run.log`，均位于 `build/verification/`。
+本次成功验证范围为黄色条像素尺寸、实际渲染和四目标生产构建。
+
+![5px 选中条的实际界面](images/journey-selected-tab-5px-zh-1920.png)

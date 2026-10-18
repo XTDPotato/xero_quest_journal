@@ -119,6 +119,9 @@
 
 从总览进入旅行历程。顶部切换章节，画布展示章节图标、主线卡片和支线任务。
 章节底部标记为白色中心菱形、淡蓝外框与透明光晕。
+选中章节的黄色底条恢复为 5px 高。
+
+![选中章节的 5px 黄色底条](images/journey-selected-tab-5px-zh-1920.png)
 
 ![旅行历程当前章节与菱形标记](images/journey-chapter-marker-zh-1920.png)
 

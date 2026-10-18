@@ -42,6 +42,7 @@
 | [journey-toolbar-edit-tooltip-zh-1920.png](journey-toolbar-edit-tooltip-zh-1920.png) | 进入时间线编辑，单一悬浮提示 |
 | [journey-toolbar-exit-tooltip-zh-1920.png](journey-toolbar-exit-tooltip-zh-1920.png) | 铅笔加 X 退出编辑，单一悬浮提示 |
 | [journey-toolbar-select-tooltip-zh-1920.png](journey-toolbar-select-tooltip-zh-1920.png) | 章节任务选择图标与提示 |
+| [journey-selected-tab-5px-zh-1920.png](journey-selected-tab-5px-zh-1920.png) | 选中章节黄色底条恢复 5 GUI 像素；章节名称为测试文本 |
 | [hot-background-inspector-zh-1920.png](hot-background-inspector-zh-1920.png) | 共用背景编辑器：实时预览、拖动、缩放模式与音乐 |
 | [journal-current-zh-1920.png](journal-current-zh-1920.png) | 当前任务日志、目标与底部奖励 |
 | [journal-main-tab-section-zh-1920.png](journal-main-tab-section-zh-1920.png) | 主线标签保留左侧分类图标和小标题 |
