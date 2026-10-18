@@ -443,7 +443,8 @@ public final class ClientSmokeTest {
                                     + "background mode/music graph execution, gallery draft save, chapter switch events,\n"
                                     + "click-opened quest details with explicit navigation,\n"
                                     + "distinct icons, finite line endpoints, overscroll rebound,\n"
-                                    + "desktop/compact editor geometry, loot toolbar and hot-event exit icon.\n");
+                                    + "desktop/compact editor geometry, loot toolbar and hot-event exit icon,\n"
+                                    + "single native tooltip per frame, edit/exit glyphs, chapter selection glyph and multi-selector.\n");
                     Files.copy(OUTPUT.resolve("journey-editing-result.txt"), OUTPUT.resolve("result.txt"),
                             java.nio.file.StandardCopyOption.REPLACE_EXISTING);
                     finished = true;

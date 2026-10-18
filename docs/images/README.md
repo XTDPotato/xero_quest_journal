@@ -39,6 +39,9 @@
 | [overview-authoring-zh-1920.png](overview-authoring-zh-1920.png) | 当前总览界面 |
 | [journey-chapter-multiselect-zh-1920.png](journey-chapter-multiselect-zh-1920.png) | 当前章节外观：左侧实时预览、多选拖动与右侧属性编辑 |
 | [journey-chapter-marker-zh-1920.png](journey-chapter-marker-zh-1920.png) | 当前章节标记：白色中心菱形、淡蓝外框与透明光晕 |
+| [journey-toolbar-edit-tooltip-zh-1920.png](journey-toolbar-edit-tooltip-zh-1920.png) | 进入时间线编辑，单一悬浮提示 |
+| [journey-toolbar-exit-tooltip-zh-1920.png](journey-toolbar-exit-tooltip-zh-1920.png) | 铅笔加 X 退出编辑，单一悬浮提示 |
+| [journey-toolbar-select-tooltip-zh-1920.png](journey-toolbar-select-tooltip-zh-1920.png) | 章节任务选择图标与提示 |
 | [hot-background-inspector-zh-1920.png](hot-background-inspector-zh-1920.png) | 共用背景编辑器：实时预览、拖动、缩放模式与音乐 |
 | [journal-current-zh-1920.png](journal-current-zh-1920.png) | 当前任务日志、目标与底部奖励 |
 | [journal-main-tab-section-zh-1920.png](journal-main-tab-section-zh-1920.png) | 主线标签保留左侧分类图标和小标题 |

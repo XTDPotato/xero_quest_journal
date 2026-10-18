@@ -1922,6 +1922,7 @@
   "screen.xero_quest_journal.conditions.detail.advancement": "Complete advancement",
   "screen.xero_quest_journal.conditions.detail.click_hint": "Click an item to inspect details and sources",
   "screen.xero_quest_journal.journey.edit_layout": "Edit timeline",
+  "screen.xero_quest_journal.journey.finish_edit_layout": "Exit timeline editing",
   "screen.xero_quest_journal.journey.quest_popup": "Quest details",
   "screen.xero_quest_journal.journey.go_to_task": "Go to quest",
   "screen.xero_quest_journal.journey.quest_missing": "This quest is no longer available",

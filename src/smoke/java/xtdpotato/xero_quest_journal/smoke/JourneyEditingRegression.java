@@ -267,7 +267,10 @@ final class JourneyEditingRegression {
                 }
             }
             case 14 -> {
-                return PresentationInteractionRegression.tick(game, journey, CHAPTER, A, music);
+                if (!PresentationInteractionRegression.tick(game, journey, CHAPTER, A, music)) return false;
+            }
+            case 15 -> {
+                return JourneyToolbarRegression.tick(game, journey);
             }
             default -> throw new AssertionError("Journey edit stage " + stage);
         }

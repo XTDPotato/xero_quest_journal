@@ -130,6 +130,12 @@
 
 作者点击铅笔进入编辑模式，右键章节可分别编辑名称、图标、成员、背景和外观。
 名称与图标编辑时左侧预览跟随输入更新。
+编辑状态的铅笔加 X 用于退出编辑，最右侧 X 用于关闭窗口；
+勾选列表图标打开章节任务多选。悬浮提示只显示一份。
+
+![退出时间线编辑图标与单一提示](images/journey-toolbar-exit-tooltip-zh-1920.png)
+
+![章节任务选择图标与提示](images/journey-toolbar-select-tooltip-zh-1920.png)
 
 ![章节名称与图标编辑](images/journey-chapter-identity-zh-1920.png)
 

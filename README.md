@@ -11,9 +11,9 @@ Minecraft 1.21.1 NeoForge。Forge 1.20.1、Fabric 1.20.1 和 Fabric 1.21.1
 每个游戏版本/加载器使用独立 JAR。详见 [版本矩阵](docs/porting-matrix.md)
 和 [Fabric 验证报告](docs/fabric-verification.md)。
 
-2026-10-18 多版本预览 19（模组版本 `0.2.0`）：切换任务分类后，
-左侧列表继续显示对应分类的图标和名称。此前预览 18 修复战利品表“ID／显示名称”标签，
-预览 17 已加入候选按类型打开通用选择器，
+2026-10-18 多版本预览 20（模组版本 `0.2.0`）：修复旅行历程编辑按钮重复 tooltip，
+编辑状态使用铅笔加 X，章节任务选择使用勾选列表图标。
+此前预览还修复分类小标题、战利品表“ID／显示名称”标签，并加入通用候选选择器，
 世界结构可浏览实际起始池模板；拼图方块增加模型连接点高亮、搜索选择、方向线、
 模板池跳转、中文操作讲解与窄窗口平滑滚动。
 修复自动任务标题残留 `%s`，任务完成聊天新增换行金色 `[打开任务]` 链接。
@@ -175,10 +175,10 @@ JS、变量、图标、富文本、回收站、设置、动画、物品栏、模
 | Minecraft / 加载器 | 1.20.1 Forge 47.3.0 或 Fabric；1.21.1 NeoForge 21.1.233 或 Fabric |
 | Java | 1.20.1 使用 Java 17；1.21.1 使用 Java 21 |
 | Fabric | 还需对应 Minecraft 版本的 Fabric API；精确测试版本见版本矩阵 |
-| 核心文件 | [0.2.0 多版本预览 19](https://github.com/XTDPotato/xero_quest_journal/releases/tag/v0.2.0-multiversion-preview.19) 中与 Minecraft/加载器完全匹配的单个 JAR |
+| 核心文件 | [0.2.0 多版本预览 20](https://github.com/XTDPotato/xero_quest_journal/releases/tag/v0.2.0-multiversion-preview.20) 中与 Minecraft/加载器完全匹配的单个 JAR |
 | 许可 | MIT，第三方依赖保留各自许可 |
 
-1. 从 [多版本预览 19 Release](https://github.com/XTDPotato/xero_quest_journal/releases/tag/v0.2.0-multiversion-preview.19) 选择与游戏版本、加载器相匹配的核心 JAR，放入实例的 `mods` 目录。
+1. 从 [多版本预览 20 Release](https://github.com/XTDPotato/xero_quest_journal/releases/tag/v0.2.0-multiversion-preview.20) 选择与游戏版本、加载器相匹配的核心 JAR，放入实例的 `mods` 目录。
 2. 多人环境下，客户端与服务端应安装相互匹配的版本。当前网络协议为 **10**；相同的显示版本不保证不同开发构建之间的协议兼容，旧 Release 的 `0.1.0` 与当前源码的 `0.2.0` 应分别核对。
 3. 启动游戏并进入世界，默认按 `J` 打开任务日志，按 `F8` 打开邮箱、`F7` 打开新邮件。
 4. 任务目录默认位于 `config/xero_quest/groups/`，编辑后使用 `/xero_quest reload` 重载。

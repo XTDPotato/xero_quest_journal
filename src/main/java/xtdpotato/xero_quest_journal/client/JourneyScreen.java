@@ -189,10 +189,10 @@ public final class JourneyScreen extends AnimatedQuestScreen {
         clearWidgets();
         if (!canStyle()) { editing = false; return; }
         var styles = ButtonStyleSheet.load();
-        var toggle = addRenderableWidget(new EditorIconButton(width - 62, 10, label("edit_layout"),
+        var toggle = addRenderableWidget(new EditorIconButton(width - 62, 10,
+                label(editing ? "finish_edit_layout" : "edit_layout"),
                 () -> { editing = !editing; wireFrom = ""; menu.clear(); initTools(); },
-                styles, "journey-edit-layout", editing ? "close" : "edit"));
-        toggle.setTooltip(Tooltip.create(label("edit_layout")));
+                styles, "journey-edit-layout", editing ? "edit_exit" : "edit"));
         toggle.active = pending == null;
         if (editing) {
             var undo = addRenderableWidget(new EditorIconButton(width - 212, 10, label("undo"),
@@ -209,7 +209,7 @@ public final class JourneyScreen extends AnimatedQuestScreen {
             addRenderableWidget(new EditorIconButton(width - 122, 10, label("edit_backgrounds"),
                     this::editBackgrounds, styles, "journey-edit-backgrounds", "minecraft:painting")).active = pending == null;
             addRenderableWidget(new EditorIconButton(width - 152, 10, label("tasks"),
-                    this::chooseTasks, styles, "journey-tasks", "add")).active = pending == null;
+                    this::chooseTasks, styles, "journey-tasks", "select_tasks")).active = pending == null;
         }
     }
     private static Component label(String key) {
@@ -757,15 +757,13 @@ public final class JourneyScreen extends AnimatedQuestScreen {
                 });
         if (!saveError.isBlank()) graphics.drawString(font,
                 Component.translatable("screen.xero_quest_journal.action." + saveError), 12, height - 24, 0xFFFF8888);
-        if (canStyle() && atAppearance(mouseX, mouseY) && menu.isEmpty()) {
+        if (menu.isEmpty() && children().stream().anyMatch(child ->
+                child instanceof net.minecraft.client.gui.components.AbstractWidget widget
+                        && widget.isHoveredOrFocused() && widget.getTooltip() != null)) {
+            // Screen renders the queued widget tooltip once, after this pass; keep it above scene depth.
             graphics.flush();
             com.mojang.blaze3d.systems.RenderSystem.clear(org.lwjgl.opengl.GL11.GL_DEPTH_BUFFER_BIT,
                     net.minecraft.client.Minecraft.ON_OSX);
-            graphics.pose().pushPose();
-            graphics.pose().translate(0, 0, 1000);
-            graphics.renderTooltip(font, label("edit_layout"), mouseX, mouseY);
-            graphics.flush();
-            graphics.pose().popPose();
         }
     }
 

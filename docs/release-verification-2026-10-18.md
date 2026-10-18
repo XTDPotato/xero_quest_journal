@@ -118,3 +118,35 @@ Forge 1.20.1 与 Fabric 1.20.1 按顺序构建，避免后者转换来源目录�
 ![世界标签](images/journal-world-tab-section-zh-1920.png)
 
 ![已完成标签](images/journal-completed-tab-section-zh-1920.png)
+
+## 预览 20：旅行历程工具栏
+
+`v0.2.0-multiversion-preview.20` 移除旅行历程额外手工绘制的编辑按钮 tooltip，
+由按钮的原生延迟提示统一绘制，绘制前清理场景深度，保留文字可读性。
+编辑状态改用 32×32 的 `edit_exit.png`（原铅笔加 X），
+章节任务入口改用同尺寸 `select_tasks.png`（勾选列表）。
+打包脚本对四个发行 JAR 都检查这两个图标是否存在。
+
+实际客户端运行：
+
+```powershell
+.\gradlew.bat runClient -PjourneyEditingTest -PneoSmokeRunDir=run-journey-toolbar --offline
+```
+
+完整专项通过，输出 `XERO_JOURNEY_EDITING_PASS`。
+新增工具栏测试监听真实 tooltip 渲染事件：
+“编辑时间线”“退出时间线编辑”“选择章节任务”三个悬浮状态，
+每处连续至少三个渲染帧均只出现一次 tooltip 绘制。
+实际点击检查进入/退出编辑不会关闭窗口，章节任务选择打开多选界面，
+取消后返回原界面；同时检查新图标资源可读取且尺寸均为 32×32。
+
+本轮也完成原有推荐任务定位、任务拖动与显示连线、章节任务增删、
+背景与音乐切换、章节独立外观、多选和尺寸句柄、章节切换事件、
+权限/冲突校验、任务弹窗导航及桌面/小窗口布局等断言。
+四个既有目标生产构建通过；没有重跑全部历史回归或远端联机。
+日志：`build/verification/journey-toolbar-run.log`；
+结果：`build/verification/journey-editing-result.txt`。
+
+![编辑状态与唯一 tooltip](images/journey-toolbar-exit-tooltip-zh-1920.png)
+
+![章节任务选择](images/journey-toolbar-select-tooltip-zh-1920.png)

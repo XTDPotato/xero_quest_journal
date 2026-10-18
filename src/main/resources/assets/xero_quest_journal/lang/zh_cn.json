@@ -1922,6 +1922,7 @@
   "screen.xero_quest_journal.conditions.detail.advancement": "完成进度",
   "screen.xero_quest_journal.conditions.detail.click_hint": "点击物品可查看物品详情与来源",
   "screen.xero_quest_journal.journey.edit_layout": "编辑时间线",
+  "screen.xero_quest_journal.journey.finish_edit_layout": "退出时间线编辑",
   "screen.xero_quest_journal.journey.quest_popup": "任务详情",
   "screen.xero_quest_journal.journey.go_to_task": "前往任务界面",
   "screen.xero_quest_journal.journey.quest_missing": "此任务已不存在",

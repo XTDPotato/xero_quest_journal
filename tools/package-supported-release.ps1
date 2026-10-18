@@ -37,6 +37,11 @@ foreach ($target in $targets) {
                 throw "Authoring changes are absent from $source"
             }
         }
+        foreach ($icon in @("edit_exit", "select_tasks")) {
+            if (!$jar.GetEntry("assets/xero_quest_journal/textures/gui/navigation/$icon.png")) {
+                throw "Journey toolbar icon is absent from $source"
+            }
+        }
     } finally { $jar.Dispose() }
 }
 New-Item -ItemType Directory -Force -Path $output | Out-Null
