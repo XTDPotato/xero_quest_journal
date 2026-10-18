@@ -50,6 +50,7 @@
 | [reward-receipt-zh-1920.png](reward-receipt-zh-1920.png) | 奖励收据 |
 | [loot-editor-zh-1920.png](loot-editor-zh-1920.png) | 战利品模式、权重与品质 |
 | [loot-display-editor-zh-1920.png](loot-display-editor-zh-1920.png) | 战利品外显图标选择与编辑 |
+| [loot-fields-compact-zh-1920.png](loot-fields-compact-zh-1920.png) | 紧凑布局的 ID 与显示名称标签 |
 | [loot-display-compact-zh-1920.png](loot-display-compact-zh-1920.png) | 紧凑布局及平滑滚动末项 |
 | [loot-display-mail-zh-1920.png](loot-display-mail-zh-1920.png) | 邮件战利品自定义图标及默认礼盒 |
 | [loot-display-contents-zh-1920.png](loot-display-contents-zh-1920.png) | 战利品内容、条目图标与概率 |

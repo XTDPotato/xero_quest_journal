@@ -162,8 +162,9 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
     private int tableViewportTop() { return 66; }
     private int tableViewportBottom() { return Math.max(tableViewportTop() + 44, height - 12); }
     private boolean scrollWholeEditor() { return height < 440; }
+    private int metadataTopOffset() { return scrollWholeEditor() ? 14 : 0; }
     private int rowsViewportTop() { return scrollWholeEditor() ? 40 : 220; }
-    private int entryContentTop() { return 248; }
+    private int entryContentTop() { return 248 + metadataTopOffset(); }
     private int rowsViewportBottom() { return Math.max(rowsViewportTop() + 20, height - 62); }
     private boolean stackedEntries() { return editorWidth() < 560; }
     private int entryHeight() { return stackedEntries() ? 166 : 128; }
@@ -335,7 +336,7 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
                 .filter(widget -> widget.getX() >= x && widget.getY() >= 40 && widget.getY() < 200
                         && !entryWidgets.contains(widget) && !(widget instanceof ScrollRail))
                 .forEach(metadataWidgets::add);
-        if (scrollWholeEditor()) moveWidgets(metadataWidgets, -entryMotion.pixels());
+        if (scrollWholeEditor()) moveWidgets(metadataWidgets, metadataTopOffset() - entryMotion.pixels());
         StyledButton undoButton = new EditorIconButton(width - 94, 10, text("loot.undo"),
                 this::undo, styles, "loot-undo", "undo");
         undoButton.active = !undo.isEmpty();
@@ -756,11 +757,10 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
         else g.drawString(font, title, x, 10, RewardEditorTheme.TEXT);
         if (scrollWholeEditor()) g.enableScissor(x, rowsViewportTop(), width - 20, rowsViewportBottom());
         int headerOffset = scrollWholeEditor() ? entryMotion.pixels() : 0;
-        if (!scrollWholeEditor()) {
-            g.drawString(font, text("loot.id"), x, 31, RewardEditorTheme.MUTED);
-            g.drawString(font, text("loot.name"), x + w / 2 + 4, 31, RewardEditorTheme.MUTED);
-        }
-        g.drawString(font, text("loot.entry_section"), x, 220 - headerOffset, RewardEditorTheme.TEXT);
+        int labelY = 31 + metadataTopOffset() - headerOffset;
+        g.drawString(font, text("loot.id"), idBox.getX(), labelY, RewardEditorTheme.MUTED);
+        g.drawString(font, text("loot.name"), nameBox.getX(), labelY, RewardEditorTheme.MUTED);
+        g.drawString(font, text("loot.entry_section"), x, 220 + metadataTopOffset() - headerOffset, RewardEditorTheme.TEXT);
         if (scrollWholeEditor()) g.disableScissor();
         g.enableScissor(x, rowsViewportTop(), width - 20, rowsViewportBottom());
         List<Integer> filtered = filteredEntries();

@@ -102,6 +102,7 @@ final class LootDisplayRegression {
             case 5 -> {
                 require(editor.width == 640 && editor.height == 360, "Compact editor dimensions were not applied");
                 checkGeometry(editor);
+                capture(game, "loot-display-editor-labels-compact-1920");
                 var motion = field(editor, "entryMotion");
                 double before = number(motion, "position");
                 editor.mouseScrolled(editor.width - 40, 240, 0, -1);
