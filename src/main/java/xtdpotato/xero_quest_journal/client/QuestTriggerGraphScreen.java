@@ -831,7 +831,8 @@ public final class QuestTriggerGraphScreen extends AnimatedQuestScreen {
         if (key.equals("target") && selected() != null && selected().type().equals("event"))
             context = selected().get("event", "click");
         if (key.equals("target") && selected() != null && selected().type().startsWith("locate_"))
-            context = selected().type().substring("locate_".length());
+            context = selected().type();
+        if (key.equals("structure")) context = "structure_file";
         var input = new SuggestedEditBox(this, font, x, y + 12, w, 18, text(label), context);
         input.setMaxLength(maxLength);
         input.setValue(initial);

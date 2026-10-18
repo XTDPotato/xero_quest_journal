@@ -15,10 +15,11 @@ public final class QuestText {
     }
 
     public static Component title(QuestDefinition quest) {
-        if (quest.titleKey() != null && List.of("generate.xero_quest_journal.title.collect", "generate.xero_quest_journal.title.craft",
-                "generate.xero_quest_journal.title.defeat").contains(quest.titleKey())
-                && !quest.triggers().isEmpty())
-            return Component.translatable(quest.titleKey(), targetName(quest.triggers().getFirst()));
+        if (quest.titleKey() != null && xtdpotato.xero_quest_journal.core.model.QuestTitleText.generated(quest)) {
+            var game = net.minecraft.client.Minecraft.getInstance();
+            return xtdpotato.xero_quest_journal.core.model.QuestTitleText.title(quest,
+                    game.player == null ? null : game.player.registryAccess());
+        }
         return text(quest.titleKey(), quest.title());
     }
 
@@ -286,8 +287,10 @@ public final class QuestText {
     }
 
     private static Component text(String key, String fallback) {
-        if (key != null && !key.isBlank() && Language.getInstance().has(key))
-            return Component.translatable(key);
+        if (key != null && !key.isBlank() && Language.getInstance().has(key)) {
+            Component translated = Component.translatable(key);
+            if (!translated.getString().matches("(?s).*%(?:\\d+\\$)?[sd].*")) return translated;
+        }
         if (fallback == null || fallback.isBlank()) return Component.empty();
         if ((key == null || key.isBlank() || fallback.equals(key)) && translationKeyLike(fallback)) {
             if (descriptionKey(key, fallback)) return Component.empty();

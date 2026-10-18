@@ -4,7 +4,7 @@
 
 这里保存从本项目开发客户端挑选的截图，使用 Minecraft 测试世界和演示任务。图片不是其他游戏的 UI 设计参考，不包含完整测试存档。
 
-部分截图来自不同日期的开发版本，标题和数量使用测试数据。下面先列出截至 2026-10-16
+部分截图来自不同日期的开发版本，标题和数量使用测试数据。下面先列出截至 2026-10-18
 作者工具和界面图鉴专项生成的中文截图，**每张原始分辨率均为 1920×1080**，未将小图放大。
 截图测试通过后由 `tools/update-authoring-documentation.ps1` 同步。
 
@@ -12,6 +12,9 @@
 
 | 文件 | 场景 |
 | --- | --- |
+| [structure-template-zh-1920.png](structure-template-zh-1920.png) | 真实村庄起始模板的三维预览 |
+| [jigsaw-inspector-zh-1920.png](jigsaw-inspector-zh-1920.png) | 拼图连接点模型高亮、方向与字段说明 |
+| [jigsaw-guide-zh-1920.png](jigsaw-guide-zh-1920.png) | 游戏内拼图方块六步操作讲解 |
 | [settings-general-zh-1920.png](settings-general-zh-1920.png) | 常规：视图、入口、HUD 与偏移 |
 | [settings-motion-zh-1920.png](settings-motion-zh-1920.png) | 动画：减弱动态、弹出时长、编辑入口 |
 | [settings-notifications-zh-1920.png](settings-notifications-zh-1920.png) | 通知：整体与图标大小、预览 |

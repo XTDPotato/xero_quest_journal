@@ -647,6 +647,22 @@ public final class ClientSmokeTest {
             }
             if (Boolean.getBoolean("xero.creationTest") && stage >= 2) {
                 if (game.player == null || game.level == null) return;
+                if (Boolean.getBoolean("xero.candidatePickerOnly")) {
+                    if (CandidatePickerRegression.tick(game)) {
+                        Files.createDirectories(OUTPUT);
+                        Files.writeString(OUTPUT.resolve("result.txt"),
+                                "PASS: item candidate apply/cancel, candidate/field separation, generic registry list,\n"
+                                + "world structure ID preservation, actual village start-pool discovery and 3D preview,\n"
+                                + "preview zoom/return, NBT-library routing/cancel;\n"
+                                + "sanitized jigsaw metadata, vanilla matching rules, searchable connector list,\n"
+                                + "projected model picking, pool-template preview/return, instructions and narrow scrolling layout;\n"
+                                + "completion title parameters, newline/gold link and ordinary-player command syntax.\n");
+                        finished = true;
+                        XeroQuestJournal.LOGGER.info("XERO_CANDIDATE_PICKER_PASS");
+                        game.stop();
+                    }
+                    return;
+                }
                 if (CreationRegression.tick(game)) {
                     Files.createDirectories(OUTPUT);
                     Files.writeString(OUTPUT.resolve("result.txt"),

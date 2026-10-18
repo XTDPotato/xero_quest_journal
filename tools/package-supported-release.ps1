@@ -30,7 +30,9 @@ foreach ($target in $targets) {
                 "client/QuestSearchFilterScreen", "client/CoordinateTrackAnimation",
                 "core/runtime/QuestVariableMath", "client/AnecdoteScreen", "client/AnecdoteRewardsScreen",
                 "core/runtime/AnecdoteRuntime", "core/model/AnecdoteDefinition",
-                "core/io/QuestAuthoringHistory", "core/model/LootDefinition")) {
+                "core/io/QuestAuthoringHistory", "core/model/LootDefinition",
+                "core/model/QuestTitleText", "core/model/QuestJigsawInfo",
+                "client/QuestStructurePreviewScreen")) {
             if (!$jar.GetEntry("xtdpotato/xero_quest_journal/$class.class")) {
                 throw "Authoring changes are absent from $source"
             }

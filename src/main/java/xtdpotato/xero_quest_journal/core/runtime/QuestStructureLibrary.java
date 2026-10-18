@@ -10,6 +10,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.List;
+import java.util.Set;
+import java.util.LinkedHashSet;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.tags.TagKey;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonParser;
 
 /** Local authoring operations; call on the integrated server thread only. */
 public final class QuestStructureLibrary {
@@ -30,13 +36,82 @@ public final class QuestStructureLibrary {
                 .map(ResourceLocation::toString).sorted().limit(2048).toList();
     }
 
+    /** Templates explicitly referenced by a world structure's start pool, including its fallback pools. */
+    public static List<String> targetTemplates(ServerPlayer player, String target) {
+        authorize(player);
+        ResourceLocation id = ResourceLocation.tryParse(target.startsWith("#") ? target.substring(1) : target);
+        if (id == null) throw new IllegalArgumentException("structure.invalid");
+        var registry = player.server.registryAccess().registryOrThrow(Registries.STRUCTURE);
+        Set<ResourceLocation> structures = new LinkedHashSet<>();
+        if (target.startsWith("#")) {
+            registry.getTag(TagKey.create(Registries.STRUCTURE, id)).ifPresent(values ->
+                    values.forEach(holder -> structures.add(registry.getKey(holder.value()))));
+        } else if (registry.containsKey(id)) structures.add(id);
+        Set<String> templates = new LinkedHashSet<>(), pools = new LinkedHashSet<>();
+        for (var structure : structures) {
+            if (templates.size() >= 256) break;
+            var json = resource(player, "worldgen/structure/", structure);
+            if (json != null && json.isJsonObject() && json.getAsJsonObject().has("start_pool"))
+                collectPool(player, json.getAsJsonObject().get("start_pool"), pools, templates);
+        }
+        return List.copyOf(templates);
+    }
+
+    public static List<String> poolTemplates(ServerPlayer player, String pool) {
+        authorize(player);
+        if (ResourceLocation.tryParse(pool) == null) throw new IllegalArgumentException("structure.invalid");
+        Set<String> templates = new LinkedHashSet<>();
+        collectPool(player, new com.google.gson.JsonPrimitive(pool), new LinkedHashSet<>(), templates);
+        return List.copyOf(templates);
+    }
+
+    private static JsonElement resource(ServerPlayer player, String directory, ResourceLocation id) {
+        var path = ResourceLocation.fromNamespaceAndPath(id.getNamespace(), directory + id.getPath() + ".json");
+        var resource = player.server.getResourceManager().getResource(path);
+        if (resource.isEmpty()) return null;
+        try (var reader = resource.get().openAsReader()) { return JsonParser.parseReader(reader); }
+        catch (Exception invalid) { return null; }
+    }
+
+    private static void collectPool(ServerPlayer player, JsonElement value, Set<String> pools, Set<String> templates) {
+        if (value == null || !value.isJsonPrimitive() || pools.size() >= 32 || templates.size() >= 256) return;
+        String name = value.getAsString();
+        var id = ResourceLocation.tryParse(name);
+        if (id == null || !pools.add(name)) return;
+        var json = resource(player, "worldgen/template_pool/", id);
+        if (json == null || !json.isJsonObject()) return;
+        var pool = json.getAsJsonObject();
+        if (pool.has("elements") && pool.get("elements").isJsonArray()) {
+            for (var element : pool.getAsJsonArray("elements"))
+                if (element.isJsonObject()) collectTemplates(element.getAsJsonObject().get("element"), templates, 0);
+        }
+        collectPool(player, pool.get("fallback"), pools, templates);
+    }
+
+    private static void collectTemplates(JsonElement value, Set<String> templates, int depth) {
+        if (value == null || !value.isJsonObject() || depth > 16 || templates.size() >= 256) return;
+        var element = value.getAsJsonObject();
+        if (element.has("location") && element.get("location").isJsonPrimitive()) {
+            var id = ResourceLocation.tryParse(element.get("location").getAsString());
+            if (id != null) templates.add(id.toString());
+        }
+        if (element.has("elements") && element.get("elements").isJsonArray())
+            for (var child : element.getAsJsonArray("elements")) collectTemplates(child, templates, depth + 1);
+    }
+
     public static CompoundTag previewTemplate(ServerPlayer player, String id) {
         authorize(player);
         ResourceLocation key = ResourceLocation.tryParse(id);
         if (key == null) throw new IllegalArgumentException("structure.invalid");
-        return QuestStructures.preview(QuestStructures.validate(player.server.getStructureManager().get(key)
+        CompoundTag data = player.server.getStructureManager().get(key)
                 .orElseThrow(() -> new IllegalArgumentException("structure.missing"))
-                .save(new CompoundTag())));
+                .save(new CompoundTag());
+        if (data.contains("palettes")) {
+            var palettes = data.getList("palettes", net.minecraft.nbt.Tag.TAG_LIST);
+            if (!palettes.isEmpty()) data.put("palette", palettes.get(0).copy());
+            data.remove("palettes");
+        }
+        return QuestStructures.preview(QuestStructures.validate(data));
     }
 
     public static String importTemplate(ServerPlayer player, String id) throws Exception {

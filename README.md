@@ -11,11 +11,12 @@ Minecraft 1.21.1 NeoForge。Forge 1.20.1、Fabric 1.20.1 和 Fabric 1.21.1
 每个游戏版本/加载器使用独立 JAR。详见 [版本矩阵](docs/porting-matrix.md)
 和 [Fabric 验证报告](docs/fabric-verification.md)。
 
-2026-10-17 多版本预览 16（模组版本 `0.2.0`）：概览分类区的“逸闻纪事”入口紧跟“游逸旅文”，
-使用独立图标并直接打开逸闻纪事书册。此前版本还包含奖励编辑器本地化物品 tooltip、
-虚拟化图标/物品选择器、空奖励快捷添加、自引用前置修复和任务解锁图定位。
-四个已完成平台均含逸闻纪事与相关作者功能，并补齐 1920×1080 界面截图。
-详细状态见 [本轮验证](docs/release-verification-2026-10-17.md)；
+2026-10-18 多版本预览 17（模组版本 `0.2.0`）：候选按类型打开通用选择器，
+世界结构可浏览实际起始池模板；拼图方块增加模型连接点高亮、搜索选择、方向线、
+模板池跳转、中文操作讲解与窄窗口平滑滚动。
+修复自动任务标题残留 `%s`，任务完成聊天新增换行金色 `[打开任务]` 链接。
+详见 [候选与拼图方块教程](docs/candidate-selectors-and-jigsaw.md)，含中文 1920×1080 截图。
+四个已完成平台同步共享功能，详细状态见 [本轮验证](docs/release-verification-2026-10-18.md)；
 常见界面、入口与操作见 [中文 1080p 界面图鉴](docs/interface-gallery.md)。
 
 Xero Quest Journal 面向整合包作者、地图作者与喜欢任务引导的玩家，把任务列表、章节历程、世界目标、奖励和邮箱放在一套原生游戏界面中。作者可以在本地世界内编辑任务，也可以用 JSON、HTML 或 XML 配置任务文件。
@@ -33,7 +34,8 @@ Xero Quest Journal 面向整合包作者、地图作者与喜欢任务引导的�
 - [界面与截图](#界面与截图)
 - [中文 1080p 界面图鉴：常见界面、入口和操作](docs/interface-gallery.md)
 - [任务修改与删除的撤销/重做](docs/task-edit-undo.md)
-- [2026-10-17 多版本构建与回归](docs/release-verification-2026-10-17.md)
+- [2026-10-18 多版本构建与专项验证](docs/release-verification-2026-10-18.md)
+- [候选选择、结构预览与拼图方块讲解](docs/candidate-selectors-and-jigsaw.md)
 - [全部命令](docs/commands.md)
 - [JavaScript 编写参考与示例](docs/javascript.md)
 - [判断节点详解](docs/trigger-conditions.md)
@@ -79,7 +81,7 @@ Xero Quest Journal 面向整合包作者、地图作者与喜欢任务引导的�
 
 ## 界面与截图
 
-[完整中文界面图鉴](docs/interface-gallery.md) 按 16 类操作展示常见界面，
+[完整中文界面图鉴](docs/interface-gallery.md) 按 17 类操作展示常见界面，
 包括任务、搜索、条件、奖励、邮件、战利品、章节编辑、背景、节点、
 JS、变量、图标、富文本、回收站、设置、动画、物品栏、模板和位置目标。
 下列为主要界面的选图；原图均可点开查看。
@@ -171,10 +173,10 @@ JS、变量、图标、富文本、回收站、设置、动画、物品栏、模
 | Minecraft / 加载器 | 1.20.1 Forge 47.3.0 或 Fabric；1.21.1 NeoForge 21.1.233 或 Fabric |
 | Java | 1.20.1 使用 Java 17；1.21.1 使用 Java 21 |
 | Fabric | 还需对应 Minecraft 版本的 Fabric API；精确测试版本见版本矩阵 |
-| 核心文件 | [0.2.0 多版本预览 16](https://github.com/XTDPotato/xero_quest_journal/releases/tag/v0.2.0-multiversion-preview.16) 中与 Minecraft/加载器完全匹配的单个 JAR |
+| 核心文件 | [0.2.0 多版本预览 17](https://github.com/XTDPotato/xero_quest_journal/releases/tag/v0.2.0-multiversion-preview.17) 中与 Minecraft/加载器完全匹配的单个 JAR |
 | 许可 | MIT，第三方依赖保留各自许可 |
 
-1. 从 [多版本预览 16 Release](https://github.com/XTDPotato/xero_quest_journal/releases/tag/v0.2.0-multiversion-preview.16) 选择与游戏版本、加载器相匹配的核心 JAR，放入实例的 `mods` 目录。
+1. 从 [多版本预览 17 Release](https://github.com/XTDPotato/xero_quest_journal/releases/tag/v0.2.0-multiversion-preview.17) 选择与游戏版本、加载器相匹配的核心 JAR，放入实例的 `mods` 目录。
 2. 多人环境下，客户端与服务端应安装相互匹配的版本。当前网络协议为 **10**；相同的显示版本不保证不同开发构建之间的协议兼容，旧 Release 的 `0.1.0` 与当前源码的 `0.2.0` 应分别核对。
 3. 启动游戏并进入世界，默认按 `J` 打开任务日志，按 `F8` 打开邮箱、`F7` 打开新邮件。
 4. 任务目录默认位于 `config/xero_quest/groups/`，编辑后使用 `/xero_quest reload` 重载。

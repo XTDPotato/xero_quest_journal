@@ -1,6 +1,6 @@
 # 中文界面图鉴与操作参考
 
-[项目首页](../README.md) · [安装与版本](porting-matrix.md) · [全部命令](commands.md) · [JS 参考](javascript.md) · [发布验证](release-verification-2026-10-16.md)
+[项目首页](../README.md) · [安装与版本](porting-matrix.md) · [全部命令](commands.md) · [JS 参考](javascript.md) · [发布验证](release-verification-2026-10-18.md)
 
 本页展示实际 Minecraft 客户端界面。图片全部为原生 **1920×1080、简体中文**，
 不使用放大截图或局部裁剪替代全屏图。2026-10-16 的新增图来自 NeoForge 1.21.1；
@@ -305,9 +305,29 @@ Number(experienceLevel) >= 10;
 
 ![地点目标编辑器](images/location-editor-zh-1920.png)
 
+## 17. 世界结构与拼图方块
+
+结构候选打开地点选择器，可继续查看真实起始池模板。
+模型右上角的拼图方块入口打开连接点面板：
+可搜索选择连接点，或直接点击模型的青色标记。
+金框是当前选择，金色线是连接面方向，青色线是顶部方向。
+
+![真实世界结构模板](images/structure-template-zh-1920.png)
+
+![拼图方块连接属性](images/jigsaw-inspector-zh-1920.png)
+
+右侧提供字段解释和六步操作讲解；长内容平滑滚动，窄窗口改为上下布局。
+底部可以浏览当前连接点的模板池并打开下一段。
+浏览与预览不生成结构或修改世界。
+完整的模板池 JSON、版本目录差异和最小房间示例见
+[候选与拼图方块教程](candidate-selectors-and-jigsaw.md)。
+
+![游戏内拼图操作讲解](images/jigsaw-guide-zh-1920.png)
+
 ## 截图与覆盖范围
 
 本页用于展示常见界面和操作，不将一张截图等同于该功能所有分支测试通过。
-生产构建、客户端专项和未覆盖平台分别记录在 [本次验证](release-verification-2026-10-16.md)。
+生产构建、客户端专项和未覆盖平台分别记录在 [本次验证](release-verification-2026-10-18.md)。
 截图可通过 `-PauthoringDocsTest` 与 `-PjourneyEditingTest` 重新生成。
+2026-10-18 的结构与拼图截图由 `-PcandidatePickerTest` 生成。
 原图保存在 `docs/images/`，文件名中的 `zh-1920` 均经过 1920×1080 尺寸校验。

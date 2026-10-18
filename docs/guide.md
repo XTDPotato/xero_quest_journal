@@ -5,6 +5,8 @@
 常见界面的完整中文 1920×1080 截图、入口和操作见 [界面图鉴](interface-gallery.md)。
 已保存的任务修改与删除支持撤销/重做，范围和快捷键见 [任务编辑撤销](task-edit-undo.md)。
 当前章节外观、实时预览及背景节点见 [背景与历程编辑](background-and-journey-editor.md)。
+候选来源选择、世界结构预览、拼图方块连接属性与数据包房间示例见
+[候选与拼图方块教程](candidate-selectors-and-jigsaw.md)。
 
 本指南对应已完成的 1.20.1 Forge/Fabric（Java 17）和 1.21.1 NeoForge/Fabric（Java 21）。
 26.x 尚未完成。界面、命令和文件中的任务 ID 是同一个引用体系，编辑前建议同时备份任务目录和世界进度。

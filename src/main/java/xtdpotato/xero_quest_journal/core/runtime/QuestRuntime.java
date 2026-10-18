@@ -349,10 +349,22 @@ public final class QuestRuntime {
         } else if (wasTracked) {
             autoTrackRelatedSuccessor(player, quest);
         }
-        Component title = quest.titleKey() == null || quest.titleKey().isBlank()
-                ? Component.literal(quest.title()) : Component.translatable(quest.titleKey());
-        player.sendSystemMessage(Component.translatable("quest.xero_quest_journal.completed", title));
+        player.sendSystemMessage(completionMessage(quest, player.registryAccess()));
         return true;
+    }
+
+    public static Component completionMessage(QuestDefinition quest, net.minecraft.core.HolderLookup.Provider registries) {
+        var open = Component.translatable("quest.xero_quest_journal.open_task")
+                .withStyle(style -> style.withColor(net.minecraft.ChatFormatting.GOLD)
+                        .withClickEvent(new net.minecraft.network.chat.ClickEvent(
+                                net.minecraft.network.chat.ClickEvent.Action.RUN_COMMAND,
+                                "/xero_quest open task " + quest.id()))
+                        .withHoverEvent(new net.minecraft.network.chat.HoverEvent(
+                                net.minecraft.network.chat.HoverEvent.Action.SHOW_TEXT,
+                                xtdpotato.xero_quest_journal.core.model.QuestTitleText.title(quest, registries))));
+        return Component.translatable("quest.xero_quest_journal.completed",
+                xtdpotato.xero_quest_journal.core.model.QuestTitleText.title(quest, registries))
+                .append("\n").append(open);
     }
 
     private static void autoTrackRelatedSuccessor(ServerPlayer player, QuestDefinition completed) {

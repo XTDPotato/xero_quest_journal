@@ -38,6 +38,10 @@ public final class QuestSuggestions {
                     new QuestValuePickerScreen.Option(holder.id().toString(), () -> holder.value().display()
                             .map(display -> display.getTitle().getString()).orElse(holder.id().toString())
                             + " (" + holder.id() + ")")));
+        } else if (key.equals("locate_structure") || key.equals("structure")) {
+            result.addAll(QuestLocationScreen.targetOptions("structure"));
+        } else if (key.equals("locate_biome") || key.equals("biome")) {
+            result.addAll(QuestLocationScreen.targetOptions("biome"));
         } else if (key.equals("quest") || key.equals("unlock") || key.equals("complete")) {
             QuestRepository.all().forEach(quest -> result.add(
                     new QuestValuePickerScreen.Option(quest.id(),

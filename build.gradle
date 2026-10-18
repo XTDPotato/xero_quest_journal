@@ -127,7 +127,7 @@ def clientRegression = [
         'unlockGraphTest', 'journeyTest', 'overviewTest', 'journalFocusTest', 'mailReferenceTest',
         'lootTableTest', 'trackingHudTest', 'mailBodyEditorTest', 'mailAdminTest', 'journeyEditingTest', 'journalOrderTest',
         'overviewAuthoringTest', 'generateTasksTest', 'tacticalCompatibilityTest', 'generatedDeletionTest',
-        'claimReceiptTest', 'spotlightUiTest', 'rewardQualityTest', 'authoringDocsTest'
+        'claimReceiptTest', 'spotlightUiTest', 'rewardQualityTest', 'authoringDocsTest', 'candidatePickerTest'
 ].any { project.hasProperty(it) }
 
 neoForge {
@@ -183,6 +183,11 @@ neoForge {
             if (project.hasProperty('creationTest')) {
                 systemProperty 'xero.creationTest', 'true'
                 gameDirectory = file('run-creation')
+            }
+            if (project.hasProperty('candidatePickerTest')) {
+                systemProperty 'xero.creationTest', 'true'
+                systemProperty 'xero.candidatePickerOnly', 'true'
+                gameDirectory = file('run-candidate-picker')
             }
             if (project.hasProperty('animationTest')) {
                 systemProperty 'xero.animationTest', 'true'

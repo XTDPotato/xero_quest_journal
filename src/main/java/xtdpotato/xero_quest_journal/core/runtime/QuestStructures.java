@@ -109,6 +109,19 @@ public final class QuestStructures {
             if (id.equals("minecraft:air") || id.equals("minecraft:cave_air") || id.equals("minecraft:void_air")) continue;
             var clean = new CompoundTag();
             clean.put("pos", block.get("pos").copy()); clean.putInt("state", block.getInt("state"));
+            if (id.equals("minecraft:jigsaw") && block.contains("nbt", Tag.TAG_COMPOUND)) {
+                // Preview only the connection fields; never expose containers, commands or arbitrary block NBT.
+                var metadata = block.getCompound("nbt");
+                var connection = new CompoundTag();
+                for (String key : List.of("name", "target", "pool", "final_state", "joint"))
+                    if (metadata.contains(key, Tag.TAG_STRING)) {
+                        String text = metadata.getString(key);
+                        if (text.length() <= 256) connection.putString(key, text);
+                    }
+                for (String key : List.of("selection_priority", "placement_priority"))
+                    if (metadata.contains(key, Tag.TAG_INT)) connection.putInt(key, metadata.getInt(key));
+                clean.put("nbt", connection);
+            }
             blocks.add(clean);
         }
         result.put("blocks", blocks);

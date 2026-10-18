@@ -136,7 +136,7 @@ public final class QuestValuePickerScreen extends AnimatedQuestScreen {
         search.setFocused(true);
         newCandidate = new EditBox(font, x, height - 58, w - 58, 20, text("value_picker.add"));
         if (!context.isBlank()) newCandidate.setWidth(Math.max(48, w - 90));
-        newCandidate.setMaxLength(4096);
+        newCandidate.setMaxLength(8192);
         newCandidate.setValue(candidate);
         newCandidate.setHint(text("value_picker.add"));
         newCandidate.setResponder(value -> candidate = value);
@@ -144,18 +144,7 @@ public final class QuestValuePickerScreen extends AnimatedQuestScreen {
         int addWidth = 54;
         int addX = context.isBlank() ? x + w - addWidth : x + w - 84;
         var add = new StyledButton(addX, height - 58, addWidth, 20, text("value_picker.add"),
-                ignored -> {
-                    if (!QuestSuggestionOverrides.add(context, candidate)) {
-                        error = text("value_picker.save_error").getString();
-                        return;
-                    }
-                    error = "";
-                    query = "";
-                    candidate = "";
-                    candidates = null;
-                    updateFilter();
-                    init();
-                }, styles, "candidate-add", "toolbar-button");
+                ignored -> addCandidate(), styles, "candidate-add", "toolbar-button");
         add.active = !context.isBlank();
         addRenderableWidget(add);
         if (!context.isBlank()) {
@@ -168,6 +157,65 @@ public final class QuestValuePickerScreen extends AnimatedQuestScreen {
                 ignored -> closeTo(parent), styles, "value-picker-close");
         close.setTooltip(Tooltip.create(Component.translatable("gui.cancel")));
         addRenderableWidget(close);
+    }
+
+    private void addCandidate() {
+        if (context.isBlank()) return;
+        if (isItemContext(context)) {
+            minecraft.setScreen(QuestScreen.pickResource(this, candidate, true, true, this::saveCandidate));
+            return;
+        }
+        if (context.equals("structure_file")) {
+            minecraft.setScreen(new QuestStructurePickerScreen(this, this::saveCandidate));
+            return;
+        }
+        if (context.equals("location")) {
+            minecraft.setScreen(new QuestLocationScreen(this, candidate, this::saveCandidate));
+            return;
+        }
+        if (List.of("structure", "biome", "locate_structure", "locate_biome").contains(context)) {
+            String kind = context.endsWith("structure") ? "structure" : "biome";
+            minecraft.setScreen(QuestLocationScreen.pickTarget(this, kind, candidate, this::saveCandidate));
+            return;
+        }
+        if (List.of("icon", "image", "texture", "background").contains(context)) {
+            minecraft.setScreen(QuestScreen.pickResource(this, candidate, false, this::saveCandidate));
+            return;
+        }
+        if (List.of("quest", "unlock", "lock", "complete").contains(context)) {
+            minecraft.setScreen(new QuestTaskPickerScreen(this, candidate, "", ids ->
+                    ids.forEach(this::saveCandidate)));
+            return;
+        }
+
+        List<Option> choices = options.get().stream().filter(option -> !option.value().isBlank())
+                .collect(java.util.stream.Collectors.toMap(Option::value, option -> option,
+                        (first, ignored) -> first, java.util.LinkedHashMap::new))
+                .values().stream().toList();
+        if (choices.isEmpty()) {
+            saveCandidate(candidate);
+            return;
+        }
+        minecraft.setScreen(new QuestValuePickerScreen(this, caption, "", () -> choices,
+                "", this::saveCandidate));
+    }
+
+    private static boolean isItemContext(String context) {
+        String type = context.toLowerCase(Locale.ROOT);
+        return type.equals("item") || type.equals("reward_item") || type.startsWith("item_");
+    }
+
+    private void saveCandidate(String value) {
+        if (!QuestSuggestionOverrides.add(context, value)) {
+            error = text("value_picker.save_error").getString();
+            return;
+        }
+        error = "";
+        query = "";
+        candidate = "";
+        candidates = null;
+        updateFilter();
+        if (minecraft.screen == this) init();
     }
 
     @Override

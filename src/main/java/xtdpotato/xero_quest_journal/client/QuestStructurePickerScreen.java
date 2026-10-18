@@ -35,6 +35,21 @@ public final class QuestStructurePickerScreen extends AnimatedQuestScreen {
     private String query = "", message = "";
     private CompletableFuture<?> pending;
     private ButtonStyleSheet styles;
+    private String worldTarget;
+    private boolean poolTarget;
+
+    public static QuestStructurePickerScreen inspectTarget(Screen parent, String target) {
+        var screen = new QuestStructurePickerScreen(parent, ignored -> {});
+        screen.worldTarget = target;
+        screen.worldTab = true;
+        return screen;
+    }
+
+    public static QuestStructurePickerScreen inspectPool(Screen parent, String pool) {
+        var screen = inspectTarget(parent, pool);
+        screen.poolTarget = true;
+        return screen;
+    }
 
     public QuestStructurePickerScreen(Screen parent, Consumer<String> selected) {
         super(Component.translatable("screen.xero_quest_journal.structure.choose"));
@@ -68,7 +83,9 @@ public final class QuestStructurePickerScreen extends AnimatedQuestScreen {
         if (server == null || minecraft.player == null || pending != null) return;
         UUID player = minecraft.player.getUUID();
         pending = CompletableFuture.supplyAsync(() ->
-                QuestStructureLibrary.worldTemplates(server.getPlayerList().getPlayer(player)), server);
+                worldTarget == null ? QuestStructureLibrary.worldTemplates(server.getPlayerList().getPlayer(player))
+                        : poolTarget ? QuestStructureLibrary.poolTemplates(server.getPlayerList().getPlayer(player), worldTarget)
+                        : QuestStructureLibrary.targetTemplates(server.getPlayerList().getPlayer(player), worldTarget), server);
     }
 
     private void filter() {
@@ -83,14 +100,16 @@ public final class QuestStructurePickerScreen extends AnimatedQuestScreen {
     @Override protected void init() {
         clearWidgets();
         styles = ButtonStyleSheet.load();
-        if (local.isEmpty()) refreshLocal();
+        if (worldTarget == null && local.isEmpty()) refreshLocal();
         filter();
         if (worldTab && !worldLoaded && pending == null) refreshWorld();
         int x = 16, w = Math.max(60, width - 32);
-        addRenderableWidget(new StyledButton(x, 34, (w - 4) / 2, 20, text("local"),
+        if (worldTarget == null) {
+            addRenderableWidget(new StyledButton(x, 34, (w - 4) / 2, 20, text("local"),
                 b -> switchTab(false), styles, "structure-local"));
-        addRenderableWidget(new StyledButton(x + (w + 4) / 2, 34, (w - 4) / 2, 20, text("world"),
+            addRenderableWidget(new StyledButton(x + (w + 4) / 2, 34, (w - 4) / 2, 20, text("world"),
                 b -> switchTab(true), styles, "structure-world"));
+        }
         var search = new EditBox(font, x, 60, w, 20, text("search"));
         search.setMaxLength(128);
         search.setValue(query);
@@ -98,6 +117,11 @@ public final class QuestStructurePickerScreen extends AnimatedQuestScreen {
         search.setResponder(value -> { query = value; scroll = 0; filter(); rebuildRows(); });
         addRenderableWidget(search);
         rebuildRows();
+        if (worldTarget != null) {
+            addRenderableWidget(new EditorIconButton(width - 42, 8, Component.translatable("gui.back"),
+                    this::onClose, styles, "structure-close", "close"));
+            return;
+        }
         int actionWidth = Math.max(45, (w - 12) / 3);
         addRenderableWidget(new StyledButton(x, height - 58, actionWidth, 22, text("folder"),
                 b -> Util.getPlatform().openFile(root.toFile()), styles, "structure-folder"));
@@ -156,13 +180,13 @@ public final class QuestStructurePickerScreen extends AnimatedQuestScreen {
                     }, styles, "structure-row-" + i);
             row.setTooltip(Tooltip.create(Component.literal(name)));
             rowWidgets.add(addRenderableWidget(row));
-            rowWidgets.add(addRenderableWidget(new StyledButton(width - 58, y, 42, 22, text("preview"),
-                    b -> {
+            rowWidgets.add(addRenderableWidget(new EditorIconButton(width - 42, y, text("preview"),
+                    () -> {
                         if (!worldTab) {
                             ClientStructures.request("", "", name);
                             minecraft.setScreen(new QuestStructurePreviewScreen(this, name));
                         } else previewWorld(name);
-                    }, styles, "structure-preview-" + i)));
+                    }, styles, "structure-preview-" + i, "visual")));
         }
     }
 
@@ -257,6 +281,7 @@ public final class QuestStructurePickerScreen extends AnimatedQuestScreen {
                 refreshLocal();
             }
         } catch (Exception failure) {
+            if (worldTarget != null) worldLoaded = true;
             Throwable cause = failure.getCause() == null ? failure : failure.getCause();
             String key = cause.getMessage();
             message = key != null && key.startsWith("structure.")
@@ -275,6 +300,12 @@ public final class QuestStructurePickerScreen extends AnimatedQuestScreen {
         g.drawString(font, title, 16, 13, 0xFFF0D59B, false);
         if (visible.isEmpty()) g.drawString(font, text(pending != null ? "loading" : "missing"),
                 16, 90, 0xFFC9D1D6, false);
+        if (worldTarget != null) {
+            g.drawString(font, font.plainSubstrByWidth(worldTarget, width - 32), 16, 38, 0xFFCCD5DE, false);
+            if (worldLoaded && visible.isEmpty() && query.isBlank())
+                g.drawWordWrap(font, text(poolTarget ? "jigsaw.no_pool_preview" : "no_target_preview"),
+                        16, 116, width - 32, 0xFFCCD5DE);
+        }
         if (!message.isBlank()) g.drawString(font,
                 font.plainSubstrByWidth(message, Math.max(1, width - 255)),
                 234, height - 25, 0xFFF2CF83, false);

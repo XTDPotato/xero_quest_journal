@@ -22,6 +22,18 @@ public final class QuestLocationScreen extends AnimatedQuestScreen {
     private String x = "0", y = "64", z = "0", radius = "8";
     private ButtonStyleSheet styles;
     private String error;
+    private boolean targetOnly;
+    private StyledButton previewButton;
+
+    public static QuestLocationScreen pickTarget(Screen parent, String kind, String target, Consumer<String> changed) {
+        if (!List.of("structure", "biome").contains(kind)) throw new IllegalArgumentException("Invalid target kind");
+        var screen = new QuestLocationScreen(parent, "", changed);
+        screen.mode = kind;
+        screen.target = target == null ? "" : target;
+        screen.dimension = "";
+        screen.targetOnly = true;
+        return screen;
+    }
 
     public QuestLocationScreen(Screen parent, String encoded, Consumer<String> changed) {
         super(text("location.title"));
@@ -54,7 +66,7 @@ public final class QuestLocationScreen extends AnimatedQuestScreen {
         clearWidgets();
         styles = ButtonStyleSheet.load();
         int lx = left(), w = panelWidth(), split = (w - 8) / 2;
-        addRenderableWidget(new StyledChoiceButton<>(lx, 44, split, 22, text("location.kind"),
+        var kind = addRenderableWidget(new StyledChoiceButton<>(lx, 44, split, 22, text("location.kind"),
                 List.of("coords", "structure", "biome"), mode, value -> text("location." + value),
                 value -> {
                     if (mode.equals("coords") && !value.equals("coords")) dimension = "";
@@ -63,6 +75,7 @@ public final class QuestLocationScreen extends AnimatedQuestScreen {
                     mode = value; target = ""; error = null; init();
                 },
                 styles, "location-kind"));
+        kind.active = !targetOnly;
         var dimensions = new SuggestedEditBox(this, font, lx + split + 8, 44, w - split - 8, 22,
                 text(mode.equals("coords") ? "location.dimension" : "location.dimension_optional"), "dimension")
                 .options(this::dimensionOptions);
@@ -70,6 +83,7 @@ public final class QuestLocationScreen extends AnimatedQuestScreen {
         dimensions.setValue(dimension);
         if (!mode.equals("coords")) dimensions.setHint(text("location.any_dimension"));
         dimensions.setResponder(value -> dimension = value);
+        dimensions.setEditable(!targetOnly);
         addRenderableWidget(dimensions);
         if (mode.equals("coords")) {
             int cell = (w - 18) / 4;
@@ -82,8 +96,23 @@ public final class QuestLocationScreen extends AnimatedQuestScreen {
                     text("location.choose_target"), mode).options(this::targetOptions);
             targets.setMaxLength(256);
             targets.setValue(target);
-            targets.setResponder(value -> target = value);
+            targets.setResponder(value -> {
+                target = value;
+                if (previewButton != null) previewButton.active = !target.isBlank();
+            });
+            if (targetOnly) targets.withoutMenu();
             addRenderableWidget(targets);
+            addRenderableWidget(new StyledButton(lx, 118, mode.equals("structure") ? split : w, 22,
+                    text("location.choose_target"), ignored -> minecraft.setScreen(new QuestValuePickerScreen(
+                    this, text("location." + mode).getString(), "", this::targetOptions, target,
+                    value -> target = value)), styles, "location-choose"));
+            if (mode.equals("structure")) {
+                previewButton = addRenderableWidget(new StyledButton(lx + split + 8, 118, w - split - 8, 22,
+                        text("structure.preview"), ignored ->
+                        minecraft.setScreen(QuestStructurePickerScreen.inspectTarget(this, target)),
+                        styles, "location-preview"));
+                previewButton.active = !target.isBlank();
+            }
         }
         var apply = new StyledButton(lx, height - 32, (w - 6) / 2, 22, text("location.apply"),
                 ignored -> apply(), styles, "location-apply");
@@ -101,7 +130,11 @@ public final class QuestLocationScreen extends AnimatedQuestScreen {
     }
 
     private List<QuestValuePickerScreen.Option> targetOptions() {
-        var server = minecraft.getSingleplayerServer();
+        return targetOptions(mode);
+    }
+
+    static List<QuestValuePickerScreen.Option> targetOptions(String mode) {
+        var server = Minecraft.getInstance().getSingleplayerServer();
         if (server == null) return List.of();
         List<QuestValuePickerScreen.Option> result = new ArrayList<>();
         var registry = mode.equals("structure") ? server.registryAccess().registryOrThrow(Registries.STRUCTURE)
@@ -134,7 +167,7 @@ public final class QuestLocationScreen extends AnimatedQuestScreen {
         if (!mode.equals("coords") && targetOptions().stream().noneMatch(option -> option.value().equals(target))) {
             error = "location.invalid"; return;
         }
-        changed.accept(value.encode());
+        changed.accept(targetOnly ? value.target() : value.encode());
         closeTo(parent);
     }
 

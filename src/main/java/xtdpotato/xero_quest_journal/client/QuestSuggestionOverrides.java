@@ -40,11 +40,20 @@ final class QuestSuggestionOverrides {
 
     static synchronized boolean add(String context, String value) {
         load();
+        if (context == null || value == null) return false;
         value = value.strip();
-        if (context.isBlank() || value.isEmpty() || value.length() > 4096 || value.contains("\n")) return false;
+        if (context.isBlank() || value.isEmpty() || value.length() > 8192
+                || value.contains("\n") || value.contains("\r")) return false;
+        Set<String> previousAdded = new LinkedHashSet<>(ADDED.getOrDefault(context, Set.of()));
+        Set<String> previousHidden = new LinkedHashSet<>(HIDDEN.getOrDefault(context, Set.of()));
         HIDDEN.computeIfAbsent(context, ignored -> new LinkedHashSet<>()).remove(value);
         ADDED.computeIfAbsent(context, ignored -> new LinkedHashSet<>()).add(value);
-        return save();
+        if (save()) return true;
+        if (previousAdded.isEmpty()) ADDED.remove(context);
+        else ADDED.put(context, previousAdded);
+        if (previousHidden.isEmpty()) HIDDEN.remove(context);
+        else HIDDEN.put(context, previousHidden);
+        return false;
     }
 
     static synchronized boolean remove(String context, String value) {
@@ -88,7 +97,7 @@ final class QuestSuggestionOverrides {
             if (!entry.getValue().isJsonArray()) return;
             Set<String> values = new LinkedHashSet<>();
             entry.getValue().getAsJsonArray().forEach(element -> {
-                if (element.isJsonPrimitive() && element.getAsString().length() <= 4096)
+                if (element.isJsonPrimitive() && element.getAsString().length() <= 8192)
                     values.add(element.getAsString());
             });
             target.put(entry.getKey(), values);
