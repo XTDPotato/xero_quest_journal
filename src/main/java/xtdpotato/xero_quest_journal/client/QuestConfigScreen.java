@@ -69,7 +69,7 @@ public final class QuestConfigScreen extends AnimatedQuestScreen {
             case "general" -> 5;
             case "motion" -> canAuthor() ? 4 : 3;
             case "notifications" -> 3;
-            case "appearance" -> 4;
+            case "appearance" -> 5;
             case "tools" -> QuestReiShortcuts.available() ? 4 : 3;
             case "tasks" -> 3 + (ClientPreferences.get().fixedQuestContextMenuPosition ? 2 : 0);
             default -> 2;
@@ -110,6 +110,8 @@ public final class QuestConfigScreen extends AnimatedQuestScreen {
                 preview.setMessage(text("preview"));
             }
             case "appearance" -> {
+                number("journey_tab_underline", config.journeyTabUnderlineHeight, 1, 1, 5,
+                        value -> config.journeyTabUnderlineHeight = value, "journey-tab-underline");
                 number("tracking_marker_scale", config.trackingMarkerScalePercent, 5, 25, 200,
                         value -> config.trackingMarkerScalePercent = value, "tracking-marker-scale");
                 bodyWidgets.stream().filter(widget -> widget instanceof StyledButton button

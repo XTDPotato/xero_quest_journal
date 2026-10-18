@@ -19,6 +19,7 @@ public final class ClientPreferences {
     public InventoryEntryPosition taskInventoryPosition, mailInventoryPosition;
     public boolean trackingHud = true;
     public int trackingMarkerScalePercent = 50;
+    public int journeyTabUnderlineHeight = 3;
     public boolean reducedMotion;
     public boolean questRewardSources;
     public int popupAnimationMillis = DEFAULT_POPUP_ANIMATION_MILLIS;
@@ -72,6 +73,7 @@ public final class ClientPreferences {
     }
 
     private void validate() {
+        journeyTabUnderlineHeight = Math.clamp(journeyTabUnderlineHeight, 1, 5);
         if (!"overview".equals(defaultView)) defaultView = "journal";
         if (legendaryBackground == null || legendaryBackground.length() > 4096) legendaryBackground = "";
         if (legendaryBackgroundType == null || !Set.of("image", "video").contains(legendaryBackgroundType))

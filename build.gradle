@@ -127,7 +127,8 @@ def clientRegression = [
         'unlockGraphTest', 'journeyTest', 'overviewTest', 'journalFocusTest', 'mailReferenceTest',
         'lootTableTest', 'trackingHudTest', 'mailBodyEditorTest', 'mailAdminTest', 'journeyEditingTest', 'journalOrderTest',
         'overviewAuthoringTest', 'generateTasksTest', 'tacticalCompatibilityTest', 'generatedDeletionTest',
-        'claimReceiptTest', 'spotlightUiTest', 'rewardQualityTest', 'authoringDocsTest', 'candidatePickerTest'
+        'claimReceiptTest', 'spotlightUiTest', 'rewardQualityTest', 'authoringDocsTest', 'candidatePickerTest',
+        'interfaceDocsTest', 'rewardInspectionTest'
 ].any { project.hasProperty(it) }
 
 neoForge {
@@ -143,6 +144,14 @@ neoForge {
             if (project.hasProperty('authoringDocsTest')) {
                 systemProperty 'xero.authoringDocsTest', 'true'
                 gameDirectory = file('run-authoring-docs')
+            }
+            if (project.hasProperty('interfaceDocsTest')) {
+                def language = project.findProperty('docsLanguage') ?: 'zh_cn'
+                if (!(language in ['zh_cn', 'en_us'])) throw new GradleException('docsLanguage must be zh_cn or en_us')
+                systemProperty 'xero.authoringDocsTest', 'true'
+                systemProperty 'xero.docsGalleryOnly', 'true'
+                systemProperty 'xero.docsLanguage', language
+                gameDirectory = file("run-interface-docs-${language}")
             }
             if (project.hasProperty('smokeTest')) {
                 systemProperty 'xero.smokeTest', 'true'
@@ -171,6 +180,11 @@ neoForge {
             if (project.hasProperty('lootTableTest')) {
                 systemProperty 'xero.lootTableTest', 'true'
                 gameDirectory = file('run-loot-table')
+            }
+            if (project.hasProperty('rewardInspectionTest')) {
+                systemProperty 'xero.lootTableTest', 'true'
+                systemProperty 'xero.rewardInspectionOnly', 'true'
+                gameDirectory = file('run-reward-inspection')
             }
             if (project.hasProperty('templateTest')) {
                 systemProperty 'xero.templateTest', 'true'

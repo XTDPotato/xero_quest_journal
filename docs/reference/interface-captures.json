@@ -1,0 +1,1122 @@
+[
+  {
+    "locale": "zh_cn",
+    "scene": "journal-current",
+    "file": "journal-current-zh-1920.png",
+    "screen": "QuestScreen",
+    "capturedAt": "2026-10-18T13:32:24.554661Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "398f1e4688e94b298aeeb331073402992c3e7b29bdefb57ad5e5c7efe70fae0e"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "task-context-menu",
+    "file": "task-context-menu-zh-1920.png",
+    "screen": "QuestScreen",
+    "capturedAt": "2026-10-18T13:32:25.191931100Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "3d310a40454d49b4223f003c1cef0c285431e1144f9ad76ada690578a71b9509"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "task-properties",
+    "file": "task-properties-zh-1920.png",
+    "screen": "QuestScreen",
+    "capturedAt": "2026-10-18T13:32:25.836649600Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "d9e649d5f24091f3719141510e72cf9946e828d3c2c62ae6cead687f4a1a58fc"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "search-scope",
+    "file": "search-scope-zh-1920.png",
+    "screen": "QuestSearchSettingsScreen",
+    "capturedAt": "2026-10-18T13:32:26.485349500Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "f3718a563f4cf8c202b9e6ebb46232f6768a8e30f8b45274b0cddac785067a0b"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "search-filters",
+    "file": "search-filters-zh-1920.png",
+    "screen": "QuestSearchFilterScreen",
+    "capturedAt": "2026-10-18T13:32:27.142299200Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "2e1c13b8cd5abbcddb264d5a212d92c1b10646a2a3c68cfc7c1e77bd1e4c05f2"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "conditions-editor",
+    "file": "conditions-editor-zh-1920.png",
+    "screen": "QuestConditionsScreen",
+    "capturedAt": "2026-10-18T13:32:27.783671300Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "a66955f2e2ac2b68a95fbb925792296c0c61230bd58107f1a4ee0f1d8e6f8fb7"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "rewards-editor",
+    "file": "rewards-editor-zh-1920.png",
+    "screen": "QuestRewardsScreen",
+    "capturedAt": "2026-10-18T13:32:28.441308800Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "5e48cafd4190f1b9d659cb4dd3afd6640250652bd41c2d005dfe2adc407a4bb0"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "reward-receipt",
+    "file": "reward-receipt-zh-1920.png",
+    "screen": "QuestRewardPopupScreen",
+    "capturedAt": "2026-10-18T13:32:29.090737Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "aac9ff15e0169f264b900c6a327624275d07ec5b92c72ca0da76371f6785d2e7"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "loot-editor",
+    "file": "loot-editor-zh-1920.png",
+    "screen": "QuestLootScreen",
+    "capturedAt": "2026-10-18T13:32:29.747498900Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "8312e37d4da0b09c087024a56b9a835f02730f8d7c3a6d35c57360c6a4a88a72"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "mailbox-current",
+    "file": "mailbox-current-zh-1920.png",
+    "screen": "MailboxScreen",
+    "capturedAt": "2026-10-18T13:32:30.399212Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "1ff24d23453adacda903f199faf7fe9a26548b68c27226f5754d60be39edac29"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "mail-compose",
+    "file": "mail-compose-zh-1920.png",
+    "screen": "MailComposeScreen",
+    "capturedAt": "2026-10-18T13:32:31.043007500Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "b05b9e0ad92140b399f751e69de34ee8c3154a8202210f287c0d13d1cf7f8f9f"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "mail-attachments",
+    "file": "mail-attachments-zh-1920.png",
+    "screen": "QuestRewardsScreen",
+    "capturedAt": "2026-10-18T13:32:31.684979600Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "768405a9b800fe3ca0d0464167b57abdf2535563624f75a9968bc91ec5c347ce"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "rich-text-editor",
+    "file": "rich-text-editor-zh-1920.png",
+    "screen": "QuestTextEditorScreen",
+    "capturedAt": "2026-10-18T13:32:32.340693300Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "f887e2ffc8cbeab156062b6dd9f3587ac6da1ac0b69d1bd27edb4bd6b8b99b83"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "item-picker",
+    "file": "item-picker-zh-1920.png",
+    "screen": "QuestScreen",
+    "capturedAt": "2026-10-18T13:32:33.507956900Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "a2fad6cfeecc70bb6624d68c28da915959dfc16fdab8479d2bdbe378a6ec3785"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "texture-picker",
+    "file": "texture-picker-zh-1920.png",
+    "screen": "QuestScreen",
+    "capturedAt": "2026-10-18T13:32:34.304082300Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "a84aec8c33e9bb744f6aab74e5cf52e4e267ae2bb513751157518d8ff5f0d091"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "icon-fullscreen-preview",
+    "file": "icon-fullscreen-preview-zh-1920.png",
+    "screen": "QuestIconPreviewScreen",
+    "capturedAt": "2026-10-18T13:32:34.951895300Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "936cc2edcddaa756b078112115704edf26881d3c88c908bb918e58401ded5eda"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "node-library-current",
+    "file": "node-library-current-zh-1920.png",
+    "screen": "QuestNodeLibraryScreen",
+    "capturedAt": "2026-10-18T13:32:35.598779600Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "967b9eca574b50e027877a8abd700a90effef029be1f5f0c40007a9f3dd76b36"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "variable-catalog",
+    "file": "variable-catalog-zh-1920.png",
+    "screen": "QuestVariableListScreen",
+    "capturedAt": "2026-10-18T13:32:36.255704600Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "fb4989e2d033e5e5b86e756cc1f98719e0a83dbd13d02e874f38e1ac5f229574"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "variable-editor",
+    "file": "variable-editor-zh-1920.png",
+    "screen": "QuestVariableEditScreen",
+    "capturedAt": "2026-10-18T13:32:36.908150400Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "1c84ad1898621bfada37fc5590dd525639940abaeddfdfcd134c8393c08480f9"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "animation-editor-current",
+    "file": "animation-editor-current-zh-1920.png",
+    "screen": "PopupAnimationEditorScreen",
+    "capturedAt": "2026-10-18T13:32:37.555838700Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "93b118b8cc881b259976f07806e0dadd58e32fe59b6dfdb5a079474f0b502c2b"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "unlock-graph-current",
+    "file": "unlock-graph-current-zh-1920.png",
+    "screen": "QuestUnlockGraphScreen",
+    "capturedAt": "2026-10-18T13:32:38.212134800Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "b5830751494813f915a40ffe353322bdbbef7f4b150b4ab2d886a5ae7bed5d84"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "task-templates",
+    "file": "task-templates-zh-1920.png",
+    "screen": "QuestTemplateScreen",
+    "capturedAt": "2026-10-18T13:32:38.849589400Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "118ce6e080aba4219281a481be28a3d9284102f1bf12e06966a964bd7d077b32"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "location-editor",
+    "file": "location-editor-zh-1920.png",
+    "screen": "QuestLocationScreen",
+    "capturedAt": "2026-10-18T13:32:39.492835Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "a0c26d724397a34260652818a8c6b58fa5377c8e3307e64aaf772f157115c913"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "legendary-current",
+    "file": "legendary-current-zh-1920.png",
+    "screen": "LegendaryScreen",
+    "capturedAt": "2026-10-18T13:32:40.179819Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "af5bfc3ef9b4ba5694cdc0c03acfacd1dd746d5affc2c1cd4c5a5a06316a5bc0"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "hot-events-current",
+    "file": "hot-events-current-zh-1920.png",
+    "screen": "HotEventsScreen",
+    "capturedAt": "2026-10-18T13:32:40.811448Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "e31bdbbbd185c3bd35cbd064c17477afc161d64842ad910b8b849868bcf8767f"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "value-picker-current",
+    "file": "value-picker-current-zh-1920.png",
+    "screen": "QuestValuePickerScreen",
+    "capturedAt": "2026-10-18T13:32:41.459358900Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "fb321fde58acf7f01bb74482213690ee230ac4116083d7f78a008b8580c8e3d6"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "suggestion-recycle-bin",
+    "file": "suggestion-recycle-bin-zh-1920.png",
+    "screen": "QuestSuggestionTrashScreen",
+    "capturedAt": "2026-10-18T13:32:42.111404500Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "f3cb3d301a06b6b5dcd77496a3a60c819efa3f7a227767a7b19b47cb7c7139c9"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "overview-current",
+    "file": "overview-current-zh-1920.png",
+    "screen": "QuestScreen",
+    "capturedAt": "2026-10-18T13:32:42.785008400Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "a48361eff2357b791eb9f1633eb264b3eb06e1c5a29562a8d82bfd445741849b"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "settings-general",
+    "file": "settings-general-zh-1920.png",
+    "screen": "QuestConfigScreen",
+    "capturedAt": "2026-10-18T13:32:43.408305900Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "a4f3819a8330f0d88b26d1e721b94ed921a5ffcb95e790eed24d36a86e16ef5e"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "settings-motion",
+    "file": "settings-motion-zh-1920.png",
+    "screen": "QuestConfigScreen",
+    "capturedAt": "2026-10-18T13:32:44.055906600Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "83ca22399e146cc07121579c53571fd9e32bb97ca13cd205d9d3beb830efa187"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "settings-notifications",
+    "file": "settings-notifications-zh-1920.png",
+    "screen": "QuestConfigScreen",
+    "capturedAt": "2026-10-18T13:32:44.706116900Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "214b72c63b053f4ddb6a5e66105e76d9d6b426b10aa91085c14589ee5861bdc2"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "settings-appearance",
+    "file": "settings-appearance-zh-1920.png",
+    "screen": "QuestConfigScreen",
+    "capturedAt": "2026-10-18T13:32:45.362932300Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "d164668e25c3922df2e7522d6ddb45e450760e540db95d9995ff90866907d5da"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "settings-tasks",
+    "file": "settings-tasks-zh-1920.png",
+    "screen": "QuestConfigScreen",
+    "capturedAt": "2026-10-18T13:32:46.011951700Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "12ae695eecdac0b03297066a57db458a628d263408126dc919735acb5a527b44"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "settings-tools",
+    "file": "settings-tools-zh-1920.png",
+    "screen": "QuestConfigScreen",
+    "capturedAt": "2026-10-18T13:32:46.655550200Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "68e1bb4037533369f657194e4767a3c316a9eed648fc185ea7bacc45080e5708"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "inventory-placement",
+    "file": "inventory-placement-zh-1920.png",
+    "screen": "InventoryPlacementScreen",
+    "capturedAt": "2026-10-18T13:32:47.304674700Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "64487fa65422f4329dc7d0c3258bc2571105dd4e7eebbd1bffa672d22382fb79"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "journey-current",
+    "file": "journey-current-zh-1920.png",
+    "screen": "JourneyScreen",
+    "capturedAt": "2026-10-18T13:32:47.956607900Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "cacadbe7b9c529568bc2f39cd7adf3e97a312a3eb9ed0cb59e22bba752549bea"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "journey-current-1px",
+    "file": "journey-current-1px-zh-1920.png",
+    "screen": "JourneyScreen",
+    "capturedAt": "2026-10-18T13:32:48.606326400Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "5b61deb68d7b244aef768619ddae2f7185815d02d5ff6421adbba1baee0da436"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "journey-current-5px",
+    "file": "journey-current-5px-zh-1920.png",
+    "screen": "JourneyScreen",
+    "capturedAt": "2026-10-18T13:32:49.260415100Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "f25867531b96217042db2ed42b12d465a76604af52d7a9d2a9414ba6c898698a"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "journey-editor",
+    "file": "journey-editor-zh-1920.png",
+    "screen": "JourneyScreen",
+    "capturedAt": "2026-10-18T13:32:49.908532700Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "681bfe36d3fbacfaaad8e7550007003e3142cadc7a9c01a472de09eeac759970"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "journey-appearance",
+    "file": "journey-appearance-zh-1920.png",
+    "screen": "JourneyAppearanceScreen",
+    "capturedAt": "2026-10-18T13:32:50.559575600Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "b6da9c5a3705250ed265c94358152d4ea0e2457ce6e7ec3f3b662cc7a4696da3"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "journey-task-details-popup",
+    "file": "journey-task-details-popup-zh-1920.png",
+    "screen": "JourneyQuestPopupScreen",
+    "capturedAt": "2026-10-18T13:32:51.205132Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "a82831030721d6f921643e529e4aabdbb53096e7ff60da0a17b8111e92d96827"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "js-editor-reference",
+    "file": "js-editor-reference-zh-1920.png",
+    "screen": "QuestScriptEditorScreen",
+    "capturedAt": "2026-10-18T13:32:51.859537600Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "0e23038ec654f2528d29a0d93a5682cb82545c2b29d40a64b859bce802f4d04d"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "js-editor-examples",
+    "file": "js-editor-examples-zh-1920.png",
+    "screen": "QuestScriptEditorScreen",
+    "capturedAt": "2026-10-18T13:32:52.511306300Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "febfe2ab567e938e01b7fc144b670d38e5d37b3ac378a8755c70df066444d344"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "event-graph-current",
+    "file": "event-graph-current-zh-1920.png",
+    "screen": "QuestTriggerGraphScreen",
+    "capturedAt": "2026-10-18T13:32:53.163152900Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "ee11c36ce8b16bc1a10b3edc8d0d9d95870bb0ca334499b0a38c395e8789e8a5"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "anecdotes-current",
+    "file": "anecdotes-current-zh-1920.png",
+    "screen": "AnecdoteScreen",
+    "capturedAt": "2026-10-18T13:32:53.802892300Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "b9ae8f2b2f98ca93d69c896fb2d0f98b7409df168d3995b7fc8aa0a06f5a4623"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "anecdotes-rewards",
+    "file": "anecdotes-rewards-zh-1920.png",
+    "screen": "AnecdoteRewardsScreen",
+    "capturedAt": "2026-10-18T13:32:54.453104200Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "6cf4fdf435131110a6e2f9fe69ea76e2c194190d05cf1859608637fa67e604fa"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "experience-reward-details",
+    "file": "experience-reward-details-zh-1920.png",
+    "screen": "QuestRewardPopupScreen",
+    "capturedAt": "2026-10-18T13:32:55.102729400Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "769db553a0467f4f934bfa7786b53d027bf02e52e72edf96e434b77900da4bb5"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "levels-reward-details",
+    "file": "levels-reward-details-zh-1920.png",
+    "screen": "QuestRewardPopupScreen",
+    "capturedAt": "2026-10-18T13:32:55.751389800Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "c86423865e10d05cec5d651acf578499c3927aae30bf1185664a6320b040d26c"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "loot-reward-contents",
+    "file": "loot-reward-contents-zh-1920.png",
+    "screen": "LootTablePopupScreen",
+    "capturedAt": "2026-10-18T13:32:56.410887800Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "0d0b8066099fa7890079150f5f8787b661e6b711fc2288a22203ee9bd2050e1d"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "choice-loot-contents",
+    "file": "choice-loot-contents-zh-1920.png",
+    "screen": "LootTablePopupScreen",
+    "capturedAt": "2026-10-18T13:32:57.057555100Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "31427982b966374189565627173453790df1436e8b986bb922dfaf03c6003c71"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "choice-loot-selection",
+    "file": "choice-loot-selection-zh-1920.png",
+    "screen": "QuestLootChoiceScreen",
+    "capturedAt": "2026-10-18T13:32:57.701424800Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "08599b5185a85fb4bfa536d2a6c80bbfa5fe4653e50210bf0833bd10f4073044"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "loot-search",
+    "file": "loot-search-zh-1920.png",
+    "screen": "LootTablePopupScreen",
+    "capturedAt": "2026-10-18T13:32:58.360440700Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "e7e76f4bb0845176c26a6fbed9c967336596f1083ffea33fd5255d318e3df388"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "choice-loot-search",
+    "file": "choice-loot-search-zh-1920.png",
+    "screen": "QuestLootChoiceScreen",
+    "capturedAt": "2026-10-18T13:32:59.003690600Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "ae51017dcd4250d2ac0f8b3c3f7e6e50b25998898f671f30043cb3cffbd94f8a"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "structure-template",
+    "file": "structure-template-zh-1920.png",
+    "screen": "QuestStructurePreviewScreen",
+    "capturedAt": "2026-10-18T13:32:59.653768600Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "ead1005a256f53c4d717613502e71500c7becb88439e5fc71783b723513eae91"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "jigsaw-inspector",
+    "file": "jigsaw-inspector-zh-1920.png",
+    "screen": "QuestStructurePreviewScreen",
+    "capturedAt": "2026-10-18T13:33:00.303070600Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "3bc0bef47665ffd704f0e1f63b833380a7913989d90fac6da8befc56206eeea6"
+  },
+  {
+    "locale": "zh_cn",
+    "scene": "jigsaw-guide",
+    "file": "jigsaw-guide-zh-1920.png",
+    "screen": "QuestStructurePreviewScreen",
+    "capturedAt": "2026-10-18T13:33:00.954476800Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "3da8db84ff135ace5fe11c7dd7dc406c4fb2f93ed8a14b79bc271c507257cd7e"
+  },
+  {
+    "locale": "en_us",
+    "scene": "journal-current",
+    "file": "journal-current-en-1920.png",
+    "screen": "QuestScreen",
+    "capturedAt": "2026-10-18T13:34:28.406066200Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "8eb8f04f377c0d16ec5419555256992a0e7b3867f7776a6cb05e08a77a34c766"
+  },
+  {
+    "locale": "en_us",
+    "scene": "task-context-menu",
+    "file": "task-context-menu-en-1920.png",
+    "screen": "QuestScreen",
+    "capturedAt": "2026-10-18T13:34:29.052186Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "ae0f3c59476b6ff8cf885f65518d25225681c9b742cf331e2394318927912e80"
+  },
+  {
+    "locale": "en_us",
+    "scene": "task-properties",
+    "file": "task-properties-en-1920.png",
+    "screen": "QuestScreen",
+    "capturedAt": "2026-10-18T13:34:29.689723700Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "2840cbd7d6ed343f05d22b4f317f6c5b9026c7e84fff9748ae338f10dfd1d7bf"
+  },
+  {
+    "locale": "en_us",
+    "scene": "search-scope",
+    "file": "search-scope-en-1920.png",
+    "screen": "QuestSearchSettingsScreen",
+    "capturedAt": "2026-10-18T13:34:30.335051300Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "d6cdac69b11c77eefa8ec9f5b9efce6e0768386b2b3daeefa6247ddadd3dfe1f"
+  },
+  {
+    "locale": "en_us",
+    "scene": "search-filters",
+    "file": "search-filters-en-1920.png",
+    "screen": "QuestSearchFilterScreen",
+    "capturedAt": "2026-10-18T13:34:31.001929400Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "b43bbe9de137bdfcbb5de4099fad2868ba9210b7a795ef8c0733ae4d94b367b3"
+  },
+  {
+    "locale": "en_us",
+    "scene": "conditions-editor",
+    "file": "conditions-editor-en-1920.png",
+    "screen": "QuestConditionsScreen",
+    "capturedAt": "2026-10-18T13:34:31.638546400Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "f133977376b1a5192cbae198b271cad9380d9c8c9088eba15ec10778a4ee58a0"
+  },
+  {
+    "locale": "en_us",
+    "scene": "rewards-editor",
+    "file": "rewards-editor-en-1920.png",
+    "screen": "QuestRewardsScreen",
+    "capturedAt": "2026-10-18T13:34:32.288245500Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "dacb10b9c698736e7097e1da3e0b889f55e85897822bb76f36d751967abf8a66"
+  },
+  {
+    "locale": "en_us",
+    "scene": "reward-receipt",
+    "file": "reward-receipt-en-1920.png",
+    "screen": "QuestRewardPopupScreen",
+    "capturedAt": "2026-10-18T13:34:32.952813400Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "dd758cba0a2de6277a95773b881d69a5473a0c0924557c473946c40dc4ef7fe4"
+  },
+  {
+    "locale": "en_us",
+    "scene": "loot-editor",
+    "file": "loot-editor-en-1920.png",
+    "screen": "QuestLootScreen",
+    "capturedAt": "2026-10-18T13:34:33.594002700Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "461a6b35028689fed2e8c2757d8db105de95ad1ad43bdf04c292a85e281fb933"
+  },
+  {
+    "locale": "en_us",
+    "scene": "mailbox-current",
+    "file": "mailbox-current-en-1920.png",
+    "screen": "MailboxScreen",
+    "capturedAt": "2026-10-18T13:34:34.250133400Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "00253657fac78db0c8c435d05f0c7d07d81a97b406744f55404b2fe9425ddea8"
+  },
+  {
+    "locale": "en_us",
+    "scene": "mail-compose",
+    "file": "mail-compose-en-1920.png",
+    "screen": "MailComposeScreen",
+    "capturedAt": "2026-10-18T13:34:34.893921200Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "40dbadc9cbf802a59c09110d06415a536b092b808cba52f8e336ca5b05be2b8e"
+  },
+  {
+    "locale": "en_us",
+    "scene": "mail-attachments",
+    "file": "mail-attachments-en-1920.png",
+    "screen": "QuestRewardsScreen",
+    "capturedAt": "2026-10-18T13:34:35.542268300Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "b6d12131130c9647a180c39846721028d081c87d6a6825655d0898bc65f572ee"
+  },
+  {
+    "locale": "en_us",
+    "scene": "rich-text-editor",
+    "file": "rich-text-editor-en-1920.png",
+    "screen": "QuestTextEditorScreen",
+    "capturedAt": "2026-10-18T13:34:36.203019600Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "38a8bd03a187d9e7892c475ecef5227c28ca72a22e4b228120f9de4096274e53"
+  },
+  {
+    "locale": "en_us",
+    "scene": "item-picker",
+    "file": "item-picker-en-1920.png",
+    "screen": "QuestScreen",
+    "capturedAt": "2026-10-18T13:34:37.567123300Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "a300a209ec8c9f62e907d83267225d75bfe22b398bcad7b6505de139938d2545"
+  },
+  {
+    "locale": "en_us",
+    "scene": "texture-picker",
+    "file": "texture-picker-en-1920.png",
+    "screen": "QuestScreen",
+    "capturedAt": "2026-10-18T13:34:38.361703Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "eebe7afafa9efb98354d64a5d3375a03fe0cdb730eec80412d9e1438db467ee0"
+  },
+  {
+    "locale": "en_us",
+    "scene": "icon-fullscreen-preview",
+    "file": "icon-fullscreen-preview-en-1920.png",
+    "screen": "QuestIconPreviewScreen",
+    "capturedAt": "2026-10-18T13:34:39.013241700Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "d78d773bfdb57c32efbab9d84c588c42b7b784c9265b797a8d2d08d70a318ab3"
+  },
+  {
+    "locale": "en_us",
+    "scene": "node-library-current",
+    "file": "node-library-current-en-1920.png",
+    "screen": "QuestNodeLibraryScreen",
+    "capturedAt": "2026-10-18T13:34:39.667471700Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "dab37ec1ccaf3f84302f76741c87fb42acfe5f20aeb7e9a9debdde759d3dda89"
+  },
+  {
+    "locale": "en_us",
+    "scene": "variable-catalog",
+    "file": "variable-catalog-en-1920.png",
+    "screen": "QuestVariableListScreen",
+    "capturedAt": "2026-10-18T13:34:40.310239500Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "fe7454c5770834bdd178a693d1c4274f2bd14afb6b92e71ea1f88ea865d9dbe2"
+  },
+  {
+    "locale": "en_us",
+    "scene": "variable-editor",
+    "file": "variable-editor-en-1920.png",
+    "screen": "QuestVariableEditScreen",
+    "capturedAt": "2026-10-18T13:34:40.971903900Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "5e294c03f586e74c3e921f2b83e9b6241317f675ca5872d03519cf41323c7861"
+  },
+  {
+    "locale": "en_us",
+    "scene": "animation-editor-current",
+    "file": "animation-editor-current-en-1920.png",
+    "screen": "PopupAnimationEditorScreen",
+    "capturedAt": "2026-10-18T13:34:41.617411200Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "75e93c302c5d4b8cb5482de110e3e2b381901bfc2572a26385216b07442ac79e"
+  },
+  {
+    "locale": "en_us",
+    "scene": "unlock-graph-current",
+    "file": "unlock-graph-current-en-1920.png",
+    "screen": "QuestUnlockGraphScreen",
+    "capturedAt": "2026-10-18T13:34:42.263141Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "75ca1a2792d2c4b6dfdd4037193471cdc1d7e0522a71242932a42f4329d3d288"
+  },
+  {
+    "locale": "en_us",
+    "scene": "task-templates",
+    "file": "task-templates-en-1920.png",
+    "screen": "QuestTemplateScreen",
+    "capturedAt": "2026-10-18T13:34:42.905042300Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "e9c12abdb670a6d2839150271d9c142c9ac613afc8385e3f3dbad2f7db6b3014"
+  },
+  {
+    "locale": "en_us",
+    "scene": "location-editor",
+    "file": "location-editor-en-1920.png",
+    "screen": "QuestLocationScreen",
+    "capturedAt": "2026-10-18T13:34:43.551345700Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "27977452489e32b3add5bb7ef857c53aa508e831fe7de9b41ea76e5391734f3c"
+  },
+  {
+    "locale": "en_us",
+    "scene": "legendary-current",
+    "file": "legendary-current-en-1920.png",
+    "screen": "LegendaryScreen",
+    "capturedAt": "2026-10-18T13:34:44.231419600Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "118c0c32723d7a1afb6778290fcb138ae6ca77ea4ac5003da93bdab2dc68a189"
+  },
+  {
+    "locale": "en_us",
+    "scene": "hot-events-current",
+    "file": "hot-events-current-en-1920.png",
+    "screen": "HotEventsScreen",
+    "capturedAt": "2026-10-18T13:34:44.865755800Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "83a87c4fe4e46a3ddea0179120e2e3e9205555cba29d14cfd54e128e12e4a878"
+  },
+  {
+    "locale": "en_us",
+    "scene": "value-picker-current",
+    "file": "value-picker-current-en-1920.png",
+    "screen": "QuestValuePickerScreen",
+    "capturedAt": "2026-10-18T13:34:45.509801600Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "d4e4f544c49ad1ebe8014e28851c542ae5087201b15154f3f36ca3f700469df1"
+  },
+  {
+    "locale": "en_us",
+    "scene": "suggestion-recycle-bin",
+    "file": "suggestion-recycle-bin-en-1920.png",
+    "screen": "QuestSuggestionTrashScreen",
+    "capturedAt": "2026-10-18T13:34:46.165837100Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "fab57fac95434f5d7457cbe027c52d4a75e064301e33bbd01a5bf9c56c130b32"
+  },
+  {
+    "locale": "en_us",
+    "scene": "overview-current",
+    "file": "overview-current-en-1920.png",
+    "screen": "QuestScreen",
+    "capturedAt": "2026-10-18T13:34:46.843725700Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "4e19ea804cf576ba8d10c2326479c24651cf6e7a897223428e20a39171889154"
+  },
+  {
+    "locale": "en_us",
+    "scene": "settings-general",
+    "file": "settings-general-en-1920.png",
+    "screen": "QuestConfigScreen",
+    "capturedAt": "2026-10-18T13:34:47.471623Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "fcfa082382937c2f07c27f63402b90ebefdaed798697071e6b600ce6f68cbfc0"
+  },
+  {
+    "locale": "en_us",
+    "scene": "settings-motion",
+    "file": "settings-motion-en-1920.png",
+    "screen": "QuestConfigScreen",
+    "capturedAt": "2026-10-18T13:34:48.123885200Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "662b5f27e21f2666d55d8ef5befb488c766d0ef0ef0c24c1d06c90c587ba0a69"
+  },
+  {
+    "locale": "en_us",
+    "scene": "settings-notifications",
+    "file": "settings-notifications-en-1920.png",
+    "screen": "QuestConfigScreen",
+    "capturedAt": "2026-10-18T13:34:48.766125300Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "1667089901be29031e129ccdc56cd2a25cc359596bd9cee668732c447047ee4a"
+  },
+  {
+    "locale": "en_us",
+    "scene": "settings-appearance",
+    "file": "settings-appearance-en-1920.png",
+    "screen": "QuestConfigScreen",
+    "capturedAt": "2026-10-18T13:34:49.413934700Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "7db24f7a66cb50798e6cc678cb044ae154f9602c2e7028190256852d6514c265"
+  },
+  {
+    "locale": "en_us",
+    "scene": "settings-tasks",
+    "file": "settings-tasks-en-1920.png",
+    "screen": "QuestConfigScreen",
+    "capturedAt": "2026-10-18T13:34:50.073039500Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "863ec47c22f3d971b0b7a9738300123775a3036d04902fb770a864f830258f04"
+  },
+  {
+    "locale": "en_us",
+    "scene": "settings-tools",
+    "file": "settings-tools-en-1920.png",
+    "screen": "QuestConfigScreen",
+    "capturedAt": "2026-10-18T13:34:50.717352900Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "0b1ac1105b425d56fb6c7cad151a6baf2454572a006e5dba66554cdf331d2ba0"
+  },
+  {
+    "locale": "en_us",
+    "scene": "inventory-placement",
+    "file": "inventory-placement-en-1920.png",
+    "screen": "InventoryPlacementScreen",
+    "capturedAt": "2026-10-18T13:34:51.364711700Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "06197a69b45b0fc76eafeef2858baad1dcbd14a3f336d98e7c371a2814719b9d"
+  },
+  {
+    "locale": "en_us",
+    "scene": "journey-current",
+    "file": "journey-current-en-1920.png",
+    "screen": "JourneyScreen",
+    "capturedAt": "2026-10-18T13:34:52.023180600Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "a2520b38d5ac7eb5d388f31ffd4a9a9c7d6ba97a9a4b5e0605291bea1e6fa301"
+  },
+  {
+    "locale": "en_us",
+    "scene": "journey-current-1px",
+    "file": "journey-current-1px-en-1920.png",
+    "screen": "JourneyScreen",
+    "capturedAt": "2026-10-18T13:34:52.666385900Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "62eba5fa42ea2dd94c1ec8355003a87825d8e1a53e227daafd58a450f2300ea7"
+  },
+  {
+    "locale": "en_us",
+    "scene": "journey-current-5px",
+    "file": "journey-current-5px-en-1920.png",
+    "screen": "JourneyScreen",
+    "capturedAt": "2026-10-18T13:34:53.323542500Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "59a1ddfde810dd98523701fc939273d52f039e716a38979740e7a5d83bc906cc"
+  },
+  {
+    "locale": "en_us",
+    "scene": "journey-editor",
+    "file": "journey-editor-en-1920.png",
+    "screen": "JourneyScreen",
+    "capturedAt": "2026-10-18T13:34:53.970705700Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "e38c8ae0677ffbfad673b519c509b832c6d227983f4d41d73c9ee0c9d1b1b931"
+  },
+  {
+    "locale": "en_us",
+    "scene": "journey-appearance",
+    "file": "journey-appearance-en-1920.png",
+    "screen": "JourneyAppearanceScreen",
+    "capturedAt": "2026-10-18T13:34:54.616794100Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "8669e5cc17a1d8052909044abbff2ec4ab28984d1ad9b2ce1202f556fd40e67c"
+  },
+  {
+    "locale": "en_us",
+    "scene": "journey-task-details-popup",
+    "file": "journey-task-details-popup-en-1920.png",
+    "screen": "JourneyQuestPopupScreen",
+    "capturedAt": "2026-10-18T13:34:55.267742600Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "6e5841108fa08715f27b86e4c743c0db1375e3c09bface0607022fde5b26c272"
+  },
+  {
+    "locale": "en_us",
+    "scene": "js-editor-reference",
+    "file": "js-editor-reference-en-1920.png",
+    "screen": "QuestScriptEditorScreen",
+    "capturedAt": "2026-10-18T13:34:55.919272200Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "7d922fe9b72e7d9237d749419aa08d806780d8d94d0ff0af812ec420825e21d0"
+  },
+  {
+    "locale": "en_us",
+    "scene": "js-editor-examples",
+    "file": "js-editor-examples-en-1920.png",
+    "screen": "QuestScriptEditorScreen",
+    "capturedAt": "2026-10-18T13:34:56.566624900Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "278bc714119a1933d3f9f8a0c7c72939a1e3b85929e6257255782002a434b931"
+  },
+  {
+    "locale": "en_us",
+    "scene": "event-graph-current",
+    "file": "event-graph-current-en-1920.png",
+    "screen": "QuestTriggerGraphScreen",
+    "capturedAt": "2026-10-18T13:34:57.214049700Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "7468805a5781c3573799602818eec3df48a9debaadcabd67591f004e21f7af51"
+  },
+  {
+    "locale": "en_us",
+    "scene": "anecdotes-current",
+    "file": "anecdotes-current-en-1920.png",
+    "screen": "AnecdoteScreen",
+    "capturedAt": "2026-10-18T13:34:57.858500100Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "6e96d6e77487ccf6e58dc7bcd60bd00aeee719520ae635ba6b8fa70de1c9ac83"
+  },
+  {
+    "locale": "en_us",
+    "scene": "anecdotes-rewards",
+    "file": "anecdotes-rewards-en-1920.png",
+    "screen": "AnecdoteRewardsScreen",
+    "capturedAt": "2026-10-18T13:34:58.511610100Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "83fc26e41b0a0f014a38223e03d0ee538d435ee7e2bbdf0773edcf57398a816c"
+  },
+  {
+    "locale": "en_us",
+    "scene": "experience-reward-details",
+    "file": "experience-reward-details-en-1920.png",
+    "screen": "QuestRewardPopupScreen",
+    "capturedAt": "2026-10-18T13:34:59.160571400Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "6f7cd30602757622814addbd09fb0e87ed4e150350a3963cccc327e1b1abe2ee"
+  },
+  {
+    "locale": "en_us",
+    "scene": "levels-reward-details",
+    "file": "levels-reward-details-en-1920.png",
+    "screen": "QuestRewardPopupScreen",
+    "capturedAt": "2026-10-18T13:34:59.810148800Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "13530bf6cd0537bdc318dd08bd0551644cde0472bcf86c47e2fa71781026a3d0"
+  },
+  {
+    "locale": "en_us",
+    "scene": "loot-reward-contents",
+    "file": "loot-reward-contents-en-1920.png",
+    "screen": "LootTablePopupScreen",
+    "capturedAt": "2026-10-18T13:35:00.467584500Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "105dd545b39683943f076d794a8b37f032737bfc8496127caf044f6cee4009ff"
+  },
+  {
+    "locale": "en_us",
+    "scene": "choice-loot-contents",
+    "file": "choice-loot-contents-en-1920.png",
+    "screen": "LootTablePopupScreen",
+    "capturedAt": "2026-10-18T13:35:01.112036600Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "07d435bf07b4d2b1c301cca0636c4f8385ea3dec8c7f10a5ed9122bf2f6579bb"
+  },
+  {
+    "locale": "en_us",
+    "scene": "choice-loot-selection",
+    "file": "choice-loot-selection-en-1920.png",
+    "screen": "QuestLootChoiceScreen",
+    "capturedAt": "2026-10-18T13:35:01.756189300Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "f9983d310b7e2ce24c946110c326f10e0e8e55771762f209d1d9133b6eb9ff38"
+  },
+  {
+    "locale": "en_us",
+    "scene": "loot-search",
+    "file": "loot-search-en-1920.png",
+    "screen": "LootTablePopupScreen",
+    "capturedAt": "2026-10-18T13:35:02.415893800Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "6e8b8a9dcb0936438ebe17b392311c3e467fad885294bb19d0b501e9cf6a79dc"
+  },
+  {
+    "locale": "en_us",
+    "scene": "choice-loot-search",
+    "file": "choice-loot-search-en-1920.png",
+    "screen": "QuestLootChoiceScreen",
+    "capturedAt": "2026-10-18T13:35:03.074817700Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "c4298e89ac77efe15f00cc7207868f5d2f67a5703efa0b68cb4902d99a352664"
+  },
+  {
+    "locale": "en_us",
+    "scene": "structure-template",
+    "file": "structure-template-en-1920.png",
+    "screen": "QuestStructurePreviewScreen",
+    "capturedAt": "2026-10-18T13:35:03.720523200Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "1ccd58c41ac51014debe464561b548f81f7bd6322e2b4f745217f8abc50eb0a2"
+  },
+  {
+    "locale": "en_us",
+    "scene": "jigsaw-inspector",
+    "file": "jigsaw-inspector-en-1920.png",
+    "screen": "QuestStructurePreviewScreen",
+    "capturedAt": "2026-10-18T13:35:04.368305600Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "8ddaa12e95514fccd1fd12d96a74c954ceb6a46083d72483abd65a1bce4d2864"
+  },
+  {
+    "locale": "en_us",
+    "scene": "jigsaw-guide",
+    "file": "jigsaw-guide-en-1920.png",
+    "screen": "QuestStructurePreviewScreen",
+    "capturedAt": "2026-10-18T13:35:05.021397600Z",
+    "width": 1920,
+    "height": 1080,
+    "sha256": "e1b933921bbd440a244de23049ba075622e8964892d53c4ea07d7bfff9500cc5"
+  }
+]

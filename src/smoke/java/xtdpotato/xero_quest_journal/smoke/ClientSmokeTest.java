@@ -198,6 +198,19 @@ public final class ClientSmokeTest {
             }
             if (Boolean.getBoolean("xero.lootTableTest") && stage >= 2) {
                 if (game.player == null || game.level == null) return;
+                if (Boolean.getBoolean("xero.rewardInspectionOnly")) {
+                    if (RewardInspectionRegression.tick(game)) {
+                        Files.writeString(OUTPUT.resolve("result.txt"),
+                                "PASS: claimed task/mail item inspection, XP/level icons, loot and choice contents, return paths, no repeat delivery;\n"
+                                        + "search threshold 10/11, custom details save/reload/freeze, detail search/clear/no-results, filtered original choice index.\n");
+                        Files.copy(OUTPUT.resolve("result.txt"), OUTPUT.resolve("reward-inspection-result.txt"),
+                                java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                        finished = true;
+                        XeroQuestJournal.LOGGER.info("XERO_REWARD_INSPECTION_PASS");
+                        game.stop();
+                    }
+                    return;
+                }
                 int[] distributed = xtdpotato.xero_quest_journal.client.LootWeightDistribution
                         .redistribute(new int[]{34, 33, 33}, new boolean[]{true, true, true}, 0, 10);
                 require(java.util.Arrays.equals(distributed, new int[]{10, 45, 45}),
@@ -263,6 +276,18 @@ public final class ClientSmokeTest {
             }
             if (Boolean.getBoolean("xero.authoringDocsTest") && stage >= 2) {
                 if (game.player == null || game.level == null) return;
+                if (Boolean.getBoolean("xero.docsGalleryOnly")) {
+                    if (DocumentationGalleryRegression.tick(game)) {
+                        String locale = System.getProperty("xero.docsLanguage", "zh_cn");
+                        Files.copy(OUTPUT.resolve("documentation").resolve(locale).resolve("result.txt"),
+                                OUTPUT.resolve("result.txt"), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                        finished = true;
+                        XeroQuestJournal.LOGGER.info("XERO_DOCUMENTATION_GALLERY_PASS {}",
+                                System.getProperty("xero.docsLanguage", "zh_cn"));
+                        game.stop();
+                    }
+                    return;
+                }
                 if (AuthoringDocumentationRegression.tick(game)) {
                     Files.createDirectories(OUTPUT);
                     Files.writeString(OUTPUT.resolve("result.txt"),

@@ -1,5 +1,7 @@
 # 全部命令参考
 
+**简体中文** | [English](en/commands.md) · [文档中心](README.md)
+
 [项目首页](../README.md) · [使用指南](guide.md) · [JavaScript](javascript.md) · [判断节点](trigger-conditions.md)
 
 本模组注册四个根命令：`/xero_quest`、`/xero_toast`、`/xero_structure`、`/xero_anecdote`。

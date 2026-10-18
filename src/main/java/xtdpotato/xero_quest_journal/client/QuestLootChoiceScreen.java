@@ -2,6 +2,8 @@ package xtdpotato.xero_quest_journal.client;
 
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
+import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -19,7 +21,7 @@ import java.util.Map;
 /** Selects one frozen candidate for every choice-based loot reward. */
 public final class QuestLootChoiceScreen extends AnimatedQuestScreen {
     private static final int HEADER = 58;
-    private static final int ROW_HEIGHT = 30;
+    private static final int ROW_HEIGHT = 42;
     private static final int GROUP_GAP = 18;
 
     private final Screen parent;
@@ -44,6 +46,19 @@ public final class QuestLootChoiceScreen extends AnimatedQuestScreen {
     private boolean listMoved;
     private double dragStartY;
     private double dragStartScroll;
+    private String query = "";
+    private boolean searchable() { return groups.stream().mapToInt(group -> group.choices().size()).sum() > 10; }
+    private int contentTop() { return searchable() ? 84 : HEADER; }
+    private boolean matches(Group group, int index) {
+        if (query.isBlank()) return true;
+        var reward = group.choices().get(index);
+        return QuestIcons.searchIndex(reward.item(), rewardLabel(reward).getString() + " " + reward.type()
+                + " " + QuestRewards.choiceDetail(rewards.get(group.rewardIndex()), index))
+                .contains(query.strip().toLowerCase(java.util.Locale.ROOT));
+    }
+    private int visibleCount(Group group) {
+        return (int) java.util.stream.IntStream.range(0, group.choices().size()).filter(index -> matches(group, index)).count();
+    }
 
     private record Group(int rewardIndex, List<QuestDefinition.Reward> choices, String title) {}
     private record Placement(StyledButton button, int y) {}
@@ -132,7 +147,7 @@ public final class QuestLootChoiceScreen extends AnimatedQuestScreen {
     }
 
     private int viewportTop() {
-        return 54;
+        return searchable() ? 82 : 54;
     }
 
     private int viewportBottom() {
@@ -140,8 +155,8 @@ public final class QuestLootChoiceScreen extends AnimatedQuestScreen {
     }
 
     private int contentHeight() {
-        int value = HEADER;
-        for (Group group : groups) value += 22 + group.choices().size() * ROW_HEIGHT + GROUP_GAP;
+        int value = 0;
+        for (Group group : groups) value += 22 + visibleCount(group) * ROW_HEIGHT + GROUP_GAP;
         return value;
     }
 
@@ -172,22 +187,49 @@ public final class QuestLootChoiceScreen extends AnimatedQuestScreen {
         motion.jump(scroll);
         scroll = motion.pixels();
         int x = left();
-        int y = HEADER;
+        int y = contentTop();
+        if (searchable()) {
+            var search = new EditBox(font, x + 18, 54, panelWidth() - 36, 20, text("loot.search_rewards"));
+            search.setMaxLength(128); search.setValue(query); search.setHint(text("loot.search_rewards"));
+            search.setResponder(value -> {
+                query = value; motion.jump(0); scroll = 0; init();
+                children().stream().filter(EditBox.class::isInstance).map(EditBox.class::cast)
+                        .findFirst().ifPresent(box -> { box.setFocused(true); setFocused(box); });
+            });
+            addRenderableWidget(search);
+        }
         for (Group group : groups) {
             y += 22;
             for (int choiceIndex = 0; choiceIndex < group.choices().size(); choiceIndex++) {
                 int index = choiceIndex;
                 QuestDefinition.Reward reward = group.choices().get(index);
+                if (!matches(group, index)) continue;
+                String detail = QuestRewards.choiceDetail(rewards.get(group.rewardIndex()), index);
                 boolean highlighted = selected.getOrDefault(group.rewardIndex(), -1) == index;
-                StyledButton button = new StyledButton(x + 18, y - scroll, panelWidth() - 36, 24,
+                StyledButton button = new StyledButton(x + 18, y - scroll, panelWidth() - 66, 36,
                         rewardLabel(reward), ignored -> select(group.rewardIndex(), index),
-                        styles, "loot-choice-option", "toolbar-button");
-                button.leadingIcon(QuestRewardsScreen.icon(reward.type(), reward.item()));
+                        styles, "loot-choice-option", "toolbar-button") {
+                    @Override protected void renderContent(GuiGraphics g, ButtonStyle style, int color) {
+                        QuestIcons.render(g, QuestRewardsScreen.icon(reward.type(), reward.item()), getX() + 5, getY() + 6, 24);
+                        g.drawString(font, font.plainSubstrByWidth(getMessage().getString(), getWidth() - 42),
+                                getX() + 36, getY() + 5, color, false);
+                        g.drawString(font, font.plainSubstrByWidth(detail.isBlank()
+                                        ? text("loot.contents.choice").getString() : detail, getWidth() - 42),
+                                getX() + 36, getY() + 21, 0xFFBECBD7, false);
+                    }
+                };
+                if (!detail.isBlank()) button.setTooltip(Tooltip.create(Component.literal(detail)));
                 button.defaultCss(".toolbar-button:selected { background-color:#65705c; border-color:#f3d48b; border-width:2px; }");
                 button.setSelectionHighlighted(highlighted);
                 addRenderableWidget(button);
                 choiceWidgets.add(button);
                 placements.add(new Placement(button, y));
+                var inspect = new EditorIconButton(x + panelWidth() - 42, y + 6 - scroll,
+                        text("rewards.details"), () -> minecraft.setScreen(LootTablePopupScreen.inspect(this, reward)),
+                        styles, "loot-choice-inspect-" + group.rewardIndex() + "-" + index, "visual");
+                addRenderableWidget(inspect);
+                choiceWidgets.add(inspect);
+                placements.add(new Placement(inspect, y + 6));
                 y += ROW_HEIGHT;
             }
             y += GROUP_GAP;
@@ -300,11 +342,11 @@ public final class QuestLootChoiceScreen extends AnimatedQuestScreen {
             g.drawCenteredString(font, questTitle, width / 2, 28, 0xFFE7D19A);
         }
         g.enableScissor(x + 8, viewportTop(), x + panelWidth() - 8, viewportBottom());
-        int y = HEADER - scroll;
+        int y = contentTop() - scroll;
         for (Group group : groups) {
             g.drawString(font, text("loot.group", group.rewardIndex() + 1), x + 18, y,
                     0xFFF5D99A, false);
-            y += 22 + group.choices().size() * ROW_HEIGHT + GROUP_GAP;
+            y += 22 + visibleCount(group) * ROW_HEIGHT + GROUP_GAP;
         }
         g.disableScissor();
         if (maxScroll() > 0) {

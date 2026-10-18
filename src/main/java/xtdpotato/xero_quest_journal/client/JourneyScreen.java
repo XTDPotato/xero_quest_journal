@@ -799,7 +799,8 @@ public final class JourneyScreen extends AnimatedQuestScreen {
             JourneyAppearanceRenderer.icon(graphics, tabStyle, chapterIcon(i), x + 5, y + 8, 14, 14, 0xFFF5E8CF, false);
             JourneyAppearanceRenderer.text(graphics, font, tabStyle, chapters.get(i).name(), x + (w + iconSpace) / 2, y + 10,
                     w - 14 - iconSpace, i == chapterIndex ? 0xFFFFE6AE : 0xFFD5D1DA, true);
-            graphics.fill(x + 3, y + 30 - (i == chapterIndex ? 5 : 1), x + w - 3, y + 30,
+            graphics.fill(x + 3, y + 30 - (i == chapterIndex
+                            ? Math.clamp(ClientPreferences.get().journeyTabUnderlineHeight, 1, 5) : 1), x + w - 3, y + 30,
                     i == chapterIndex ? 0xFFF2D29A : PROGRESS_ALPHA << 24 | 0x7C8792);
         }
         graphics.disableScissor();

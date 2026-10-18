@@ -1,5 +1,7 @@
 # JavaScript 编写参考
 
+**简体中文** | [English](en/javascript.md) · [文档中心](README.md)
+
 [项目首页](../README.md) · [全部命令](commands.md) · [判断节点](trigger-conditions.md) · [使用指南](guide.md)
 
 这份参考对应内置 `QuestScripts` 执行器和事件图的实际实现。**内置 JS、KubeJS、Minecraft

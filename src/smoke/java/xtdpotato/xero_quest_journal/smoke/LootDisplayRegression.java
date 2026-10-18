@@ -76,9 +76,15 @@ final class LootDisplayRegression {
                 button(editor, "loot-display-icon-reset").onPress();
                 require(field(editor, "displayIcon").equals(LootDefinition.DEFAULT_DISPLAY_ICON), "Icon reset failed");
                 editor.keyPressed(GLFW.GLFW_KEY_Z, 0, GLFW.GLFW_MOD_CONTROL);
+                editor.children().stream().filter(EditBox.class::isInstance).map(EditBox.class::cast)
+                        .filter(box -> box.getMessage().getString().equals(net.minecraft.network.chat.Component.translatable(
+                                "screen.xero_quest_journal.loot.detail_text").getString()))
+                        .findFirst().orElseThrow().setValue("补给奖励的自定义详情");
                 button(editor, "loot-save").onPress();
                 require(field(editor, "error") == null && QuestLootStore.find(TABLE).displayIcon().equals(CUSTOM),
                         "Editor save did not persist display icon");
+                require(QuestLootStore.find(TABLE).entries().getFirst().detailText().equals("补给奖励的自定义详情"),
+                        "Visual editor did not persist detail text");
                 checkGeometry(editor);
                 MailArrivalToast.clear();
                 game.setScreen(LootTablePopupScreen.inspect(editor, new Reward("loot", TABLE, 1)));

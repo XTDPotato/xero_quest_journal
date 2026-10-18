@@ -915,13 +915,7 @@ public final class MailboxScreen extends AnimatedQuestScreen {
     private void inspectAttachment(int index) {
         if (selected == null || index < 0 || index >= visibleAttachments(selected).size()) return;
         MailboxRuntime.Attachment attachment = visibleAttachments(selected).get(index);
-        if (attachment.type().equals("loot_choice")) {
-            minecraft.setScreen(LootTablePopupScreen.inspect(this,
-                    new QuestDefinition.Reward("loot_choice", attachment.item(), 1)));
-        } else if (attachment.type().equals("item") && !attachment.item().isBlank())
-            minecraft.setScreen(new QuestRewardPopupScreen(this,
-                    new QuestDefinition.Reward("item", attachment.item(), attachment.count(),
-                            attachment.quality(), attachment.background())));
+        minecraft.setScreen(LootTablePopupScreen.inspect(this, attachment.reward()));
     }
     private ItemStack attachmentStack(MailboxRuntime.Attachment attachment) {
         if (!attachment.type().equals("item") || attachment.item().isBlank() || minecraft.player == null)

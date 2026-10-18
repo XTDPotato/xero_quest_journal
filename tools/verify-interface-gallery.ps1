@@ -3,11 +3,11 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $documentPath = Join-Path $repoRoot $Document
 $content = Get-Content -LiteralPath $documentPath -Raw -Encoding utf8
-$photos = [regex]::Matches($content, '!\[([^\]]*)\]\((images/[^)]+)\)') |
+$photos = [regex]::Matches($content, '!\[([^\]]*)\]\(((?:\.\./)?images/[^)]+)\)') |
     ForEach-Object { [pscustomobject]@{ Caption=$_.Groups[1].Value; Path=$_.Groups[2].Value } }
 if ($photos.Count -lt 40) { throw "The common-interface gallery is incomplete" }
 Add-Type -AssemblyName System.Drawing
-$reportRoot = Join-Path $repoRoot "build/verification/interface-gallery"
+$reportRoot = Join-Path $repoRoot ("build/verification/interface-gallery/" + $(if ($Document -match '[/\\]en[/\\]') { "en" } else { "zh" }))
 New-Item -ItemType Directory -Force -Path $reportRoot | Out-Null
 $results = [Collections.Generic.List[object]]::new()
 foreach ($photo in $photos) {

@@ -167,7 +167,7 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
     private int entryContentTop() { return 248 + metadataTopOffset(); }
     private int rowsViewportBottom() { return Math.max(rowsViewportTop() + 20, height - 62); }
     private boolean stackedEntries() { return editorWidth() < 560; }
-    private int entryHeight() { return stackedEntries() ? 166 : 128; }
+    private int entryHeight() { return stackedEntries() ? 204 : 166; }
     private int tableMaxScroll() {
         return Math.max(0, tables.size() * TABLE_ROW_HEIGHT - (tableViewportBottom() - tableViewportTop()));
     }
@@ -468,6 +468,15 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
             addRenderableWidget(background);
         }
 
+        int detailY = y + (stackedEntries() ? 162 : 124);
+        var detail = new SuggestedEditBox(this, font, x + 20, detailY, rowWidth - 28, 20,
+                text("loot.detail_text"), "loot.detail_text." + index);
+        detail.withoutMenu();
+        detail.setMaxLength(512);
+        detail.setValue(draft.detailText);
+        detail.setHint(text("loot.detail_text_hint"));
+        detail.setResponder(value -> { if (!draft.detailText.equals(value)) pushUndo(); draft.detailText = value; });
+        addRenderableWidget(detail);
         children().subList(firstWidget, children().size()).stream()
                 .filter(AbstractWidget.class::isInstance).map(AbstractWidget.class::cast).forEach(entryWidgets::add);
     }
@@ -548,7 +557,7 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
         List<Integer> filtered = new ArrayList<>();
         for (int i = 0; i < entries.size(); i++) {
             Draft entry = entries.get(i);
-            if (query.isEmpty() || (entry.id + " " + entry.type + " " + entry.item + " " + entry.condition)
+            if (query.isEmpty() || (entry.id + " " + entry.type + " " + entry.item + " " + entry.condition + " " + entry.detailText)
                     .toLowerCase(Locale.ROOT).contains(query)) filtered.add(i);
         }
         return filtered;
@@ -776,6 +785,8 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
             int conditionX = stackedEntries() ? x + 20
                     : mode == LootDefinition.Mode.CHOICE ? x + 142 : x + 154 + sliderWidth + 12;
             g.drawString(font, text("loot.condition"), conditionX, y + (stackedEntries() ? 75 : 37), 0xFFB9C4CE);
+            g.drawString(font, text("loot.detail_text"), x + 20, y + (stackedEntries() ? 151 : 113),
+                    RewardEditorTheme.MUTED);
             if (draft.type.equals("item")) {
                 g.drawString(font, text("rewards.quality"), x + 20, y + (stackedEntries() ? 113 : 75), RewardEditorTheme.MUTED);
                 g.drawString(font, text("rewards.background"), x + 28 + Math.min(150, Math.max(104, Math.max(180, w - 12) / 3)),
@@ -998,6 +1009,7 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
         boolean enabled;
         String quality;
         String background;
+        String detailText;
 
         Draft(LootDefinition.Entry entry) {
             id = entry.id();
@@ -1009,6 +1021,7 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
             enabled = entry.enabled();
             quality = entry.quality();
             background = entry.background();
+            detailText = entry.detailText();
         }
 
         Draft(Draft other) {
@@ -1021,11 +1034,12 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
             enabled = other.enabled;
             quality = other.quality;
             background = other.background;
+            detailText = other.detailText;
         }
 
         LootDefinition.Entry value() {
             return new LootDefinition.Entry(id, type, item, Integer.parseInt(count.strip()),
-                    Integer.parseInt(weight.strip()), condition, enabled, quality, background);
+                    Integer.parseInt(weight.strip()), condition, enabled, quality, background, detailText);
         }
     }
 

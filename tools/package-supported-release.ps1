@@ -1,4 +1,4 @@
-param([string]$Preview = "preview.5")
+param([string]$Preview = "preview.5", [switch]$VersionRelease)
 $ErrorActionPreference = "Stop"
 if ($Preview -notmatch '^preview\.[0-9]+$') { throw "Expected preview.N" }
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -6,7 +6,8 @@ $versionLine = Get-Content -LiteralPath (Join-Path $repoRoot "gradle.properties"
     Where-Object { $_ -match '^mod_version=' } | Select-Object -First 1
 $modVersion = ($versionLine -split '=', 2)[1].Trim()
 if ($modVersion -notmatch '^[0-9]+\.[0-9]+\.[0-9]+$') { throw "Invalid mod_version" }
-$output = Join-Path $repoRoot "build/releases/$Preview"
+$releaseName = if ($VersionRelease) { $modVersion } else { $Preview }
+$output = Join-Path $repoRoot "build/releases/$releaseName"
 if (Test-Path -LiteralPath $output) { throw "Release output already exists: $output" }
 $targets = @(
     @{ Loader="neoforge"; Minecraft="1.21.1"; Source="build/libs/xero_quest_journal-$modVersion.jar" },
@@ -25,6 +26,13 @@ foreach ($target in $targets) {
         $metadata = if ($target.Loader -eq "fabric") { "fabric.mod.json" }
             elseif ($target.Loader -eq "forge") { "META-INF/mods.toml" } else { "META-INF/neoforge.mods.toml" }
         if (!$jar.GetEntry($metadata)) { throw "Wrong loader metadata: $source" }
+        $reader = [IO.StreamReader]::new($jar.GetEntry($metadata).Open())
+        try { $description = $reader.ReadToEnd() } finally { $reader.Dispose() }
+        if ($target.Loader -eq "fabric") {
+            if (($description | ConvertFrom-Json).version -ne $modVersion) { throw "Wrong embedded version: $source" }
+        } elseif ($description -notmatch ('(?m)^version\s*=\s*"' + [regex]::Escape($modVersion) + '"')) {
+            throw "Wrong embedded version: $source"
+        }
         foreach ($class in @("client/ScriptEditorScreenBase", "core/model/QuestScriptReference",
                 "client/JourneyAppearanceScreen", "client/JourneyPreviewScene", "client/JourneyQuestPopupScreen",
                 "client/QuestSearchFilterScreen", "client/CoordinateTrackAnimation",
@@ -57,7 +65,7 @@ foreach ($target in $targets) {
     Copy-Item -LiteralPath $asset -Destination $folder
     $checksums.Add((Get-FileHash -LiteralPath $asset -Algorithm SHA256).Hash.ToLowerInvariant() + "  " + $name)
 }
-Copy-Item -LiteralPath (Join-Path $repoRoot "LICENSE"),(Join-Path $repoRoot "README.md") -Destination $bundle
+Copy-Item -LiteralPath (Join-Path $repoRoot "LICENSE"),(Join-Path $repoRoot "README.md"),(Join-Path $repoRoot "README.en.md") -Destination $bundle
 # Select public files through Git so ignored plans, audits and reference images stay local.
 $publicDocs = & git -C $repoRoot -c core.quotepath=false ls-files --cached --others --exclude-standard -- docs
 if ($LASTEXITCODE -ne 0) { throw "Could not enumerate public documentation" }
@@ -66,7 +74,7 @@ foreach ($relative in $publicDocs) {
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
     Copy-Item -LiteralPath (Join-Path $repoRoot $relative) -Destination $destination
 }
-$bundleZip = Join-Path $output "xero_quest_journal-supported-builds-$Preview.zip"
+$bundleZip = Join-Path $output "xero_quest_journal-supported-builds-$releaseName.zip"
 Compress-Archive -LiteralPath $bundle -DestinationPath $bundleZip
 $checksums.Add((Get-FileHash -LiteralPath $bundleZip -Algorithm SHA256).Hash.ToLowerInvariant() + "  " + (Split-Path $bundleZip -Leaf))
 [IO.File]::WriteAllLines((Join-Path $output "SHA256SUMS.txt"), $checksums, [Text.UTF8Encoding]::new($false))

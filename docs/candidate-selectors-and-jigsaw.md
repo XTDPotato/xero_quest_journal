@@ -1,5 +1,7 @@
 # 候选选择、结构预览与拼图方块
 
+**简体中文** | [English](en/candidate-selectors-and-jigsaw.md) · [文档中心](README.md)
+
 [使用指南](guide.md) · [全部命令](commands.md) · [界面图鉴](interface-gallery.md)
 
 适用：0.2.0 多版本预览 17，Minecraft 1.20.1 Forge/Fabric、1.21.1 NeoForge/Fabric。

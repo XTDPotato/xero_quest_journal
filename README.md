@@ -1,5 +1,7 @@
 # Xero Quest Journal
 
+**简体中文** | [English](README.en.md) · [中文文档中心](docs/README.md) · [English documentation](docs/en/README.md)
+
 **Minecraft 1.20.1 / 1.21.1 · Forge / NeoForge / Fabric · 原生任务日志与可视化编辑器**
 
 项目采用单仓库、单模组 ID 的多加载器布局。当前完整构建基线仍是
@@ -11,21 +13,19 @@ Minecraft 1.21.1 NeoForge。Forge 1.20.1、Fabric 1.20.1 和 Fabric 1.21.1
 每个游戏版本/加载器使用独立 JAR。详见 [版本矩阵](docs/porting-matrix.md)
 和 [Fabric 验证报告](docs/fabric-verification.md)。
 
-2026-10-18 多版本预览 21（模组版本 `0.2.0`）：旅行历程选中章节底部的黄色条恢复为 5px 高。
-此前预览 20 修复重复 tooltip，编辑状态使用铅笔加 X，章节任务选择使用勾选列表图标。
-此前预览还修复分类小标题、战利品表“ID／显示名称”标签，并加入通用候选选择器，
-世界结构可浏览实际起始池模板；拼图方块增加模型连接点高亮、搜索选择、方向线、
-模板池跳转、中文操作讲解与窄窗口平滑滚动。
-修复自动任务标题残留 `%s`，任务完成聊天新增换行金色 `[打开任务]` 链接。
-详见 [候选与拼图方块教程](docs/candidate-selectors-and-jigsaw.md)，含中文 1920×1080 截图。
-四个已完成平台同步共享功能，详细状态见 [本轮验证](docs/release-verification-2026-10-18.md)；
-常见界面、入口与操作见 [中文 1080p 界面图鉴](docs/interface-gallery.md)。
+**0.2.1 · 2026-10-18**：旅行历程选中章节底条默认 3px，可在设置的外观页调整为 1–5px；
+任务和邮件奖励详情统一检查，经验/等级详情补齐对应图标、数量与说明。
+战利品列表超过 10 项才显示搜索，每项“显示详情文本”可单独配置并随自选奖励冻结。
+中英文首页、文档导航和常用功能参考配套更新，常见界面分别使用真实中文/英文
+1920×1080 截图，包含逸闻书册、贴纸页、章节编辑、JS 参考和拼图连接检查。
+最新范围见 [0.2.1 验证](docs/release-verification-0.2.1.md)。
+旧预览记录保留于 [2026-10-18 验证历史](docs/release-verification-2026-10-18.md)。
 
 Xero Quest Journal 面向整合包作者、地图作者与喜欢任务引导的玩家，把任务列表、章节历程、世界目标、奖励和邮箱放在一套原生游戏界面中。作者可以在本地世界内编辑任务，也可以用 JSON、HTML 或 XML 配置任务文件。
 
 核心模组保持轻量，媒体解码使用可选后端；任务完成、奖励领取和玩家进度由服务端处理。
 
-> 当前源码版本为 **0.2.0 开发预览版**。新的界面图鉴全部采用中文、原生 1920×1080 截图；
+> 当前版本为 **0.2.1**。双语图鉴分别采用中文、英文原生 1920×1080 截图；
 > 历史验证与本次验证分开记录。26.1–26.3 尚无完整可安装包。
 
 ![任务日志、进度与底部奖励，中文 1920×1080](docs/images/journal-current-zh-1920.png)
@@ -35,6 +35,9 @@ Xero Quest Journal 面向整合包作者、地图作者与喜欢任务引导的�
 - [功能一览](#功能一览)
 - [界面与截图](#界面与截图)
 - [中文 1080p 界面图鉴：常见界面、入口和操作](docs/interface-gallery.md)
+- [英文 1080p 界面图鉴](docs/en/interface-gallery.md)
+- [按流程查找文档](docs/README.md)
+- [0.2.1 发布验证与截图来源](docs/release-verification-0.2.1.md)
 - [任务修改与删除的撤销/重做](docs/task-edit-undo.md)
 - [2026-10-18 多版本构建与专项验证](docs/release-verification-2026-10-18.md)
 - [候选选择、结构预览与拼图方块讲解](docs/candidate-selectors-and-jigsaw.md)
@@ -61,6 +64,7 @@ Xero Quest Journal 面向整合包作者、地图作者与喜欢任务引导的�
 | 新任务提示 | 任务行右上角未读红点，打开详情清除；右上角支持一键全部已读 |
 | 总览 | 推荐任务、分类入口、可配置背景 |
 | 旅行历程 | 章节标签、主线与支线、任务详情弹窗、当前章节独立外观、多选拖动与尺寸编辑 |
+| 逸闻纪事 | 独立条目与多条记录、发现/隐藏状态、完成贴纸、奖励与通知横幅 |
 | 任务规则 | 持有、累计获取、提交、击杀、方块交互、进度、地点、脚本与组合条件 |
 | 解锁关系 | 前置任务 DAG、可视化连线、节点移动、循环检查、撤销与重做 |
 | 事件节点 | 任务控件事件图、条件与动作节点、连线、属性编辑 |
@@ -83,7 +87,7 @@ Xero Quest Journal 面向整合包作者、地图作者与喜欢任务引导的�
 
 ## 界面与截图
 
-[完整中文界面图鉴](docs/interface-gallery.md) 按 17 类操作展示常见界面，
+[完整中文界面图鉴](docs/interface-gallery.md) 按 18 类操作展示常见界面，
 包括任务、搜索、条件、奖励、邮件、战利品、章节编辑、背景、节点、
 JS、变量、图标、富文本、回收站、设置、动画、物品栏、模板和位置目标。
 下列为主要界面的选图；原图均可点开查看。
@@ -98,7 +102,7 @@ JS、变量、图标、富文本、回收站、设置、动画、物品栏、模
 
 设置使用顶部六个标签，下面展示对应选项。常规设置可分别启用任务/邮件背包入口，
 进入可视摆放界面并按九宫格锚点设置偏移。左上锚点的 `(0,0)` 就是屏幕左上。
-安装 REI 时还可管理书本/纸张快捷收藏。个人偏好无需作者模式；
+安装 REI 时还可管理专属任务/邮件图标收藏。个人偏好无需作者模式；
 服务器分页和作者主题仍需管理员权限。重复的按键、文件夹和动画编辑入口已合并。
 切换标签使用 100ms 动画；关闭动画或减弱动态时立即切换。
 
@@ -128,21 +132,34 @@ JS、变量、图标、富文本、回收站、设置、动画、物品栏、模
 
 ![当前章节外观的实时多选编辑](docs/images/journey-chapter-multiselect-zh-1920.png)
 
+### 逸闻纪事与贴纸
+
+从总览的逸闻入口或 `/xero_quest open anecdotes` 打开双页书册。
+每个条目独立存放，包含多条记录；发现、未解锁隐藏和记录完成可由节点控制。
+左侧卡片、右侧记录分别平滑滚动，完成记录保留并进入贴纸页。
+
+![逸闻纪事书册](docs/images/anecdotes-current-zh-1920.png)
+
+![逸闻完成贴纸](docs/images/anecdotes-rewards-zh-1920.png)
+
+条目字段、记录与节点示例详见 [逸闻纪事配置](docs/anecdotes.md)。
+`/xero_anecdote` 是通知横幅，与打开书册及登记完成属于不同操作。
+
 ### 新任务红点
 
 新加入目录的任务在任务行右上角显示红点。只浏览列表不会清除未打开任务的提示；打开对应详情后标记已读。首次同步将旧目录作为基线，不把全部已有任务标红。
 
-![未打开的新任务红点](docs/images/new-task.png)
+![任务列表与未读状态](docs/images/journal-current-zh-1920.png)
 
 右上角“领取全部奖励”左侧的勾选图标可以一键清除全部新任务红点。此操作只改变当前玩家的未读状态，不领取奖励、不完成任务，也不清除其他玩家的提示。
 
-![一键清除红点按钮](docs/images/clear-dots.png)
+已读状态、领取状态和追踪状态分别保存，详见 [玩家操作](docs/guide.md)。
 
 ### 奖励展示与品质编辑
 
 卡片宽度 34 GUI 像素、高度 38 GUI 像素；图标区和底部数字区分开。下面示例依次为紫色经验瓶、红色品质钻石、使用自定义绿色背景的绿宝石。
 
-![品质奖励局部展示](docs/images/reward-detail.png)
+![奖励收据与物品图标](docs/images/reward-receipt-zh-1920.png)
 
 ![奖励品质与背景覆盖编辑器](docs/images/rewards-editor-zh-1920.png)
 
@@ -175,16 +192,16 @@ JS、变量、图标、富文本、回收站、设置、动画、物品栏、模
 | Minecraft / 加载器 | 1.20.1 Forge 47.3.0 或 Fabric；1.21.1 NeoForge 21.1.233 或 Fabric |
 | Java | 1.20.1 使用 Java 17；1.21.1 使用 Java 21 |
 | Fabric | 还需对应 Minecraft 版本的 Fabric API；精确测试版本见版本矩阵 |
-| 核心文件 | [0.2.0 多版本预览 21](https://github.com/XTDPotato/xero_quest_journal/releases/tag/v0.2.0-multiversion-preview.21) 中与 Minecraft/加载器完全匹配的单个 JAR |
+| 核心文件 | [0.2.1 Release](https://github.com/XTDPotato/xero_quest_journal/releases/tag/v0.2.1) 中与 Minecraft/加载器完全匹配的单个 JAR |
 | 许可 | MIT，第三方依赖保留各自许可 |
 
-1. 从 [多版本预览 21 Release](https://github.com/XTDPotato/xero_quest_journal/releases/tag/v0.2.0-multiversion-preview.21) 选择与游戏版本、加载器相匹配的核心 JAR，放入实例的 `mods` 目录。
+1. 从 [0.2.1 Release](https://github.com/XTDPotato/xero_quest_journal/releases/tag/v0.2.1) 选择与游戏版本、加载器相匹配的核心 JAR，放入实例的 `mods` 目录。
 2. 多人环境下，客户端与服务端应安装相互匹配的版本。当前网络协议为 **10**；相同的显示版本不保证不同开发构建之间的协议兼容，旧 Release 的 `0.1.0` 与当前源码的 `0.2.0` 应分别核对。
 3. 启动游戏并进入世界，默认按 `J` 打开任务日志，按 `F8` 打开邮箱、`F7` 打开新邮件。
 4. 任务目录默认位于 `config/xero_quest/groups/`，编辑后使用 `/xero_quest reload` 重载。
 5. 本地集成服务器中，拥有管理员权限的玩家可以开启编辑模式。远端客户端作者编辑仍有限制。
 
-Release 同时提供四个 `0.2.0` 独立安装包和按版本/加载器归类的合集 ZIP。
+Release 同时提供四个 `0.2.1` 独立安装包和按版本/加载器归类的合集 ZIP。
 每个实例只安装一个核心 JAR。不要将源码 ZIP、验证报告或测试世界放入 `mods`。
 
 ### 常用操作
@@ -298,7 +315,7 @@ HTML/XML 也能表达相同任务：
 
 为避免“选了红色却仍显示旧绿色”的混淆，**编辑器中切换品质会清除旧背景覆盖**。随后仍可输入新的背景覆盖色。
 
-![六档品质与自定义颜色](docs/images/reward-palettes.png)
+![品质与自定义颜色编辑](docs/images/rewards-editor-zh-1920.png)
 
 奖励在完成时冻结。之后编辑任务源文件，不会回写已经取得的历史奖励。更多奖励类型、失败回执和溢出处理见 [奖励与完成条件](docs/奖励与条件配置.md)。
 
@@ -338,13 +355,11 @@ HTML/XML 也能表达相同任务：
 - **缓存**：搜索结果、部分布局、已读目录基线按状态或版本更新。
 - **端点查找**：事件图通过节点 ID 映射查找连线两端，减少重复扫描。
 
-![1,200 任务列表回归场景](docs/images/large-task-list.png)
-
 已有 1,200 任务回归曾记录最多 18 个物化列表行控件和 5 个可见历程节点。这是特定测试场景下的工作量结果，**不是 FPS 保证**，也不代表整合包中的脚本、服务端判定或渲染没有其他热点。
 
 首次大目录搜索需要建立索引，期间保留列表并显示搜索状态图标。后续查询复用索引；目录、语言或连接改变时重建。设计取舍见 [异步搜索 ADR](docs/adr/0001-asynchronous-journal-search.md)。
 
-![后台检索后的任务筛选结果](docs/images/async-search.png)
+![搜索筛选界面](docs/images/search-filters-zh-1920.png)
 
 ## 从源码构建
 
@@ -370,8 +385,8 @@ chmod +x gradlew
 构建输出：
 
 ```text
-build/libs/xero_quest_journal-0.2.0.jar
-build/libs/xero_quest_journal-0.2.0-sources.jar
+build/libs/xero_quest_journal-0.2.1.jar
+build/libs/xero_quest_journal-0.2.1-sources.jar
 ```
 
 `build` 包含核心 JAR 的 **5,000,000 字节上限检查**与可选媒体依赖隔离检查。它不会自动运行真实客户端 smoke 测试。
@@ -437,7 +452,7 @@ tools/                     图标生成与独立检查工具
 
 四个已完成目标和本轮作者工具复验见 [版本矩阵](docs/porting-matrix.md)、
 [Fabric 报告](docs/fabric-verification.md)、[Forge 报告](docs/forge-1.20.1-verification.md)
-及 [本轮验证](docs/authoring-verification.md)。以下保留 2026-10-09 的历史专项摘要：
+及 [0.2.1 验证](docs/release-verification-0.2.1.md)。以下保留历史专项的范围摘要：
 
 | 验证 | 范围 |
 | --- | --- |
@@ -456,15 +471,21 @@ tools/                     图标生成与独立检查工具
 - 奖励物品与玩家存档不是跨文件原子事务；异常断电等情况仍可能需要管理员核对。
 - 没有对所有平台、模组组合、多人服务器和帧率进行完整验收。
 - “附近任务自动接取”的独立任务生命周期仍未实现，不把追踪按钮当作接取状态。
+- 完整创建套件的 `context-copy_id` 点击和连续历程的外观撤销检查仍有未通过项，
+  不把截图生成通过当作全部功能回归通过。
 
 ## 文档与许可
 
 | 文档 | 内容 |
 | --- | --- |
+| [中文文档中心](docs/README.md) / [English documentation](docs/en/README.md) | 按玩家/作者流程、功能和操作目标查找 |
+| [英文首页](README.en.md) | 完整英文安装、功能、实例和英文截图 |
+| [0.2.1 发布验证](docs/release-verification-0.2.1.md) | 本次构建、双语截图、设置检查及测试边界 |
 | [使用指南](docs/guide.md) | 目录组织、日常操作、作者流程、备份与故障定位 |
 | [背景与旅行历程编辑](docs/background-and-journey-editor.md) | 背景缩放与音乐、背景节点、章节切换事件、可视化尺寸编辑及任务弹窗 |
 | [中文 1080p 界面图鉴](docs/interface-gallery.md) | 常见界面全屏截图、入口、操作、保存和预览行为 |
-| [预览 5 发布验证](docs/release-verification-2026-10-16.md) | 本次四平台构建、客户端回归、安装包与未覆盖范围 |
+| [预览 5 发布验证](docs/release-verification-2026-10-16.md) | 2026-10-16 历史四平台构建与回归 |
+| [逸闻纪事](docs/anecdotes.md) | 独立条目、记录、发现与完成节点、贴纸和奖励 |
 | [全部命令](docs/commands.md) | 四个根命令、71 条共享路径及 Forge 状态命令、逸闻纪事、参数、权限与示例 |
 | [JavaScript 参考](docs/javascript.md) | 文件与事件图类型、返回值、奖励 API、编辑器、15 个示例 |
 | [判断节点详解](docs/trigger-conditions.md) | 可视化与 JS 条件、连线、真假/异常、一次执行 |

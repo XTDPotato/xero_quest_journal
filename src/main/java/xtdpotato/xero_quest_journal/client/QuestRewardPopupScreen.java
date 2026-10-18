@@ -120,6 +120,9 @@ public final class QuestRewardPopupScreen extends AnimatedQuestScreen {
             tooltip = stack.getTooltipLines(Item.TooltipContext.of(minecraft.level),
                     minecraft == null ? null : minecraft.player, TooltipFlag.NORMAL);
             sources = findSources(stack);
+        } else {
+            tooltip = List.of(text("detail_count", reward.count()),
+                    text("detail_" + (List.of("experience", "levels").contains(reward.type()) ? reward.type() : "generic")));
         }
     }
 
@@ -185,9 +188,15 @@ public final class QuestRewardPopupScreen extends AnimatedQuestScreen {
         for (Source source : sources) desired = Math.max(desired, font.width(source.label()) + 42);
         detailWidth = Math.max(64, Math.min(Math.min(250, desired), width - 32));
         var lines = new ArrayList<FormattedCharSequence>();
-        int first = !tooltip.isEmpty() && font.split(tooltip.getFirst(), Math.max(1, detailWidth - 76)).size() > 4 ? 0 : 1;
+        int first = inspectedStack.isEmpty() || !tooltip.isEmpty()
+                && font.split(tooltip.getFirst(), Math.max(1, detailWidth - 76)).size() > 4 ? 0 : 1;
         for (int i = first; i < tooltip.size(); i++) lines.addAll(font.split(tooltip.get(i), detailWidth - 32));
         tooltipLines = List.copyOf(lines);
+        if (inspectedStack.isEmpty()) {
+            sourceRows = List.of();
+            detailHeight = tooltipHeight() + 16;
+            return;
+        }
         var rows = new ArrayList<SourceRow>();
         int result = tooltipHeight() + SOURCE_GAP;
         if (recipeOpenFailed) result += font.split(text("source_unavailable"), panelWidth() - 32).size() * 11 + 6;
@@ -233,7 +242,7 @@ public final class QuestRewardPopupScreen extends AnimatedQuestScreen {
         if (selectedReward != null) {
             addRenderableWidget(new StyledButton(x + w - 22, y + 6, 16, 16, Component.literal("\u00d7"),
                     ignored -> onClose(), styles, "reward-popup-close", "toolbar-button"));
-            recipeButton = addRenderableWidget(new StyledButton(x + 16, y, w - 32, 22,
+            if (!inspectedStack.isEmpty()) recipeButton = addRenderableWidget(new StyledButton(x + 16, y, w - 32, 22,
                     recipeViewer.isEmpty() ? text("source_no_viewer") : text("source_open", recipeViewer),
                     ignored -> {
                         recipeOpenFailed = !RecipeViewerBridge.openRecipes(inspectedStack);
@@ -246,9 +255,11 @@ public final class QuestRewardPopupScreen extends AnimatedQuestScreen {
                             getY() + (height - font.lineHeight) / 2, color, false);
                 }
             });
-            recipeButton.active = !recipeViewer.isEmpty() && !inspectedStack.isEmpty();
-            recipeButton.setTooltip(Tooltip.create(recipeViewer.isEmpty()
-                    ? text("source_no_viewer") : text("source_open", recipeViewer)));
+            if (recipeButton != null) {
+                recipeButton.active = !recipeViewer.isEmpty();
+                recipeButton.setTooltip(Tooltip.create(recipeViewer.isEmpty()
+                        ? text("source_no_viewer") : text("source_open", recipeViewer)));
+            }
             positionRecipeButton();
         } else if (contentWidth() > viewportWidth()) {
             addRenderableWidget(new StyledButton(x + 8, cardTop() + 18, 18, 28, Component.literal("\u2039"),
@@ -271,7 +282,7 @@ public final class QuestRewardPopupScreen extends AnimatedQuestScreen {
         g.fill(x - 2, y - 2, x + w + 2, y + h + 2, ButtonStyle.FRAME_COLOR);
         g.fill(x, y, x + w, y + h, 0xFF2A2E38);
         g.fill(x, y, x + w, y + 28, 0xFF38445A);
-        centered(g, text("source"),
+        centered(g, text(inspectedStack.isEmpty() ? "details" : "source"),
                 width / 2, y + 9, 0xFFF5D99A);
         renderItemDetails(g, x, y, w, h, mouseX, mouseY);
         super.renderContents(g, mouseX, mouseY, delta);
@@ -377,8 +388,10 @@ public final class QuestRewardPopupScreen extends AnimatedQuestScreen {
                 nameY += font.lineHeight + 2;
             }
         } else {
+            QuestIcons.render(g, QuestRewardsScreen.icon(selectedReward.type(), selectedReward.item()),
+                    x + w - 52, y + 37, 36);
             g.drawWordWrap(font, Component.translatable("screen.xero_quest_journal.reward_type."
-                    + selectedReward.type()), x + 13, y + 42, w - 26, 0xFFB8C7D9);
+                    + selectedReward.type()), x + 13, y + 42, w - 76, 0xFFB8C7D9);
         }
         var viewport = detailViewport();
         g.enableScissor(viewport.left(), viewport.top(), viewport.right(), viewport.bottom());
@@ -386,6 +399,10 @@ public final class QuestRewardPopupScreen extends AnimatedQuestScreen {
         for (var wrapped : tooltipLines) {
             g.drawString(font, wrapped, x + 16, lineY, 0xFFE5EAF1, false);
             lineY += font.lineHeight + 2;
+        }
+        if (inspectedStack.isEmpty()) {
+            g.disableScissor();
+            return;
         }
         g.drawString(font, text("source"), x + 16, lineY + 3, 0xFFF5D99A, false);
         lineY += SOURCE_GAP;

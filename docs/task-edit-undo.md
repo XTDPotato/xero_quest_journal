@@ -1,5 +1,7 @@
 # 任务修改、删除的撤销与重做
 
+**简体中文** | [English](en/task-edit-undo.md) · [文档中心](README.md)
+
 [使用指南](guide.md) · [界面图鉴](interface-gallery.md)
 
 任务编辑模式左下角的撤销、重做图标现在能恢复已保存的任务操作。

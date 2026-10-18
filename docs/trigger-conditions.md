@@ -1,5 +1,7 @@
 # 判断节点与 JS 分支
 
+**简体中文** | [English](en/trigger-conditions.md) · [文档中心](README.md)
+
 [项目首页](../README.md) · [JavaScript 参考](javascript.md) · [全部命令](commands.md)
 
 事件图用于把“什么时候发生”与“满足什么条件后执行什么动作”连接起来。

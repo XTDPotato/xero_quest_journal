@@ -26,13 +26,31 @@ public record LootDefinition(String id, String name, Mode mode, int rolls, Strin
     }
 
     public record DisplayEntry(String id, String type, String item, int count, int weight,
-                               boolean enabled, String quality, String background) {}
+                               boolean enabled, String quality, String background, String detailText) {
+        public DisplayEntry {
+            detailText = normalizeDetail(detailText);
+        }
+        public DisplayEntry(String id, String type, String item, int count, int weight,
+                            boolean enabled, String quality, String background) {
+            this(id, type, item, count, weight, enabled, quality, background, "");
+        }
+    }
+
+    private static String normalizeDetail(String value) {
+        String text = value == null ? "" : value.strip();
+        if (text.length() > 512) throw new IllegalArgumentException("Loot detail text is too large");
+        return text;
+    }
 
     public record Entry(String id, String type, String item, int count, int weight,
-                        String condition, boolean enabled, String quality, String background) {
+                        String condition, boolean enabled, String quality, String background, String detailText) {
         public Entry(String id, String type, String item, int count, int weight,
                      String condition, boolean enabled) {
             this(id, type, item, count, weight, condition, enabled, "", "");
+        }
+        public Entry(String id, String type, String item, int count, int weight,
+                     String condition, boolean enabled, String quality, String background) {
+            this(id, type, item, count, weight, condition, enabled, quality, background, "");
         }
 
         public Entry {
@@ -42,6 +60,7 @@ public record LootDefinition(String id, String name, Mode mode, int rolls, Strin
             condition = condition == null || condition.isBlank() ? "always" : condition;
             quality = type.equals("item") ? QuestRewardQuality.normalize(quality) : "";
             background = type.equals("item") ? QuestRewardQuality.normalizeBackground(background) : "";
+            detailText = normalizeDetail(detailText);
             if (count < 1 || count > 1000000) throw new IllegalArgumentException("Loot count must be 1..1000000");
             if (weight < 0 || weight > 1000000) throw new IllegalArgumentException("Loot weight must be 0..1000000");
             if (id.length() > 64 || type.length() > 32 || item.length() > 8192 || condition.length() > 512)
@@ -82,6 +101,6 @@ public record LootDefinition(String id, String name, Mode mode, int rolls, Strin
         return new Display(id, name, mode, rolls, choiceTitle, displayIcon,
                 entries.stream().map(entry -> new DisplayEntry(entry.id(), entry.type(),
                         entry.type().equals("item") ? entry.item() : "", entry.count(), entry.weight(),
-                        entry.enabled(), entry.quality(), entry.background())).toList());
+                        entry.enabled(), entry.quality(), entry.background(), entry.detailText())).toList());
     }
 }

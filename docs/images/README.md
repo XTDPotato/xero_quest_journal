@@ -1,5 +1,42 @@
 # 项目截图索引
 
+[中文图鉴](../interface-gallery.md) | [English gallery](../en/interface-gallery.md) · [双语文档中心](../README.md)
+
+## 0.2.1 双语截图
+
+本次常见界面分别在 `zh_cn` 和 `en_us` 客户端以原生 **1920×1080** 截取，
+使用等价的本地化演示内容。文件 `*-zh-1920.png` 为中文，
+`*-en-1920.png` 为英文；用户内容、代码和资源 ID 不由界面语言自动翻译。
+新截图包括任务、菜单、搜索、奖励、邮件、章节、逸闻、设置、脚本、变量、选择器和结构。
+
+[逐图来源清单](../reference/interface-captures.json) 记录语言、场景、
+实际 Screen 类、分辨率、时间与 SHA256。通过
+`tools/sync-bilingual-documentation.ps1` 核验清单后同步，不调整图像尺寸或替换图片文字。
+旧图仍用于日期明确的历史报告；当前常见界面优先使用本次更新。
+
+```powershell
+.\gradlew.bat runClient -PinterfaceDocsTest -PdocsLanguage=zh_cn
+.\gradlew.bat runClient -PinterfaceDocsTest -PdocsLanguage=en_us
+pwsh -File tools/sync-bilingual-documentation.ps1
+pwsh -File tools/verify-authoring-documentation.ps1
+pwsh -File tools/verify-interface-gallery.ps1
+pwsh -File tools/verify-interface-gallery.ps1 -Document docs/en/interface-gallery.md
+```
+
+| 场景 / Scene | 中文 | English |
+| --- | --- | --- |
+| 任务日志 / Journal | [查看](journal-current-zh-1920.png) | [View](journal-current-en-1920.png) |
+| 旅行历程 / Journey | [查看](journey-current-zh-1920.png) | [View](journey-current-en-1920.png) |
+| 章节外观 / Chapter appearance | [查看](journey-appearance-zh-1920.png) | [View](journey-appearance-en-1920.png) |
+| 逸闻 / Anecdotes | [查看](anecdotes-current-zh-1920.png) | [View](anecdotes-current-en-1920.png) |
+| 逸闻贴纸 / Stickers | [查看](anecdotes-rewards-zh-1920.png) | [View](anecdotes-rewards-en-1920.png) |
+| 奖励详情 / Reward details | [查看](experience-reward-details-zh-1920.png) | [View](experience-reward-details-en-1920.png) |
+| 自选奖励 / Choice loot | [查看](choice-loot-selection-zh-1920.png) | [View](choice-loot-selection-en-1920.png) |
+| 邮件 / Mail | [查看](mailbox-current-zh-1920.png) | [View](mailbox-current-en-1920.png) |
+| JS 参考 / Script reference | [查看](js-editor-reference-zh-1920.png) | [View](js-editor-reference-en-1920.png) |
+| 拼图连接 / Jigsaw | [查看](jigsaw-inspector-zh-1920.png) | [View](jigsaw-inspector-en-1920.png) |
+| 外观设置 / Appearance settings | [查看](settings-appearance-zh-1920.png) | [View](settings-appearance-en-1920.png) |
+
 [项目首页](../../README.md) · [完整界面图鉴与操作](../interface-gallery.md)
 
 这里保存从本项目开发客户端挑选的截图，使用 Minecraft 测试世界和演示任务。图片不是其他游戏的 UI 设计参考，不包含完整测试存档。

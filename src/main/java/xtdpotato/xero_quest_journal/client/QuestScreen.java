@@ -3331,6 +3331,8 @@ public final class QuestScreen extends AnimatedQuestScreen {
     }
     @Override
     protected Viewport widgetViewport(AbstractWidget widget) {
+        if (iconPicker != null && iconChoiceButtons.contains(widget))
+            return viewport(16, iconPicker.gridTop, width - 16, iconPicker.gridBottom);
         return form != null && iconPicker == null && formWidgets.containsKey(widget) ? formViewport() : null;
     }
     private void prepareFormViewport() {
@@ -3781,7 +3783,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
                 ? "icon_picker.descending" : "icon_picker.ascending")));
         addRenderableWidget(order);
         int columns = Math.max(3, (w - 32) / 40);
-        int rows = Math.max(1, (h - 244) / 40);
+        int rows = Math.max(1, (h - 212 + 39) / 40);
         iconPicker.columns = columns;
         iconPicker.visibleRows = rows;
         iconPicker.gridTop = y + 112;
@@ -3804,6 +3806,8 @@ public final class QuestScreen extends AnimatedQuestScreen {
         }
         iconPrevious = null;
         iconNext = null;
+        addRenderableWidget(new ScrollRail(w - 14, iconPicker.gridTop,
+                iconPicker.gridBottom - iconPicker.gridTop, iconPicker.scroll));
         iconPicker.sourceButtons.forEach(button ->
                 button.active = !button.styleId().equals("icon-source-" + iconPicker.source.key));
         rebuildIconPickerResults(x, y, w, h);
@@ -3824,7 +3828,8 @@ public final class QuestScreen extends AnimatedQuestScreen {
                 .filter(choice -> choice.matchesNormalized(normalizedSearch)).toList();
         int totalRows = Math.max(1, (iconPicker.filteredChoices.size() + iconPicker.columns - 1)
                 / iconPicker.columns);
-        iconPicker.scroll.limit(Math.max(0, (totalRows - iconPicker.visibleRows) * 40));
+        iconPicker.scroll.limit(Math.max(0, totalRows * 40 - 4
+                - (iconPicker.gridBottom - iconPicker.gridTop)));
         updateIconPickerViewport();
     }
 
@@ -3868,6 +3873,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
             int index = (firstRow + row) * iconPicker.columns + column;
             icon.setX(16 + column * 40);
             icon.setY(iconPicker.gridTop + row * 40 - offset);
+            icon.clipTo(16, iconPicker.gridTop, width - 16, iconPicker.gridBottom);
             boolean inViewport = icon.getY() + 36 >= iconPicker.gridTop
                     && icon.getY() < iconPicker.gridBottom;
             boolean visible = index < iconPicker.filteredChoices.size() && inViewport;
@@ -3981,8 +3987,16 @@ public final class QuestScreen extends AnimatedQuestScreen {
 
     private void initIconPickerFooter(int x, int y, int w, int h) {
         int footerY = y + h - 88;
-        int actionX = x + w - 308;
+        int blankWidth = Math.max(60, font.width(text("icon_picker.blank")) + 24);
+        int folderWidth = iconPicker.source == IconSource.LOCAL
+                ? Math.max(96, font.width(text("icon_picker.open_folder")) + 24) : 0;
+        int folderX = x + w - 16 - folderWidth;
+        int actionX = folderX - (folderWidth > 0 ? 8 : 0) - blankWidth;
         int manualWidth = Math.max(80, actionX - x - 28);
+        int buttonWidth = Math.max(72, Math.max(font.width(text("icon_picker.apply")),
+                font.width(Component.translatable("gui.cancel"))) + 24);
+        int cancelX = x + w - 16 - buttonWidth;
+        int applyX = cancelX - 8 - buttonWidth;
         field("icon_picker.manual", iconPicker.manual, x + 16, footerY,
                 manualWidth, 8192, value -> {
                     iconPicker.manual = value;
@@ -3990,7 +4004,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
                             .filter(button -> button.styleId().equals("icon-preview")).findFirst()
                             .ifPresent(button -> button.active = !value.isBlank());
                 });
-        addRenderableWidget(new StyledButton(x + 16, y + h - 42, 72, 26,
+        addRenderableWidget(new StyledButton(applyX, y + h - 42, buttonWidth, 26,
                 text("icon_picker.apply"), ignored -> {
                     String value = iconPicker.manual.strip();
                     var id = ResourceLocation.tryParse(value);
@@ -4005,7 +4019,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
                         error = "create.error.icon";
                     }
                 }, styles, "icon-apply", "toolbar-button"));
-        var preview = new JournalNavButton(x + 94, y + h - 42, 26, 26, text("icon_picker.preview"),
+        var preview = new JournalNavButton(x + 16, y + h - 42, 26, 26, text("icon_picker.preview"),
                 ignored -> {
                     if (!iconPicker.manual.isBlank())
                         minecraft.setScreen(new QuestIconPreviewScreen(this, iconPicker.manual));
@@ -4014,16 +4028,16 @@ public final class QuestScreen extends AnimatedQuestScreen {
         preview.setTooltip(Tooltip.create(text("icon_picker.preview")));
         addRenderableWidget(preview);
         if (iconPicker.source == IconSource.LOCAL)
-            addRenderableWidget(new StyledButton(actionX + 108, footerY, 112, 22,
+            addRenderableWidget(new StyledButton(folderX, footerY, folderWidth, 22,
                     text("icon_picker.open_folder"), ignored ->
                     Util.getPlatform().openFile(QuestIcons.localRoot().toFile()),
                     styles, "icon-folder", "toolbar-button"));
-        addRenderableWidget(new StyledButton(actionX, footerY, 72, 22,
+        addRenderableWidget(new StyledButton(actionX, footerY, blankWidth, 22,
                 text("icon_picker.blank"), ignored -> {
                     iconPicker.manual = "";
                     updateIconPickerSelection();
                 }, styles, "icon-none", "toolbar-button"));
-        addRenderableWidget(new StyledButton(x + w - 220, y + h - 42, 204, 26,
+        addRenderableWidget(new StyledButton(cancelX, y + h - 42, buttonWidth, 26,
                 Component.translatable("gui.cancel"), ignored -> {
                     if (externalPicker) {
                         onClose();
@@ -7339,6 +7353,19 @@ public final class QuestScreen extends AnimatedQuestScreen {
             }
             if (x >= 14 && x < 18 + listWidth && y >= 92 && y < height - 52) {
                 return super.mouseClicked(x, y, button) || true;
+            }
+        }
+        if (button == 0 && !editMode && selected != null && inDetails(x, y)) {
+            // Claimed layouts may retain overlapping text/control surfaces; reward cards stay inspectable.
+            for (var element : orderedElements(true)) {
+                if (!element.quest().equals(selectedId) || !element.kind().equals("quest_rewards")
+                        || !runtimeVisible(element)) continue;
+                int index = rewardIndexAt(element, x, y);
+                var rewards = displayedRewards();
+                if (index >= 0 && index < rewards.size()) {
+                    minecraft.setScreen(LootTablePopupScreen.inspect(this, rewards.get(index)));
+                    return true;
+                }
             }
         }
         String target = hit(x, y);

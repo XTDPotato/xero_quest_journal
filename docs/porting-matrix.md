@@ -1,5 +1,10 @@
 # 版本与加载器矩阵
 
+**简体中文** | [English](en/testing-and-compatibility.md) · [0.2.1 验证](release-verification-0.2.1.md)
+
+当前发布版本为 **0.2.1**，四个已完成目标同步构建。
+26.1–26.3 工程的声明版本号也已更新，但不代表完整迁移完成，本次不发布这些安装包。
+
 仓库共享一个模组 ID（`xero_quest_journal`）、业务源码和资源目录。
 各 Minecraft/加载器组合生成独立 JAR；不能把不同 Minecraft API 或加载器的代码放进一个通用安装包。
 

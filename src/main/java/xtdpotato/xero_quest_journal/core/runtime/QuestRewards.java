@@ -97,6 +97,7 @@ public final class QuestRewards {
             encoded.addProperty("title", table.choiceTitle());
             encoded.addProperty("displayIcon", table.displayIcon());
             encoded.add("choices", GSON.toJsonTree(choices));
+            encoded.add("details", GSON.toJsonTree(eligible.stream().map(LootDefinition.Entry::detailText).toList()));
             return List.of(new QuestDefinition.Reward("loot_choice", encoded.toString(), 1));
         }
         List<QuestDefinition.Reward> result = new ArrayList<>();
@@ -147,6 +148,21 @@ public final class QuestRewards {
                 return parsed.getAsJsonObject().get("title").getAsString();
         } catch (RuntimeException ignored) {
         }
+        return "";
+    }
+
+    public static String choiceDetail(QuestDefinition.Reward reward, int index) {
+        if (reward == null || !reward.type().equals("loot_choice") || index < 0 || index >= 256) return "";
+        try {
+            var json = GSON.fromJson(reward.item(), com.google.gson.JsonObject.class);
+            if (json != null && json.has("details") && json.get("details").isJsonArray()) {
+                var details = json.getAsJsonArray("details");
+                if (index < details.size() && details.get(index).isJsonPrimitive()) {
+                    String text = details.get(index).getAsString();
+                    return text.length() <= 512 ? text : "";
+                }
+            }
+        } catch (RuntimeException ignored) { }
         return "";
     }
 
