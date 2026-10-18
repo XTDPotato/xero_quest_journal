@@ -384,6 +384,7 @@ public final class ClientSmokeTest {
                                     + "automatic group progression and ordinary tracked-successor progression,\n"
                                     + "focus restore/exit/reset, player/NBT/network isolation,\n"
                                     + "all unlocked tasks in active, category order, uncategorized footer, editor locks and circular tools,\n"
+                                    + "selected-tab category headings/icons, group-toggle retention and scroll-row geometry,\n"
                                     + "task settings round-trip, list accent defaults/overrides, tracking styles and double-wave timing,\n"
                                     + "desktop/small-window focus switch, selection arrow bounds and rendered icon atlas.\n");
                     Files.copy(OUTPUT.resolve("journal-focus-result.txt"), OUTPUT.resolve("result.txt"),

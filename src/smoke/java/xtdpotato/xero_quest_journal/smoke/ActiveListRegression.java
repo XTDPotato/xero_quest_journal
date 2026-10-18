@@ -17,6 +17,7 @@ final class ActiveListRegression {
     private static int stage, wait;
     private static QuestScreen screen;
     private static boolean pagination;
+    private static java.util.concurrent.CompletableFuture<Void> language;
 
     static void fixtures() throws Exception {
         Path emptyGroup = QuestRepository.root().resolve(PREFIX + "empty_group");
@@ -105,6 +106,7 @@ final class ActiveListRegression {
                     click(game, "category-" + expected);
                     require(field(screen, "category").equals(expected),
                             "Tab switch bounced back from " + expected + " to " + field(screen, "category"));
+                    checkSection(expected);
                 }
                 category.invoke(screen, "active");
                 ((net.minecraft.client.gui.components.EditBox) field(screen, "taskSearch"))
@@ -130,6 +132,36 @@ final class ActiveListRegression {
                 set(screen, "groupId", "");
                 screen.init(game, screen.width, screen.height);
                 require(field(screen, "taskSearch") != null, "Empty editor lost its search tools");
+                set(screen, "editMode", false);
+                game.getLanguageManager().setSelected("zh_cn");
+                game.options.languageCode = "zh_cn";
+                language = game.reloadResourcePacks();
+                selectCategory("main");
+                checkSection("main");
+                wait = 6;
+            }
+            case 6 -> {
+                if (!language.isDone()) return false;
+                language.join();
+                capture(game, "journal-main-tab-section-zh-1920");
+                var model = (JournalListModel) field(screen, "journalList");
+                var group = model.rows().stream().filter(row -> row.group() != null).findFirst().orElseThrow();
+                click(game, "group-" + group.group().id());
+                checkSection("main");
+                click(game, "group-" + group.group().id());
+                checkSection("main");
+                selectCategory("world");
+                checkSection("world");
+                wait = 6;
+            }
+            case 7 -> {
+                capture(game, "journal-world-tab-section-zh-1920");
+                selectCategory("completed");
+                checkSection("completed");
+                wait = 6;
+            }
+            case 8 -> {
+                capture(game, "journal-completed-tab-section-zh-1920");
                 QuestConfig.defaults().taskPagination = pagination;
                 return true;
             }
@@ -137,6 +169,29 @@ final class ActiveListRegression {
         }
         stage++;
         return false;
+    }
+
+    private static void selectCategory(String id) throws Exception {
+        var method = QuestScreen.class.getDeclaredMethod("setCategory", String.class);
+        method.setAccessible(true);
+        method.invoke(screen, id);
+    }
+
+    private static void checkSection(String category) throws Exception {
+        var model = (JournalListModel) field(screen, "journalList");
+        if (category.equals("active") || model.rows().isEmpty()) return;
+        var header = model.rows().getFirst();
+        require(header.section() && header.category().equals(category) && header.offset() == 0,
+                "Selected tab omitted its left-list category heading: " + category);
+        require(model.rows().stream().filter(JournalListModel.Row::section).count() == 1,
+                "Selected tab duplicated its category heading: " + category);
+        var source = (JournalListModel) field(screen, "groupSlideSource");
+        int bottom = -1;
+        for (var row : source.rows()) {
+            require(row.offset() > bottom, "Category heading overlaps its following rows: " + category);
+            bottom = row.offset() + row.height() - 1;
+        }
+        require(source.contentHeight() == bottom + 1, "Category heading was omitted from scroll height");
     }
 
     private static Object call(Object owner, String name) throws Exception {

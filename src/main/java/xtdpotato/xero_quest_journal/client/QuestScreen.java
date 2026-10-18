@@ -864,7 +864,8 @@ public final class QuestScreen extends AnimatedQuestScreen {
                         visualCollapsed, editMode && chapterId.isEmpty() && listPage == 0, categories(),
                         this::questRowHeight)
                 : JournalListModel.build(pageQuests, visibleGroups, ClientQuestDefinitions::groupOf,
-                        visualCollapsed, editMode && chapterId.isEmpty() && listPage == 0, this::questRowHeight);
+                        visualCollapsed, editMode && chapterId.isEmpty() && listPage == 0, this::questRowHeight)
+                        .withSection(category);
         updateGroupSlideLayout();
         boolean waitingForRequestedTask = !initialTaskResolved && !requestedInitialTask.isBlank();
         selected = pageQuests.stream().filter(quest -> quest.id().equals(selectedId)).findFirst()

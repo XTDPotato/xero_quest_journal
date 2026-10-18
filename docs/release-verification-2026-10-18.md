@@ -1,4 +1,4 @@
-# 2026-10-18 预览 17/18 验证记录
+# 2026-10-18 多版本预览验证记录
 
 [项目首页](../README.md) · [版本矩阵](porting-matrix.md) · [候选与拼图方块教程](candidate-selectors-and-jigsaw.md)
 
@@ -83,3 +83,38 @@ Forge 1.20.1 与 Fabric 1.20.1 按顺序构建，避免后者转换来源目录�
 此轮仅重跑战利品专项与四目标生产构建，上文候选/结构专项属于预览 17。
 
 ![小窗口顶部字段标签](images/loot-fields-compact-zh-1920.png)
+
+## 预览 19：分类标签的小标题
+
+`v0.2.0-multiversion-preview.19` 修复具体任务分类和已完成标签中的左侧列表小标题。
+每个非空分类列表在任务组/任务前保留对应图标与名称，占据 25 GUI 像素的标题行，
+下方间距 4 GUI 像素，统一计入滚动范围。原有任务排序、分页和空列表行为沿用。
+
+实际客户端运行：
+
+```powershell
+.\gradlew.bat runClient -PjournalFocusTest -PneoSmokeRunDir=run-tab-section --offline
+```
+
+使用独立测试目录通过，输出 `XERO_JOURNAL_FOCUS_PASS`。
+首次复用旧 `run-journal-focus` 时，测试类型与 2026-10-17 遗留夹具重名；
+改用独立目录完成验证。重跑时应指定新的测试目录。
+
+专项覆盖：
+
+- 连续两轮切换所有可用标签，非空列表的小标题存在且不重复。
+- 主线、世界及已完成标签的中文 1920×1080 实际截图。
+- 任务组展开/收起后仍保留分类小标题。
+- 小标题与后续列表行不重叠，滚动总高度包含标题。
+- 空分类保留原有空状态与隐藏搜索框行为。
+- 同时通过原有专注任务推进、追踪恢复、玩家隔离、存档与网络等专项断言。
+
+四个既有目标生产构建同步通过。本轮没有重跑全部历史回归。
+日志：`build/verification/tab-section-run.log`；
+结果：`build/verification/journal-focus-result.txt`。
+
+![主线标签](images/journal-main-tab-section-zh-1920.png)
+
+![世界标签](images/journal-world-tab-section-zh-1920.png)
+
+![已完成标签](images/journal-completed-tab-section-zh-1920.png)

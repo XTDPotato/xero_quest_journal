@@ -41,6 +41,9 @@
 | [journey-chapter-marker-zh-1920.png](journey-chapter-marker-zh-1920.png) | 当前章节标记：白色中心菱形、淡蓝外框与透明光晕 |
 | [hot-background-inspector-zh-1920.png](hot-background-inspector-zh-1920.png) | 共用背景编辑器：实时预览、拖动、缩放模式与音乐 |
 | [journal-current-zh-1920.png](journal-current-zh-1920.png) | 当前任务日志、目标与底部奖励 |
+| [journal-main-tab-section-zh-1920.png](journal-main-tab-section-zh-1920.png) | 主线标签保留左侧分类图标和小标题 |
+| [journal-world-tab-section-zh-1920.png](journal-world-tab-section-zh-1920.png) | 世界标签中的列表分类小标题 |
+| [journal-completed-tab-section-zh-1920.png](journal-completed-tab-section-zh-1920.png) | 已完成标签中的列表小标题 |
 | [task-context-menu-zh-1920.png](task-context-menu-zh-1920.png) | 任务右键菜单图标与分组 |
 | [task-properties-zh-1920.png](task-properties-zh-1920.png) | 任务属性表单 |
 | [search-scope-zh-1920.png](search-scope-zh-1920.png) | 搜索标题、描述、副标题和内部内容 |

@@ -34,6 +34,16 @@ public record JournalListModel(List<Row> rows, int contentHeight) {
     /** Single-line task row height; two-line rows (title + subtitle/distance) use {@link #TALL_ROW}. */
     public static final int QUEST_ROW = 22, TALL_ROW = 32;
 
+    public JournalListModel withSection(String category) {
+        if (rows.isEmpty() || category.isBlank()) return this;
+        var headed = new ArrayList<Row>();
+        headed.add(new Row("section:" + category, null, null, 0, 25, 0, category));
+        for (var row : rows)
+            headed.add(new Row(row.key(), row.quest(), row.group(), row.offset() + 29,
+                    row.height(), row.indent(), row.category()));
+        return new JournalListModel(List.copyOf(headed), contentHeight + 29);
+    }
+
     public static JournalListModel categorized(List<QuestDefinition> quests, List<QuestCatalog.Group> groups,
                                                Function<String, String> membership, Set<String> collapsed,
                                                boolean showEmptyGroups, List<String> categories) {
