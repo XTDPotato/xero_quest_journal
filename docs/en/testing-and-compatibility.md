@@ -67,6 +67,8 @@ and tooltip rendering. Those results belong to their dates and tested builds.
 
 The 0.2.1 verification report records this release's actual build/capture/inspection results:
 [0.2.1 report](../release-verification-0.2.1.md).
+Subsequent generator, objective popup and actual backpack tests are recorded in the
+[October 19 fix report](../generator-and-objective-verification-2026-10-18.md).
 The [October 18 preview report](../release-verification-2026-10-18.md) preserves previous evidence.
 
 Known unresolved broad checks:

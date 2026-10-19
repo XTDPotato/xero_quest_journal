@@ -152,12 +152,25 @@ Permission 2. Optional arguments are positional:
 | `multiplier` | Integer 1-64 | `1` |
 
 Generation runs in the background and preserves existing task IDs.
-`tier` uses difficulty-based rewards; `recipe` tries ingredients; `output` rewards the target item;
+`tier` uses difficulty-based rewards. `recipe` awards the ingredients of one reachable recipe,
+combining repeated ingredients, or the target item when no usable recipe exists. Advancements
+and combat tasks retain difficulty rewards. `output` rewards the target item;
 `none` creates no rewards. Installed content determines which tasks can be generated.
+Regeneration retains task IDs, progress identities, authored text and layouts. Unmodified
+generator-managed rewards follow the requested mode and multiplier. A stored reward baseline
+protects author edits; legacy files without one migrate only exact historical tier defaults.
+Already completed rewards remain frozen and are neither replaced nor delivered again.
+Loot availability no longer disables recipe-material rewards. Recipe IDs are sorted for stable
+selection, and prerequisite ingredients have strictly lower obtainability depth.
+Self prerequisites in older generated files are repaired and persisted.
+Block self-drops no longer erase reachable crafting chains. Unmodified generated parents and
+legacy default empty parents can gain their material path; authored dependencies are retained,
+and an added edge is skipped if it would close a cycle through existing dependencies.
 Deletion executes only with the final `confirm`; the shorter routes display a prompt.
 
 ```text
 /xero_quest generate minecraft output 4
+/xero_quest generate minecraft recipe 2
 /xero_quest generate all none
 /xero_quest delete_generated minecraft confirm
 ```

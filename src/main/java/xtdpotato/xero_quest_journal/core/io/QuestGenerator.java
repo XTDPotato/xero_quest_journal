@@ -52,7 +52,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * One-shot task generation from everything installed: every displayed advancement (chained by its
  * parent), every obtainable item (chained along its cheapest crafting recipe) and every hostile
  * mob. Each namespace (vanilla or mod) gets its own group {@code auto_<namespace>} with numbered
- * chapters. Re-running only adds tasks whose IDs do not exist yet, so hand edits survive.
+ * chapters. Re-running adds missing tasks and updates unchanged generator-owned rewards.
  */
 public final class QuestGenerator {
     private record Planned(String id, String namespace, String category, String chapter,
@@ -125,8 +125,8 @@ public final class QuestGenerator {
 
     /**
      * How generated tasks are rewarded. {@code TIER}: experience (and emeralds/diamonds) by difficulty;
-     * {@code RECIPE}: crafted-item tasks give the materials of their recipe, everything else falls back
-     * to the difficulty reward; {@code OUTPUT}: item tasks reward their target item; {@code NONE}: no rewards.
+     * {@code RECIPE}: item tasks give recipe materials, or their target when no recipe is available;
+     * other task types use difficulty rewards. {@code OUTPUT}: item tasks reward their target item.
      */
     public enum RewardMode {
         TIER, RECIPE, OUTPUT, NONE;
@@ -437,7 +437,7 @@ public final class QuestGenerator {
 
     private static void run(MinecraftServer server, Settings settings, Snapshot snapshot, Reporter reporter)
             throws Exception {
-        Set<String> existing = snapshot.existing();
+        Set<String> existing = new HashSet<>(snapshot.existing());
         Map<String, Planned> planned = new LinkedHashMap<>();
         planAdvancements(snapshot.advancements(), settings, Set.of(), planned);
         planItems(snapshot.recipes(), snapshot.lootItems(), settings, snapshot.features(), Set.of(), planned);
@@ -452,8 +452,11 @@ public final class QuestGenerator {
             var entry = iterator.next();
             var task = entry.getValue();
             Path path = taskFile(task);
-            if (!Files.exists(path)) continue;
-            if (!existing.contains(task.id()) || Files.isSymbolicLink(path)) { iterator.remove(); continue; }
+            if (!Files.exists(path)) {
+                if (existing.contains(task.id())) iterator.remove();
+                continue;
+            }
+            if (Files.isSymbolicLink(path)) { iterator.remove(); continue; }
             String original = Files.readString(path);
             var data = JsonParser.parseString(original).getAsJsonObject();
             if (!data.has("generatedBy") || !data.get("generatedBy").getAsString().equals("xero_quest_journal")
@@ -463,18 +466,29 @@ public final class QuestGenerator {
                 iterator.remove();
                 continue;
             }
-            removeSelfPrerequisite(data, task.id());
             legacy.put(task.id(), data);
             legacySources.put(task.id(), original);
+            existing.add(task.id());
         }
         var eligible = planned.values().stream().filter(task -> !legacy.containsKey(task.id())
                 || !legacy.get(task.id()).has("hotEvent")).toList();
         selectHotEvents(eligible, snapshot.hotCounts());
-        // Apply narrow defaults to legacy documents; all progression and reward data remain intact.
+        Map<String, List<String>> dependencies = new HashMap<>();
+        QuestRepository.all().forEach(task -> dependencies.put(task.id(), task.parents()));
+        legacy.forEach((id, data) -> {
+            List<String> parents = new ArrayList<>();
+            if (data.has("parents")) data.getAsJsonArray("parents")
+                    .forEach(parent -> parents.add(parent.getAsString()));
+            dependencies.put(id, List.copyOf(parents));
+        });
+        planned.values().stream().filter(task -> !existing.contains(task.id()))
+                .forEach(task -> dependencies.put(task.id(), task.parentCandidates()));
+        // Only unchanged generated reward definitions follow a newly requested reward mode.
         for (var task : List.copyOf(planned.values())) {
             var data = legacy.get(task.id());
             if (data == null) continue;
-            boolean changed = false;
+            boolean changed = updateGeneratedParents(data, task, dependencies, existing);
+            changed |= updateGeneratedRewards(data, task.json());
             String oldTitleKey = data.has("titleKey") ? data.get("titleKey").getAsString() : "";
             if ((oldTitleKey.startsWith("item.") || oldTitleKey.startsWith("block.")
                     || oldTitleKey.startsWith("entity."))
@@ -539,9 +553,14 @@ public final class QuestGenerator {
                 // links to namespaces processed later are dropped so every load stays valid.
                 JsonArray parents = new JsonArray();
                 for (String parent : quest.parentCandidates())
-                    if (!parent.equals(quest.id()) && (available.contains(parent) || batch.contains(parent)))
+                    if (!parent.equals(quest.id()) && (available.contains(parent) || batch.contains(parent))
+                            && !dependsOn(parent, quest.id(), dependencies))
                         parents.add(parent);
                 quest.json().add("parents", parents);
+                quest.json().add("generatedParents", parents.deepCopy());
+                List<String> actualParents = new ArrayList<>();
+                parents.forEach(parent -> actualParents.add(parent.getAsString()));
+                dependencies.put(quest.id(), List.copyOf(actualParents));
                 quest.json().addProperty("generatedBy", "xero_quest_journal");
                 quest.json().addProperty("generatedNamespace", quest.namespace());
                 AtomicFiles.write(taskFile(quest), GSON.toJson(quest.json()), false);
@@ -637,6 +656,80 @@ public final class QuestGenerator {
         return changed;
     }
 
+    private static void markGeneratedRewards(JsonObject quest, Settings settings) {
+        quest.addProperty("generatedRewardMode", settings.mode().name().toLowerCase(Locale.ROOT));
+        quest.addProperty("generatedRewardMultiplier", settings.multiplier());
+        quest.add("generatedRewards", quest.getAsJsonArray("rewards").deepCopy());
+    }
+
+    private static boolean updateGeneratedParents(JsonObject data, Planned task,
+                                                   Map<String, List<String>> dependencies, Set<String> existing) {
+        JsonArray original = data.has("parents") ? data.getAsJsonArray("parents") : new JsonArray();
+        boolean managed = data.has("generatedParents") ? original.equals(data.get("generatedParents"))
+                : original.isEmpty() && (!data.has("defaultUnlocked") || data.get("defaultUnlocked").getAsBoolean());
+        boolean repairedSelf = removeSelfPrerequisite(data, task.id());
+        boolean changed = repairedSelf;
+        JsonArray parents = data.has("parents") ? data.getAsJsonArray("parents") : original;
+        if (managed || changed && parents.isEmpty()) {
+            JsonArray next = new JsonArray();
+            for (String candidate : task.parentCandidates())
+                if (!candidate.equals(task.id()) && existing.contains(candidate)
+                        && !dependsOn(candidate, task.id(), dependencies)) next.add(candidate);
+            if (!parents.equals(next)) { data.add("parents", next); changed = true; }
+            if (!java.util.Objects.equals(data.get("generatedParents"), next)) {
+                data.add("generatedParents", next.deepCopy()); changed = true;
+            }
+            if (repairedSelf && next.isEmpty() && data.has("defaultUnlocked")
+                    && !data.get("defaultUnlocked").getAsBoolean()) {
+                data.addProperty("defaultUnlocked", true); changed = true;
+            }
+            parents = next;
+        }
+        List<String> actual = new ArrayList<>();
+        parents.forEach(parent -> actual.add(parent.getAsString()));
+        dependencies.put(task.id(), List.copyOf(actual));
+        return changed;
+    }
+
+    private static boolean dependsOn(String start, String target, Map<String, List<String>> dependencies) {
+        Set<String> visited = new HashSet<>();
+        var pending = new java.util.ArrayDeque<String>(); pending.add(start);
+        while (!pending.isEmpty()) {
+            String id = pending.removeFirst();
+            if (id.equals(target)) return true;
+            if (visited.add(id)) pending.addAll(dependencies.getOrDefault(id, List.of()));
+        }
+        return false;
+    }
+
+    private static boolean updateGeneratedRewards(JsonObject existing, JsonObject planned) {
+        JsonElement current = existing.get("rewards");
+        if (current == null || !current.isJsonArray()) return false;
+        boolean managed = existing.has("generatedRewards")
+                ? current.equals(existing.get("generatedRewards")) : legacyTierRewards(current);
+        if (!managed) return false;
+        boolean changed = false;
+        for (String key : List.of("rewards", "generatedRewards", "generatedRewardMode", "generatedRewardMultiplier")) {
+            if (!java.util.Objects.equals(existing.get(key), planned.get(key))) {
+                existing.add(key, planned.get(key).deepCopy());
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
+    /** Older files have no baseline; recognize only the exact historical difficulty defaults. */
+    private static boolean legacyTierRewards(JsonElement current) {
+        if (!current.isJsonArray() || current.getAsJsonArray().isEmpty()) return false;
+        var first = current.getAsJsonArray().get(0);
+        if (!first.isJsonObject() || !first.getAsJsonObject().has("type")
+                || !first.getAsJsonObject().get("type").getAsString().equals("experience")) return false;
+        for (int tier = 1; tier <= 3; tier++)
+            for (int scale = 1; scale <= 64; scale++)
+                if (current.equals(rewards(tier, new Settings("", RewardMode.TIER, scale)))) return true;
+        return false;
+    }
+
     /** Existing group folder with the generated group ID, otherwise {@code groups/auto_<namespace>}. */
     private static Path groupDirectory(String namespace) {
         String groupId = "auto_" + clean(namespace);
@@ -659,6 +752,7 @@ public final class QuestGenerator {
                     data.id().getNamespace().equals("minecraft") ? "main" : "world", data.icon());
             quest.add("triggers", trigger("advancement", data.id().toString(), 1));
             quest.add("rewards", rewards(data.tier(), settings));
+            markGeneratedRewards(quest, settings);
             List<String> parents = data.parent() == null ? List.of() : List.of(baseId("auto_adv", data.parent()));
             planned.put(id, new Planned(id, data.id().getNamespace(), "advancements", "1_advancements",
                     quest, parents, data.tier() >= 2 ? 100 * data.tier() + Math.min(30, data.depth())
@@ -681,7 +775,8 @@ public final class QuestGenerator {
     /** Every recipe as "output <- for each ingredient: any of these items" (copied on the server thread). */
     private static Map<Item, List<List<List<Item>>>> recipes(MinecraftServer server) {
         Map<Item, List<List<List<Item>>>> recipes = new HashMap<>();
-        for (RecipeHolder<?> holder : server.getRecipeManager().getRecipes()) {
+        for (RecipeHolder<?> holder : server.getRecipeManager().getRecipes().stream()
+                .sorted(Comparator.comparing(holder -> holder.id().toString())).toList()) {
             try {
                 ItemStack result = holder.value().getResultItem(server.registryAccess());
                 if (result.isEmpty()) continue;
@@ -713,23 +808,18 @@ public final class QuestGenerator {
         for (Item item : BuiltInRegistries.ITEM) {
             ResourceLocation key = BuiltInRegistries.ITEM.getKey(item);
             depth.put(item, obtainable(item, key, features)
-                    && (lootItems.contains(item) || OPERATION_ITEMS.contains(key.toString())) ? 0 : INFINITE);
+                    && (lootItems.contains(item) && !recipes.containsKey(item)
+                    || OPERATION_ITEMS.contains(key.toString())) ? 0 : INFINITE);
         }
-        for (int pass = 0; pass < 64; pass++) {
-            boolean changed = false;
-            for (var entry : recipes.entrySet()) {
-                int current = depth.getOrDefault(entry.getKey(), INFINITE);
-                for (var recipe : entry.getValue()) {
-                    int cost = cost(recipe, depth);
-                    if (cost < INFINITE && cost + 1 < current) {
-                        current = cost + 1;
-                        changed = true;
-                    }
-                }
-                depth.put(entry.getKey(), current);
-            }
-            if (!changed) break;
+        resolveRecipeDepths(recipes, depth);
+        // Block self-drops must not erase a reachable crafting chain. Only seed remaining loot
+        // after resolving real raw-material recipes, then propagate those additional sources.
+        for (Item item : lootItems) {
+            ResourceLocation key = BuiltInRegistries.ITEM.getKey(item);
+            if (depth.getOrDefault(item, INFINITE) >= INFINITE && obtainable(item, key, features))
+                depth.put(item, 0);
         }
+        resolveRecipeDepths(recipes, depth);
         Map<Item, String> itemQuest = new HashMap<>();
         List<Item> candidates = new ArrayList<>();
         for (Item item : BuiltInRegistries.ITEM) {
@@ -768,9 +858,28 @@ public final class QuestGenerator {
                     : settings.mode() == RewardMode.RECIPE
                     ? recipeRewards(item, recipes, depth, itemQuest, settings.multiplier()) : null;
             quest.add("rewards", itemRewards != null ? itemRewards : rewards(tier, settings));
+            markGeneratedRewards(quest, settings);
             planned.put(id, new Planned(id, key.getNamespace(), "items", chapter, quest,
                     itemParents(item, recipes, depth, itemQuest),
                     rarityTier == 3 ? 200 + Math.min(30, level) : level >= 5 ? 150 + Math.min(30, level) : 0));
+        }
+    }
+
+    private static void resolveRecipeDepths(Map<Item, List<List<List<Item>>>> recipes, Map<Item, Integer> depth) {
+        for (int pass = 0; pass < 64; pass++) {
+            boolean changed = false;
+            for (var entry : recipes.entrySet()) {
+                int current = depth.getOrDefault(entry.getKey(), INFINITE);
+                for (var recipe : entry.getValue()) {
+                    int cost = cost(recipe, depth);
+                    if (cost < INFINITE && cost + 1 < current) {
+                        current = cost + 1;
+                        changed = true;
+                    }
+                }
+                depth.put(entry.getKey(), current);
+            }
+            if (!changed) break;
         }
     }
 
@@ -791,7 +900,10 @@ public final class QuestGenerator {
                     ? outputRewards(task.target(), settings.multiplier())
                     : settings.mode() == RewardMode.RECIPE
                     ? tacticalRecipeRewards(byIdentity.get(task.identity()), settings.multiplier()) : null;
+            if (itemRewards == null && settings.mode() == RewardMode.RECIPE)
+                itemRewards = outputRewards(task.target(), settings.multiplier());
             quest.add("rewards", itemRewards == null ? rewards(task.tier(), settings) : itemRewards);
+            markGeneratedRewards(quest, settings);
             planned.put(task.id(), new Planned(task.id(), task.namespace(), "items",
                     tacticalChapter(task.kind()), quest, List.of(), task.tier() >= 3 ? 220 : 0));
         }
@@ -840,9 +952,12 @@ public final class QuestGenerator {
         Item chosen = null;
         int chosenDepth = INFINITE;
         for (Item alternative : alternatives) {
-            int value = depth.getOrDefault(alternative, 0);
+            int value = depth.getOrDefault(alternative, INFINITE);
             boolean preferred = value < chosenDepth || value == chosenDepth && chosen != null
-                    && !itemQuest.containsKey(chosen) && itemQuest.containsKey(alternative);
+                    && (itemQuest.containsKey(alternative) && !itemQuest.containsKey(chosen)
+                    || itemQuest.containsKey(alternative) == itemQuest.containsKey(chosen)
+                    && BuiltInRegistries.ITEM.getKey(alternative).toString()
+                    .compareTo(BuiltInRegistries.ITEM.getKey(chosen).toString()) < 0);
             if (preferred) {
                 chosen = alternative;
                 chosenDepth = value;
@@ -853,18 +968,22 @@ public final class QuestGenerator {
 
     /**
      * "Recipe" rewards: the materials of one craft of the item (each ingredient slot counts once),
-     * times the multiplier. Null when the item has no recipe, so the caller falls back.
+     * times the multiplier. Loot availability affects unlock depth, not reward recipe selection.
      */
     private static JsonArray recipeRewards(Item item, Map<Item, List<List<List<Item>>>> recipes,
                                            Map<Item, Integer> depth, Map<Item, String> itemQuest, int multiplier) {
-        var recipe = bestRecipe(item, recipes, depth);
-        if (recipe == null) return null;
+        var recipe = recipes.getOrDefault(item, List.of()).stream()
+                .filter(candidate -> !candidate.isEmpty() && cost(candidate, depth) < INFINITE
+                        && candidate.stream().noneMatch(alternatives -> alternatives.contains(item)))
+                .min(Comparator.comparingInt(candidate -> cost(candidate, depth))).orElse(null);
+        String target = BuiltInRegistries.ITEM.getKey(item).toString();
+        if (recipe == null) return outputRewards(target, multiplier);
         Map<Item, Integer> amounts = new LinkedHashMap<>();
         for (var alternatives : recipe) {
             Item material = chooseAlternative(alternatives, depth, itemQuest);
             if (material != null && itemQuest.containsKey(material)) amounts.merge(material, 1, Integer::sum);
         }
-        if (amounts.isEmpty()) return null;
+        if (amounts.isEmpty()) return outputRewards(target, multiplier);
         JsonArray rewards = new JsonArray();
         amounts.entrySet().stream().limit(32).forEach(entry -> rewards.add(reward("item",
                 BuiltInRegistries.ITEM.getKey(entry.getKey()).toString(),
@@ -873,8 +992,7 @@ public final class QuestGenerator {
     }
 
     private static int effectiveDepth(int depth) {
-        // Items made only inside recipe loops (no gathered starting point) count as basic crafts.
-        return depth >= INFINITE ? 1 : depth;
+        return Math.max(0, depth);
     }
 
     private static int cost(List<List<Item>> recipe, Map<Item, Integer> depth) {
@@ -899,7 +1017,7 @@ public final class QuestGenerator {
             Item chosen = chooseAlternative(alternatives, depth, itemQuest);
             if (chosen != null && depth.getOrDefault(chosen, 0) < own && itemQuest.containsKey(chosen))
                 parents.add(itemQuest.get(chosen));
-            if (parents.size() >= 4) break;
+            if (parents.size() >= 128) break;
         }
         return List.copyOf(parents);
     }
@@ -939,6 +1057,7 @@ public final class QuestGenerator {
             quest.addProperty("titleKey", titleKey);
             quest.add("triggers", trigger("kill", key.toString(), count));
             quest.add("rewards", rewards(tier, settings));
+            markGeneratedRewards(quest, settings);
             planned.put(id, new Planned(id, key.getNamespace(), "combat", "6_combat", quest, List.of(),
                     tier == 3 ? 400 + (int) Math.min(100, health / 10) : 0));
         }

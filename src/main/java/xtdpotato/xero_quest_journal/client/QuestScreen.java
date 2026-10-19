@@ -4206,6 +4206,11 @@ public final class QuestScreen extends AnimatedQuestScreen {
         if (form == null || pending != null || !canAuthor()) {
             return;
         }
+        if (form.kind.equals("task") && xtdpotato.xero_quest_journal.core.runtime.QuestHoldingCapacity
+                .impossible(minecraft.player, authoringConditions())) {
+            error = "create.error.capacity";
+            return;
+        }
         if (form.kind.equals("canvas")) {
             try {
                 var size = new LayoutEditorState.CanvasSize(Integer.parseInt(form.layoutWidth.strip()),
@@ -4334,6 +4339,23 @@ public final class QuestScreen extends AnimatedQuestScreen {
                         replaceDescription, replaceRules, replaceConditions, replaceRewards)
                 : QuestAuthoring.create(server.getPlayerList().getPlayer(playerId), request, placement), server);
         init();
+    }
+
+    private List<QuestDefinition.Trigger> authoringConditions() {
+        if (!form.defaultConditions.isEmpty()) return form.defaultConditions;
+        if (form.item.isBlank()) return List.of();
+        try {
+            return List.of(new QuestDefinition.Trigger("item_hold", form.item, Integer.parseInt(form.count)));
+        } catch (IllegalArgumentException invalid) {
+            return List.of();
+        }
+    }
+
+    private List<xtdpotato.xero_quest_journal.core.runtime.QuestHoldingCapacity.Hint> authoringCapacityHints() {
+        return authoringConditions().stream()
+                .map(condition -> xtdpotato.xero_quest_journal.core.runtime.QuestHoldingCapacity
+                        .hint(minecraft.player, condition))
+                .filter(Objects::nonNull).toList();
     }
 
     private void saveElementProperties() {
@@ -5224,6 +5246,28 @@ public final class QuestScreen extends AnimatedQuestScreen {
             if (error != null) {
                 g.drawString(font, font.plainSubstrByWidth(text(error).getString(), w - 24),
                         x + 12, y + panelHeight - 39, 0xFFFF7777);
+            } else if (form.kind.equals("task")) {
+                try {
+                    var hints = authoringCapacityHints();
+                    Component warning = hints.stream().findFirst()
+                            .map(xtdpotato.xero_quest_journal.core.runtime.QuestHoldingCapacity.Hint::message)
+                            .orElse(null);
+                    boolean impossible = xtdpotato.xero_quest_journal.core.runtime.QuestHoldingCapacity
+                            .impossible(minecraft.player, authoringConditions());
+                    children().stream().filter(StyledButton.class::isInstance).map(StyledButton.class::cast)
+                            .filter(button -> button.styleId().equals("create"))
+                            .forEach(button -> {
+                                button.active = pending == null && canAuthor() && !impossible;
+                                button.setTooltip(impossible ? Tooltip.create(text("create.error.capacity")) : null);
+                            });
+                    if (warning != null) {
+                        g.drawString(font, font.plainSubstrByWidth(warning.getString(), w - 24),
+                                x + 12, y + panelHeight - 39, impossible ? 0xFFFF8F83 : 0xFFE8C774);
+                        if (mouseX >= x + 12 && mouseX < x + w - 12
+                                && mouseY >= y + panelHeight - 43 && mouseY < y + panelHeight - 29)
+                            setTooltipForNextRenderPass(warning);
+                    }
+                } catch (IllegalArgumentException ignored) { }
             }
             return;
         }
@@ -7356,6 +7400,22 @@ public final class QuestScreen extends AnimatedQuestScreen {
             }
         }
         if (button == 0 && !editMode && selected != null && inDetails(x, y)) {
+            if (y < detailContentBottom() && !hasBuiltInElements()
+                    && JournalDetailRenderer.objectiveAt(font, selected, detailsLeft, detailsTop(),
+                    width - 14, (int) Math.floor(detailScroll), x, y)) {
+                minecraft.setScreen(new JourneyQuestPopupScreen(this, selectedId));
+                return true;
+            }
+            for (var element : orderedElements(true)) {
+                if (!element.quest().equals(selectedId) || !element.kind().equals("quest_objective")
+                        || !runtimeVisible(element)) continue;
+                int[] position = elementDisplayPosition(element);
+                if (y < detailContentBottom() && x >= position[0] && x < position[0] + displayWidth(element)
+                        && y >= position[1] && y < position[1] + displayHeight(element)) {
+                    minecraft.setScreen(new JourneyQuestPopupScreen(this, selectedId));
+                    return true;
+                }
+            }
             // Claimed layouts may retain overlapping text/control surfaces; reward cards stay inspectable.
             for (var element : orderedElements(true)) {
                 if (!element.quest().equals(selectedId) || !element.kind().equals("quest_rewards")

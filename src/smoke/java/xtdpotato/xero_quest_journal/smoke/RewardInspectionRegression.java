@@ -18,7 +18,8 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 final class RewardInspectionRegression {
-    private static final String TASK = "inspect_claimed_task", MAIL = "inspect_claimed_mail", LOOT = "inspect_table";
+    private static final String TASK = "inspect_claimed_task", MAIL = "inspect_claimed_mail", LOOT = "inspect_table",
+            OBJECTIVE = "inspect_objective_task";
     private static CompletableFuture<Void> setup, language;
     private static QuestScreen journal;
     private static MailboxScreen mailbox;
@@ -28,6 +29,7 @@ final class RewardInspectionRegression {
     private static QuestDefinition.Reward largeChoice;
 
     static boolean tick(Minecraft game) throws Exception {
+        MailArrivalToast.clear(); QuestUnlockToast.clear(); XeroToast.clear(); game.getToasts().clear();
         if (--wait > 0) return false;
         wait = 6;
         if (game.screen instanceof AnimatedQuestScreen screen && screen.inputBlocked()) return false;
@@ -49,6 +51,11 @@ final class RewardInspectionRegression {
                         Files.writeString(QuestRepository.root().resolve(TASK + ".json"), new Gson().toJson(Map.of(
                                 "id", TASK, "title", "已领取奖励检查", "type", "world", "rewardMode", "manual",
                                 "triggers", List.of(new QuestDefinition.Trigger("confirm", "", 1)), "rewards", rewards)));
+                        Files.writeString(QuestRepository.root().resolve(OBJECTIVE + ".json"), new Gson().toJson(Map.of(
+                                "id", OBJECTIVE, "title", "查看完成方式", "description", "在背包中持有木棍，点击物品卡查看来源。",
+                                "type", "world", "rewardMode", "manual",
+                                "triggers", List.of(new QuestDefinition.Trigger("item_hold", "minecraft:stick", 64)),
+                                "rewards", rewards)));
                         QuestRepository.reload();
                         QuestRuntime.activate(player, TASK);
                         if (!QuestRuntime.claim(player, TASK).equals("claimed")) throw new AssertionError("Fixture task claim failed");
@@ -95,6 +102,13 @@ final class RewardInspectionRegression {
             case 3 -> {
                 require(ClientQuestProgress.view(TASK).status().equals("claimed"), "Task is not claimed");
                 if (field(journal, "selected") == null) {
+                    journal.init(game, journal.width, journal.height);
+                    return false;
+                }
+                journal = QuestScreen.task(null, TASK);
+                game.setScreen(journal);
+                if (field(journal, "selected") == null) return false;
+                if ((int) call(journal, "rewardFooterHeight") == 0) {
                     journal.init(game, journal.width, journal.height);
                     return false;
                 }
@@ -213,6 +227,75 @@ final class RewardInspectionRegression {
                         .map(net.minecraft.client.gui.components.EditBox.class::cast).findFirst().orElseThrow();
                 search.setValue("");
                 require(((Map<?, ?>) field(selector, "selected")).get(0).equals(10), "Search cleared the existing choice");
+                journal = QuestScreen.task(null, OBJECTIVE);
+                game.setScreen(journal);
+            }
+            case 17 -> {
+                require(field(journal, "selected") != null, "Objective fixture was not selected");
+                if (game.screen instanceof AnimatedQuestScreen animated && animated.inputBlocked()) return false;
+                boolean opened = false;
+                int left = (int) field(journal, "detailsLeft") + 24;
+                int top = (int) call(journal, "detailsTop");
+                int bottom = (int) call(journal, "detailContentBottom");
+                for (int y = top; y < Math.min(bottom, top + 180); y++) {
+                    journal.mouseClicked(left, y, 0);
+                    journal.mouseReleased(left, y, 0);
+                    if (game.screen != journal) { opened = true; break; }
+                }
+                require(opened && game.screen.getClass().getSimpleName().equals("JourneyQuestPopupScreen"),
+                        "Journal objective did not open journey-style task details");
+            }
+            case 18 -> {
+                capture(game, "journal-objective-details-zh-1920");
+                var popup = game.screen;
+                var hits = (List<?>) field(popup, "conditionHits");
+                require(!hits.isEmpty(), "Task details omitted visual completion conditions");
+                Object hit = hits.getFirst();
+                int x = (int) call(hit, "cardLeft") + 8;
+                int y = (int) call(hit, "top") + 10;
+                popup.mouseClicked(x, y, 0);
+                popup.mouseReleased(x, y, 0);
+                require(game.screen instanceof QuestRewardPopupScreen, "Objective item card did not open item sources");
+                require(((QuestDefinition.Reward) field(game.screen, "selectedReward")).item().equals("minecraft:stick"),
+                        "Objective details inspected the wrong item");
+            }
+            case 19 -> {
+                game.screen.onClose();
+            }
+            case 20 -> {
+                require(game.screen.getClass().getSimpleName().equals("JourneyQuestPopupScreen"),
+                        "Item inspection did not return to task details");
+                game.screen.onClose();
+            }
+            case 21 -> {
+                require(game.screen == journal && ((String) field(journal, "selectedId")).equals(OBJECTIVE),
+                        "Task details did not retain the journal selection");
+                var layout = (LayoutEditorState) field(journal, "layout");
+                String title = (String) invoke(journal, "builtInId", new Class[]{String.class}, "title");
+                layout.elements().put(title, new LayoutEditorState.Element(title, OBJECTIVE, "quest_title", "", 220, 20, Map.of()));
+                layout.setPosition(title, 10, 10);
+                layout.elements().put("inspect_objective", new LayoutEditorState.Element("inspect_objective", OBJECTIVE,
+                        "quest_objective", "", 220, 24, Map.of()));
+                layout.setPosition("inspect_objective", 10, 56);
+            }
+            case 22 -> {
+                var layout = (LayoutEditorState) field(journal, "layout");
+                var objective = layout.elements().get("inspect_objective");
+                var position = (int[]) invoke(journal, "elementDisplayPosition",
+                        new Class[]{LayoutEditorState.Element.class}, objective);
+                journal.mouseClicked(position[0] + 22, position[1] + 10, 0);
+                journal.mouseReleased(position[0] + 22, position[1] + 10, 0);
+                require(game.screen.getClass().getSimpleName().equals("JourneyQuestPopupScreen"),
+                        "Authored objective control did not open the shared task popup");
+            }
+            case 23 -> {
+                game.screen.onClose();
+            }
+            case 24 -> {
+                require(game.screen == journal, "Authored objective popup lost its parent journal");
+                Files.writeString(Path.of("..", "build", "verification", "journal-objective-details-result.txt"),
+                        "PASS: journal objective -> journey task popup -> matching item/source details -> popup -> same journal selection;\n"
+                                + "authored objective control opens the same task popup and returns to its journal.\n");
                 return true;
             }
             default -> throw new AssertionError("Unknown reward inspection stage");

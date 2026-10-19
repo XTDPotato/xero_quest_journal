@@ -39,6 +39,17 @@ final class JournalDetailRenderer {
         layout(g, font, quest, left, top, right - left, offset, true);
     }
 
+    static boolean objectiveAt(Font font, QuestDefinition quest, int left, int top, int right, int offset,
+                               double mouseX, double mouseY) {
+        if (quest == null || mouseX < left + 10 || mouseX >= right - 10) return false;
+        var view = ClientQuestProgress.view(quest.id());
+        if (view != null && view.completed()) return false;
+        int y = top + 10 - offset + Math.round(font.lineHeight * 1.5F) + 6 + 14 + 10;
+        int step = QuestText.stepIndex(quest);
+        if (step >= 0) y += Math.min(3, step) * 12 + (step > 0 ? 2 : 0);
+        return mouseY >= y && mouseY < y + 22;
+    }
+
     private static int layout(GuiGraphics g, Font font, QuestDefinition quest, int left, int top, int width,
                               int offset, boolean draw) {
         int x = left + 10;

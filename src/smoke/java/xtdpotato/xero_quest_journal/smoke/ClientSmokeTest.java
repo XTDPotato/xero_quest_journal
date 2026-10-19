@@ -101,6 +101,7 @@ public final class ClientSmokeTest {
                 && !Boolean.getBoolean("xero.journalFocusTest")
                 && !Boolean.getBoolean("xero.journalOrderTest")
                 && !Boolean.getBoolean("xero.generateTasksTest")
+                && !Boolean.getBoolean("xero.carriedInventoryTest")
                 && !Boolean.getBoolean("xero.tacticalCompatibilityTest")
                 && !Boolean.getBoolean("xero.generatedDeletionTest")
                 && !Boolean.getBoolean("xero.trackingHudTest")
@@ -202,7 +203,8 @@ public final class ClientSmokeTest {
                     if (RewardInspectionRegression.tick(game)) {
                         Files.writeString(OUTPUT.resolve("result.txt"),
                                 "PASS: claimed task/mail item inspection, XP/level icons, loot and choice contents, return paths, no repeat delivery;\n"
-                                        + "search threshold 10/11, custom details save/reload/freeze, detail search/clear/no-results, filtered original choice index.\n");
+                                        + "search threshold 10/11, custom details save/reload/freeze, detail search/clear/no-results, filtered original choice index;\n"
+                                        + "journal objective opens journey task details, item/source inspection and return preserve selection.\n");
                         Files.copy(OUTPUT.resolve("result.txt"), OUTPUT.resolve("reward-inspection-result.txt"),
                                 java.nio.file.StandardCopyOption.REPLACE_EXISTING);
                         finished = true;
@@ -758,6 +760,15 @@ public final class ClientSmokeTest {
                             + "one-time legacy migration, deletion without default resurrection, confirmed single deletion"
                             + " and confirmed multi-delete.\n");
                     finished = true;
+                    game.stop();
+                }
+                return;
+            }
+            if (Boolean.getBoolean("xero.carriedInventoryTest") && stage >= 2) {
+                if (game.player == null || game.level == null) return;
+                if (CarriedInventoryRegression.tick(game)) {
+                    finished = true;
+                    XeroQuestJournal.LOGGER.info("XERO_CARRIED_INVENTORY_PASS");
                     game.stop();
                 }
                 return;

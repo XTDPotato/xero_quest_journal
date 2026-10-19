@@ -13,6 +13,7 @@ then use the detailed reference for fields, permissions and persistence.
 | First-time player or author workflow | [User guide](guide.md) |
 | Find a control by its appearance | [English 1080p interface gallery](interface-gallery.md) |
 | Look up syntax and permissions | [All commands](commands.md) |
+| Review recipe generation and backpack capacity | [2026-10-19 fix verification](../generator-and-objective-verification-2026-10-18.md) |
 | Write a predicate or reward script | [JavaScript reference and shared examples](javascript.md) |
 | Connect events and branches | [Predicate nodes](trigger-conditions.md) |
 | Use variables or move inventory shortcuts | [Variables and inventory](variables-and-inventory.md) |

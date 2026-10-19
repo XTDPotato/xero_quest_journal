@@ -24,7 +24,14 @@ the server's claim flow. Visible progress, completion and receipt state are not 
 
 The editor also exposes supported logical group conditions such as `all`, `any`, `count`
 and `ratio`. Use the visual condition tree for child structure rather than inventing nested syntax.
-Clicking a condition in a player detail view opens inspection; item requirements provide item detail.
+Click the journal objective row to open the Journey task popup with progress, instructions,
+visual conditions and bottom rewards. Its item cards open item/source details.
+Closing these views preserves the original selected journal task. Author mode retains control editing.
+
+Holding conditions read the vanilla inventory, offhand and supported backpack storage without
+consuming its contents. Duplicate storage identities are counted once. Authoring displays a
+capacity estimate and blocks impossible counts when no supported backpack integration is
+installed. Submission consumes only the player inventory; use cumulative acquisition for totals.
 
 ![Condition tree](../images/conditions-editor-en-1920.png)
 

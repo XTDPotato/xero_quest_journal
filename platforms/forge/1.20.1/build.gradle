@@ -17,7 +17,7 @@ def forgeSmokeModes = [
         "locationItemTest", "mediaTest", "controlGraphTest", "unlockGraphTest",
         "rewardPopupTest", "claimReceiptTest", "rewardQualityTest", "creationTest",
         "animationTest", "runtimeTest", "structureSceneTest", "buttonImageTest",
-        "rewardsTest", "templateTest", "authoringDocsTest"
+        "rewardsTest", "templateTest", "authoringDocsTest", "carriedInventoryTest"
 ]
 def requestedForgeSmokeModes = forgeSmokeModes.findAll { project.hasProperty("forge${it.capitalize()}") }
 def includeForgeSmoke = !requestedForgeSmokeModes.isEmpty()
@@ -37,6 +37,7 @@ minecraft {
             if (includeForgeSmoke) {
                 def mode = requestedForgeSmokeModes.first()
                 property "xero.${mode}", "true"
+                if (project.hasProperty("simpleBackpackTest")) property "xero.simpleBackpackTest", "true"
                 property "xero.forge1201Test", "true"
                 workingDirectory project.file(project.findProperty("forgeSmokeRunDir") ?: "run-${mode}")
             }
@@ -62,6 +63,14 @@ minecraft {
 }
 
 repositories {
+    if (project.hasProperty("simpleBackpackTest")) {
+        maven {
+            name = "LocalBackpackVerification"
+            url = uri("../../../build/verification/test-maven")
+            metadataSources { artifact() }
+            content { includeGroup("xero.test") }
+        }
+    }
     maven { url = "https://maven.minecraftforge.net/" }
     mavenCentral()
     maven {
@@ -75,6 +84,8 @@ repositories {
 }
 
 dependencies {
+    if (project.hasProperty("simpleBackpackTest"))
+        runtimeOnly(fg.deobf("xero.test:simplybackpacks:2.1.5")) { transitive = false }
     compileOnly(fg.deobf("me.shedaniel:RoughlyEnoughItems-api-forge:12.1.785")) { transitive = false }
     compileOnly("me.shedaniel.cloth:basic-math:0.6.1") { transitive = false }
     compileOnly(fg.deobf("dev.architectury:architectury-forge:9.0.7")) { transitive = false }
@@ -434,6 +445,10 @@ tasks.register("prepareForgeSources") {
                         "net.minecraft.world.level.chunk.ChunkStatus")
             }
             if (includeForgeSmoke && relative.startsWith("xtdpotato/xero_quest_journal/smoke/")) {
+                text = text.replace("NeoForge.EVENT_BUS.addListener(RenderTooltipEvent.Pre.class, listener)",
+                        "NeoForge.EVENT_BUS.addListener(net.minecraftforge.eventbus.api.EventPriority.NORMAL, false, RenderTooltipEvent.Pre.class, listener)")
+                        .replace("MinecraftForge.EVENT_BUS.addListener(RenderTooltipEvent.Pre.class, listener)",
+                                "MinecraftForge.EVENT_BUS.addListener(net.minecraftforge.eventbus.api.EventPriority.NORMAL, false, RenderTooltipEvent.Pre.class, listener)")
                 text = text.replace("net.neoforged.neoforge.client.event.RenderFrameEvent.Post",
                         "net.minecraftforge.client.event.RenderGuiEvent.Post")
                         .replace("net.neoforged.neoforge.client.gui.IConfigScreenFactory.getForMod",

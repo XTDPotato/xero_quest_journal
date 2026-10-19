@@ -190,13 +190,23 @@
 | `rewards` | `tier`、`recipe`、`output`、`none` | `tier` |
 | `multiplier` | 1–64 的整数 | 1 |
 
-`tier` 按难度生成奖励，`recipe` 尝试使用配方材料，`output` 给予目标物品，
+`tier` 按难度生成奖励，`recipe` 优先给予一轮有效配方的材料（相同材料合并数量），
+找不到有效配方的物品任务给予目标物品；进度/击杀任务仍使用难度奖励。`output` 给予目标物品，
 `none` 不生成奖励。生成在后台进行，命令返回开始并不表示所有文件已完成。
-已有任务 ID 会保留，不用于覆盖作者已有任务。
+已有任务保留 ID、进度身份、手工文本和布局。重复执行可更新未被手工修改的生成奖励，
+例如先生成 `tier`，再运行 `recipe 2` 会将仍受生成器管理的奖励切换为配方材料的两倍数量。
+新任务记录生成奖励基线；手工修改过奖励的任务不覆盖。
+旧文件缺少基线时，只迁移与历史默认难度奖励完全一致的条目；其他旧奖励保留。
+已完成任务的奖励在完成时冻结，重新生成不会替换已冻结的奖励或再次发放。
+`recipe` 分析不受物品同时可以掉落的影响，选中的有效配方稳定按 ID 排序。
+任务前置只引用可达配方中严格更浅的材料任务；方块自身掉落不会抹掉已可达的合成链。
+旧自动任务的自身前置会修复并保存；未修改的生成前置和旧默认空前置可补齐材料路径，
+手工前置保留，更新前检查不会经手工关系形成循环。
 删除必须带末尾 `confirm`；缺少确认的分支只提示，不执行删除。
 
 ```text
 /xero_quest generate
+/xero_quest generate minecraft recipe 2
 /xero_quest generate minecraft output 4
 /xero_quest generate all none
 /xero_quest delete_generated minecraft confirm

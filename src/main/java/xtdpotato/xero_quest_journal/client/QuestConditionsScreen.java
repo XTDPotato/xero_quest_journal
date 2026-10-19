@@ -10,6 +10,7 @@ import xtdpotato.xero_quest_journal.core.io.QuestAuthoring;
 import xtdpotato.xero_quest_journal.core.io.QuestRepository;
 import xtdpotato.xero_quest_journal.core.model.QuestDefinition.Trigger;
 import xtdpotato.xero_quest_journal.core.runtime.QuestConditions;
+import xtdpotato.xero_quest_journal.core.runtime.QuestHoldingCapacity;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -30,6 +31,7 @@ public final class QuestConditionsScreen extends AnimatedQuestScreen {
     private boolean dragging;
     private double dragOffset;
     private String error;
+    private final Map<Draft, EditBox> countFields = new IdentityHashMap<>();
     private ButtonStyleSheet styles;
     private CompletableFuture<QuestAuthoring.Result> pending;
     private final Set<AbstractWidget> rowWidgets = new HashSet<>();
@@ -89,6 +91,7 @@ public final class QuestConditionsScreen extends AnimatedQuestScreen {
     }
     @Override protected void init() {
         clearWidgets();
+        countFields.clear();
         rowWidgets.clear();
         styles = ButtonStyleSheet.load();
         visible.clear();
@@ -191,6 +194,7 @@ public final class QuestConditionsScreen extends AnimatedQuestScreen {
                 count.setResponder(value -> draft.count = value);
                 count.setEditable(pending == null);
                 addRenderableWidget(count);
+                countFields.put(draft, count);
             }
             children().subList(firstWidget, children().size()).stream()
                     .filter(AbstractWidget.class::isInstance).map(AbstractWidget.class::cast).forEach(rowWidgets::add);
@@ -225,6 +229,10 @@ public final class QuestConditionsScreen extends AnimatedQuestScreen {
             var values = roots.stream().map(Draft::value).toList();
             if (!QuestConditions.valid(values)) {
                 error = "create.error.condition";
+                return;
+            }
+            if (QuestHoldingCapacity.impossible(minecraft.player, values)) {
+                error = "create.error.capacity";
                 return;
             }
             if (draftSaved != null) {
@@ -319,6 +327,34 @@ public final class QuestConditionsScreen extends AnimatedQuestScreen {
         }
         if (error != null) g.drawString(font, font.plainSubstrByWidth(text(error).getString(), panelWidth()),
                 left(), height - 46, 0xFFFF7777);
+        Component capacityMessage = null;
+        boolean impossible = false;
+        try { impossible = QuestHoldingCapacity.impossible(minecraft.player, roots.stream().map(Draft::value).toList()); }
+        catch (IllegalArgumentException ignored) { }
+        for (var row : visible) {
+            Draft draft = row.draft();
+            try {
+                var hint = QuestHoldingCapacity.hint(minecraft.player, draft.value());
+                EditBox count = countFields.get(draft);
+                if (count == null) continue;
+                count.setTooltip(hint == null ? null : Tooltip.create(hint.message()));
+                if (hint == null) continue;
+                if (capacityMessage == null || hint.impossible()) capacityMessage = hint.message();
+                if (count.getY() >= rowsViewport().top() && count.getBottom() <= rowsViewport().bottom())
+                    g.renderOutline(count.getX() - 1, count.getY() - 1, count.getWidth() + 2, count.getHeight() + 2,
+                            hint.impossible() ? 0xFFFF7777 : 0xFFE8C774);
+            } catch (IllegalArgumentException ignored) { }
+        }
+        for (var child : children()) if (child instanceof StyledButton button && button.styleId().equals("conditions-save")) {
+            button.active = pending == null && !impossible;
+            button.setTooltip(impossible ? Tooltip.create(text("create.error.capacity")) : null);
+        }
+        if (error == null && capacityMessage != null) {
+            g.drawString(font, font.plainSubstrByWidth(capacityMessage.getString(), panelWidth()),
+                    left(), height - 46, impossible ? 0xFFFF7777 : 0xFFE8C774);
+            if (x >= left() && x < left() + panelWidth() && y >= height - 50 && y < height - 34)
+                setTooltipForNextRenderPass(capacityMessage);
+        }
     }
     private void moveRows() {
         int next = motion.pixels(), delta = scroll - next;

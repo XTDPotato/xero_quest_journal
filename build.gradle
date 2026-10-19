@@ -128,7 +128,7 @@ def clientRegression = [
         'lootTableTest', 'trackingHudTest', 'mailBodyEditorTest', 'mailAdminTest', 'journeyEditingTest', 'journalOrderTest',
         'overviewAuthoringTest', 'generateTasksTest', 'tacticalCompatibilityTest', 'generatedDeletionTest',
         'claimReceiptTest', 'spotlightUiTest', 'rewardQualityTest', 'authoringDocsTest', 'candidatePickerTest',
-        'interfaceDocsTest', 'rewardInspectionTest'
+        'interfaceDocsTest', 'rewardInspectionTest', 'carriedInventoryTest'
 ].any { project.hasProperty(it) }
 
 neoForge {
@@ -137,6 +137,12 @@ neoForge {
     runs {
         client {
             client()
+            if (project.hasProperty('carriedInventoryTest')) {
+                systemProperty 'xero.carriedInventoryTest', 'true'
+                if (project.hasProperty('backpackIntegrationTest')) systemProperty 'xero.backpackIntegrationTest', 'true'
+                gameDirectory = file(project.hasProperty('backpackIntegrationTest')
+                        ? 'run-carried-backpack-test' : 'run-carried-capacity-test')
+            }
             if (project.hasProperty('anecdoteTest')) {
                 systemProperty 'xero.anecdoteTest', 'true'
                 gameDirectory = file('run-anecdote')

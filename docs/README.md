@@ -14,6 +14,7 @@
 | 按界面找功能 | [中文 1080p 界面图鉴](interface-gallery.md) |
 | 找命令、参数、权限 | [全部命令](commands.md) |
 | 核对当前构建与未通过项 | [0.2.1 验证记录](release-verification-0.2.1.md) |
+| 检查生成任务、背包容量与条件弹窗 | [2026-10-19 修复验证](generator-and-objective-verification-2026-10-18.md) |
 
 已提供 Forge/Fabric 1.20.1、NeoForge/Fabric 1.21.1 四种安装包。
 每个实例选择与游戏和加载器匹配的一个 JAR；Fabric 另装匹配的 Fabric API。

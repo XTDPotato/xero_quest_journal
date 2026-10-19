@@ -33,9 +33,15 @@ Completion and claiming are different. A complete/unclaimed task remains in prog
 a claim indicator. Tracking is navigation, not a separate task acceptance lifecycle.
 The gold completion-chat link opens the corresponding task.
 
-Click a condition for an explanation. Item conditions display the requested item and support
-opening its source/detail view. Rewards stay at the bottom of the detail pane.
+Click the journal objective row to open the same task popup used by Journey, including status,
+progress, completion instructions and bottom rewards. Item cards open their source/detail view.
+Closing returns to the popup and then the same selected journal task. Authored objective
+controls provide this entry in player mode; author mode retains layout editing.
 Inventory overflow and partial claims have their own confirmation/result handling.
+
+“Hold item” checks the vanilla inventory, offhand and recognized backpack storage.
+Authors see a capacity estimate; saving impossible requirements is blocked without a supported
+integration. Submission consumes only player-inventory items; use cumulative acquisition for totals.
 
 ![Journal](../images/journal-current-en-1920.png)
 

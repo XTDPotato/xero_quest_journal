@@ -157,7 +157,7 @@ public final class QuestCommand {
 
     /**
      * {@code /xero_quest generate [namespace]}: builds tasks from advancements, items/recipes and
-     * hostile mobs of every installed mod (or just one namespace). Existing task IDs are kept.
+     * hostile mobs of every installed mod (or just one namespace). Existing identities and authored edits are kept.
      */
     private static LiteralArgumentBuilder<CommandSourceStack> generateCommand() {
         // /xero_quest generate [all|<namespace>] [tier|recipe|output|none] [multiplier 1-64]

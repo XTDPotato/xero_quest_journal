@@ -6,6 +6,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
 import xtdpotato.xero_quest_journal.core.model.QuestDefinition;
 import xtdpotato.xero_quest_journal.core.runtime.QuestLocation;
+import xtdpotato.xero_quest_journal.core.runtime.QuestHoldingCapacity;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -75,8 +76,10 @@ final class JourneyQuestPopupScreen extends AnimatedQuestScreen {
         };
     }
     private int rowHeight(ConditionRow row) {
+        var hint = minecraft == null ? null : QuestHoldingCapacity.hint(minecraft.player, row.trigger());
         return (itemCondition(row.trigger()) ? ITEM_ROW_HEIGHT : ROW_HEIGHT)
-                + (expandedCondition == row.index() ? EXPANDED_HEIGHT : 0);
+                + (expandedCondition == row.index() ? EXPANDED_HEIGHT : 0)
+                + (hint == null ? 0 : 4 + font.split(hint.message(), Math.max(1, panelWidth() - 60)).size() * 11);
     }
 
     @Override protected boolean isModalScreen() { return true; }
@@ -97,7 +100,7 @@ final class JourneyQuestPopupScreen extends AnimatedQuestScreen {
                 "journey-quest-popup-open", JournalNavButton.Kind.ACTION, "overview")).active = quest != null;
     }
     @Override protected void renderModalBackground(GuiGraphics graphics, float delta) {
-        if (parent instanceof JourneyScreen journey) journey.render(graphics, -10000, -10000, delta);
+        if (parent != null) parent.render(graphics, -10000, -10000, delta);
     }
     @Override protected void renderContents(GuiGraphics g, int mouseX, int mouseY, float delta) {
         int x = panelLeft(), y = panelTop(), w = panelWidth();
@@ -172,6 +175,16 @@ final class JourneyQuestPopupScreen extends AnimatedQuestScreen {
                 if (expandedCondition == row.index())
                     renderConditionDetails(g, row.trigger(), rowY + (itemCondition(row.trigger())
                             ? ITEM_ROW_HEIGHT : ROW_HEIGHT), left + indent + 8, right);
+                var capacity = QuestHoldingCapacity.hint(minecraft.player, row.trigger());
+                if (capacity != null) {
+                    int hintY = rowY + (itemCondition(row.trigger()) ? ITEM_ROW_HEIGHT : ROW_HEIGHT) + 4
+                            + (expandedCondition == row.index() ? EXPANDED_HEIGHT : 0);
+                    for (var line : font.split(capacity.message(), Math.max(1, panelWidth() - 60))) {
+                        g.drawString(font, line, rowLeft + 8, hintY,
+                                capacity.impossible() ? 0xFFFF8F83 : 0xFFE8C774, false);
+                        hintY += 11;
+                    }
+                }
                 conditionHits.add(new ConditionHit(row, rowY, rowY + height, itemX, cardRight));
             }
             lineY += height + 3;

@@ -328,6 +328,9 @@ public final class QuestAuthoring {
                 return failure("chapter");
             }
             if (request.kind() == Kind.TASK) {
+                var conditions = defaultConditions(request);
+                if (xtdpotato.xero_quest_journal.core.runtime.QuestHoldingCapacity.impossible(author, conditions))
+                    return failure("capacity");
                 for (String parent : parseParents(request.parents())) {
                     if (parent.equals(request.id()) || QuestRepository.find(parent) == null) return failure("parent");
                 }
@@ -485,6 +488,13 @@ public final class QuestAuthoring {
         if (replaceConditions && (request.kind() != Kind.TASK
                 || !xtdpotato.xero_quest_journal.core.runtime.QuestConditions.valid(request.defaultConditions()))) {
             return failure("condition");
+        }
+        if (request.kind() == Kind.TASK && (replaceRules || replaceConditions)) {
+            var conditions = !request.defaultConditions().isEmpty() ? request.defaultConditions()
+                    : replaceConditions || request.item().isBlank() ? List.<QuestDefinition.Trigger>of()
+                    : List.of(new QuestDefinition.Trigger("item_hold", request.item(), request.count()));
+            if (xtdpotato.xero_quest_journal.core.runtime.QuestHoldingCapacity.impossible(author, conditions))
+                return failure("capacity");
         }
         if (replaceRewards && (request.kind() != Kind.TASK || request.defaultRewards().size() > 128
                 || request.defaultRewards().stream().anyMatch(reward ->
@@ -866,6 +876,8 @@ public final class QuestAuthoring {
                 || !author.hasPermissions(2)) return failure("permission");
         if (conditions == null || !xtdpotato.xero_quest_journal.core.runtime.QuestConditions.valid(conditions))
             return failure("condition");
+        if (xtdpotato.xero_quest_journal.core.runtime.QuestHoldingCapacity.impossible(author, conditions))
+            return failure("capacity");
         synchronized (QuestRepository.class) {
             try {
                 Path file = QuestRepository.fileOf(id);
@@ -883,6 +895,12 @@ public final class QuestAuthoring {
                 return failure("save");
             }
         }
+    }
+
+    private static List<QuestDefinition.Trigger> defaultConditions(Request request) {
+        return request.defaultConditions().isEmpty() && !request.item().isBlank()
+                ? List.of(new QuestDefinition.Trigger("item_hold", request.item(), request.count()))
+                : request.defaultConditions();
     }
 
     private static Path safe(Path path) throws java.io.IOException {

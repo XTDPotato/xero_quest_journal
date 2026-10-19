@@ -118,7 +118,12 @@ public final class QuestConditions {
         }
         int value = switch (t.type()) {
             case "confirm" -> 0;
-            case "item_get", "item_hold", "item_submit" -> count(player, t.item());
+            case "item_get", "item_hold" -> {
+                int inventoryCount = count(player, t.item());
+                yield inventoryCount >= t.count() ? inventoryCount
+                        : QuestCarriedInventory.count(player, t.item());
+            }
+            case "item_submit" -> count(player, t.item());
             case "item_acquire", "kill", "block_break", "block_interact", "event", "stage" ->
                     QuestProgressData.get(player.getServer()).counter(player.getUUID(), key(quest, t));
             default -> predicate(player, t) ? t.count() : 0;
@@ -183,6 +188,7 @@ public final class QuestConditions {
         return total;
     }
     public static Plan plan(ServerPlayer player, QuestDefinition quest, boolean manual) {
+        if (manual) QuestCarriedInventory.invalidate(player);
         if (quest.triggers().stream().noneMatch(t -> !action(t)) || !valid(quest.triggers()))
             return new Plan(false, List.of());
         List<ItemStack> inventory = new ArrayList<>();

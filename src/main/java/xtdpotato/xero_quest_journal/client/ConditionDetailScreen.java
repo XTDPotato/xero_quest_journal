@@ -69,6 +69,10 @@ final class ConditionDetailScreen extends AnimatedQuestScreen {
         }
         g.drawString(font, Component.translatable("screen.xero_quest_journal.conditions.detail.click_hint"),
                 x + 18, y + h - 28, 0xFF9DA9B7, false);
+        var capacity = xtdpotato.xero_quest_journal.core.runtime.QuestHoldingCapacity.hint(minecraft.player, trigger);
+        if (capacity != null)
+            g.drawWordWrap(font, capacity.message(), x + 18, line + 82, w - 36,
+                    capacity.impossible() ? 0xFFFF8F83 : 0xFFE8C774);
         super.renderContents(g, mx, my, delta);
     }
 
