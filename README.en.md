@@ -5,9 +5,10 @@
 A native Minecraft quest journal with visual authoring, chapter timelines, rewards,
 mail, anecdote records, and reusable structure previews.
 
-**Current mod version: 0.2.1.** The Chinese and English documentation
+**Current mod version: 0.2.2.** The Chinese and English documentation
 describe the same shared feature set. Images on this page are actual English client captures
 at **1920×1080**, taken after resource loading and interface transitions settle.
+Off-screen coordinate tracking uses a rotated `<` indicator to point toward the target.
 
 ![Quest journal, objectives and bottom rewards](docs/images/journal-current-en-1920.png)
 
@@ -17,12 +18,12 @@ Choose the JAR that matches both your Minecraft version and loader.
 
 | Minecraft | Loader | Java | Release file |
 | --- | --- | --- | --- |
-| 1.20.1 | Forge | 17 | `xero_quest_journal-forge-1.20.1-0.2.1.jar` |
-| 1.20.1 | Fabric + Fabric API | 17 | `xero_quest_journal-fabric-1.20.1-0.2.1.jar` |
-| 1.21.1 | NeoForge | 21 | `xero_quest_journal-neoforge-1.21.1-0.2.1.jar` |
-| 1.21.1 | Fabric + Fabric API | 21 | `xero_quest_journal-fabric-1.21.1-0.2.1.jar` |
+| 1.20.1 | Forge | 17 | `xero_quest_journal-forge-1.20.1-0.2.2.jar` |
+| 1.20.1 | Fabric + Fabric API | 17 | `xero_quest_journal-fabric-1.20.1-0.2.2.jar` |
+| 1.21.1 | NeoForge | 21 | `xero_quest_journal-neoforge-1.21.1-0.2.2.jar` |
+| 1.21.1 | Fabric + Fabric API | 21 | `xero_quest_journal-fabric-1.21.1-0.2.2.jar` |
 
-[Download 0.2.1](https://github.com/XTDPotato/xero_quest_journal/releases/tag/v0.2.1).
+[Download 0.2.2](https://github.com/XTDPotato/xero_quest_journal/releases/tag/v0.2.2).
 The release also contains an organized bundle and `SHA256SUMS.txt`.
 Install one matching core JAR per instance. Multiplayer installations need matching client
 and server builds. Complete authoring currently targets a local integrated server.
@@ -71,6 +72,7 @@ Unread indicators, completion, tracking, and reward claims are separate states.
 | Resources | Searchable item/image selection, sorting, explicit Apply, zoomable previews and candidate recycling |
 | Structures | Java NBT scenes, actual start-pool templates, jigsaw connector inspection and pool browsing |
 | Presentation | Reward quality/backgrounds, full-screen settings, configurable animation and inventory anchors |
+| Tracked pickup notices | Up to four latest-first item notices with progress, size/position controls and minimap avoidance |
 
 The [player and author guide](docs/en/guide.md) explains each workflow, where edits are saved,
 and which controls require author permission.
@@ -95,8 +97,8 @@ Reward quality changes card presentation; it does not change the real item's att
 
 The journey is a chapter timeline with task cards, links, a draggable chapter progress marker
 and a selected-tab underline that defaults to 3 GUI pixels and is adjustable from 1 to 5.
-Clicking a task opens a detail popup; its explicit
-navigation button opens the full journal.
+Clicking a task opens a detail popup occupying about 75% of the viewport. Its footer shows
+rewards only; the popup does not add a redundant button to reopen the task screen.
 
 ![Journey timeline](docs/images/journey-current-en-1920.png)
 

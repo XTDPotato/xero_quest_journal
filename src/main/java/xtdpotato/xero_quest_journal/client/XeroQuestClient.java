@@ -31,6 +31,12 @@ public final class XeroQuestClient {
         QuestHudToastQueue.setHudActive(minecraft.player != null && minecraft.screen == null);
         if (minecraft.screen instanceof AnimatedQuestScreen animated) animated.advanceTransition();
         ClientQuestProgress.tick();
+        CoordinateGuidance.tick(minecraft);
+        ItemPickupToast.tick();
+        xtdpotato.xero_quest_journal.core.network.QuestNetwork.ItemPickupNoticePayload pickupNotice;
+        while ((pickupNotice = xtdpotato.xero_quest_journal.core.network.QuestClientInbox.takeItemPickup()) != null) {
+            ItemPickupToast.enqueue(pickupNotice);
+        }
         xtdpotato.xero_quest_journal.core.network.QuestNetwork.LocatedQuestPayload locatedQuest;
         while ((locatedQuest = xtdpotato.xero_quest_journal.core.network.QuestClientInbox.takeLocatedQuest()) != null) {
             QuestHudRenderer.acceptLocatedQuest(locatedQuest);
@@ -113,6 +119,11 @@ public final class XeroQuestClient {
 
     @SubscribeEvent
     public static void renderHud(RenderGuiEvent.Post event) {
+        Minecraft game = Minecraft.getInstance();
+        if (game.screen == null) {
+            HudOverlayLayout.beginFrame(game.getWindow().getGuiScaledWidth(),
+                    game.getWindow().getGuiScaledHeight());
+        }
         if (!(Minecraft.getInstance().screen instanceof AnimatedQuestScreen animated)
                 || !animated.showsTrackingHudBehind())
             QuestHudRenderer.render(event.getGuiGraphics());
@@ -143,6 +154,7 @@ public final class XeroQuestClient {
             if (hud) {
                 QuestCompletionToast.render(graphics);
                 QuestUnlockToast.render(graphics);
+                ItemPickupToast.render(graphics);
             }
             AnecdoteToast.render(graphics);
             graphics.flush();

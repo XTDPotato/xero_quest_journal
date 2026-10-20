@@ -211,9 +211,14 @@ final class RuntimeRegression {
                 require(QuestScreen.matchesCategory(QuestRepository.find(GUI), "active")
                                 && !QuestScreen.matchesCategory(QuestRepository.find(GUI), "completed"),
                         "Completed-unclaimed task left In Progress before it was claimed");
-                require(game.screen.mouseClicked(taskRow.getRight() - 14,
-                                taskRow.getY() + taskRow.getHeight() / 2.0, 0),
+                double claimX = taskRow.getRight() - 10;
+                double claimY = taskRow.getY() + taskRow.getHeight() / 2.0;
+                require(game.screen.mouseClicked(claimX, claimY, 0),
                         "Clicking the list claim icon did not start reward claiming");
+                require(game.screen == journal && taskRow.claimPressed(),
+                        "Claim icon executed on press instead of showing the held highlight");
+                game.screen.mouseReleased(claimX, claimY, 0);
+                require(!taskRow.claimPressed(), "Claim held highlight stuck after release");
             }
             case 10 -> {
                 if (!(game.screen != null && game.screen.getClass().getSimpleName().equals("QuestConfirmScreen")))

@@ -106,7 +106,7 @@ final class JournalScaleRegression {
                     require(listWidth >= game.font.width("测".repeat(25)) + 56,
                             "Task list cannot fit a 25-character title beside its status icon");
                 assertVirtualized();
-                set(screen, "searchQuery", "scale_task_000");
+                set(screen, "searchQuery", "Scale task");
                 screen.init(game, screen.width, screen.height);
                 var group = button("group-" + GROUP);
                 screen.mouseClicked(group.getX() + 40, group.getY() + 10, 1);
@@ -115,7 +115,7 @@ final class JournalScaleRegression {
                 screen.mouseClicked(group.getX() + 40, group.getY() + 10, 1);
                 buttonInMenu("context-invert_group_tasks").onPress();
                 require(selection().isEmpty(), "Group invert did not invert every task");
-                set(screen, "searchQuery", "scale_task");
+                set(screen, "searchQuery", "Scale task");
                 screen.init(game, screen.width, screen.height);
                 capture(game, "journal-large-top");
             }
@@ -147,6 +147,7 @@ final class JournalScaleRegression {
                         .filter(q -> ClientQuestDefinitions.groupOf(q.id()).equals(GROUP))
                         .map(q -> q.id()).limit(4).toList();
                 require(order.equals(List.of(id(2), id(3), id(0), id(1))), "Block drag changed internal order");
+                screen.init(game, screen.width, screen.height);
                 double maximum = (double) invoke(screen, "maxListScroll", new Class<?>[]{});
                 set(screen, "listScroll", maximum);
                 set(screen, "listTargetScroll", maximum);
@@ -247,7 +248,7 @@ final class JournalScaleRegression {
                 open(game, true);
                 var search = (net.minecraft.client.gui.components.EditBox) field(screen, "taskSearch");
                 long started = System.nanoTime();
-                search.setValue("scale_task_1199");
+                search.setValue("Scale task 1199");
                 searchInputNanos = System.nanoTime() - started;
                 require(searchInputNanos < 100_000_000L, "Search input blocked the client for over 100 ms");
                 searchDeadline = System.nanoTime() + 15_000_000_000L;
@@ -259,16 +260,22 @@ final class JournalScaleRegression {
                 if (result.size() != 1 || !result.getFirst().id().equals(id(1199))) return false;
                 assertVirtualizedSearch();
                 var search = (net.minecraft.client.gui.components.EditBox) field(screen, "taskSearch");
-                search.setValue("scale_task_0001");
+                search.setValue("Scale task 1");
                 search.setValue("no_matches_expected");
-                search.setValue("scale_task_0002");
+                search.setValue("Scale task 1199");
                 searchDeadline = System.nanoTime() + 15_000_000_000L;
             }
             case 15 -> {
-                require(System.nanoTime() < searchDeadline, "Latest-query journal search timed out");
+                Object searchState = field(screen, "journalSearch");
+                require(System.nanoTime() < searchDeadline, "Latest-query journal search timed out: query="
+                        + field(screen, "searchQuery") + ", pending=" + invoke(searchState, "pending", new Class<?>[]{})
+                        + ", cursor=" + field(searchState, "cursor") + "/"
+                        + ((List<?>) field(searchState, "source")).size()
+                        + ", submitted=" + field(searchState, "submittedQuery")
+                        + ", applied=" + field(searchState, "applied"));
                 @SuppressWarnings("unchecked")
                 var result = (List<xtdpotato.xero_quest_journal.core.model.QuestDefinition>) field(screen, "quests");
-                if (result.size() != 1 || !result.getFirst().id().equals(id(2))) return false;
+                if (result.size() != 1 || !result.getFirst().id().equals(id(1199))) return false;
                 capture(game, "journal-async-search");
             }
             case 16 -> {
@@ -302,11 +309,16 @@ final class JournalScaleRegression {
         screen = new QuestScreen(null);
         game.setScreen(screen);
         set(screen, "editMode", edit);
-        set(screen, "searchQuery", "scale_task");
+        set(screen, "searchQuery", "Scale task");
         screen.init(game, screen.width, screen.height);
     }
     private static void assertVirtualized() throws Exception {
-        require(((JournalListModel) field(screen, "journalList")).rows().size() >= COUNT, "Large task model missing");
+        int rows = ((JournalListModel) field(screen, "journalList")).rows().size();
+        require(rows >= COUNT, "Large task model missing: rows=" + rows
+                + ", quests=" + ((List<?>) field(screen, "quests")).size()
+                + ", query=" + field(screen, "searchQuery")
+                + ", category=" + field(screen, "category")
+                + ", scroll=" + field(screen, "listScroll"));
         long count = screen.children().stream().filter(JournalListButton.class::isInstance).count();
         widgetCount = Math.max(widgetCount, (int) count);
         require(count > 0 && count < 80, "Off-screen journal controls materialized: " + count);

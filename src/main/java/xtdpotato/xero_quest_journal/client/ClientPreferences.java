@@ -25,6 +25,16 @@ public final class ClientPreferences {
     public int popupAnimationMillis = DEFAULT_POPUP_ANIMATION_MILLIS;
     public int taskToastScalePercent = 33;
     public int taskToastIconScalePercent = 33;
+    public int taskToastXPercent;
+    public int taskToastYPercent = 20;
+    public boolean taskToastBackgroundEnabled;
+    public int taskToastBackgroundOpacityPercent = 45;
+    public PopupAnimationProfile taskToastAnimation = PopupAnimationProfile.defaults();
+    public int itemPickupToastXPercent;
+    public int itemPickupToastYPercent = 40;
+    public int itemPickupToastScalePercent = 100;
+    public boolean hudAutoAvoidMinimap = true;
+    public String minimapCorner = "top_right";
     public PopupAnimationProfile popupAnimation = PopupAnimationProfile.defaults();
     public String defaultView = "journal";
     public String legendaryBackground = "";
@@ -114,11 +124,23 @@ public final class ClientPreferences {
         taskToastScalePercent = Math.clamp(taskToastScalePercent <= 0 ? 33 : taskToastScalePercent, 10, 200);
         taskToastIconScalePercent = Math.clamp(
                 taskToastIconScalePercent <= 0 ? 33 : taskToastIconScalePercent, 10, 200);
+        taskToastXPercent = Math.clamp(taskToastXPercent, 0, 100);
+        taskToastYPercent = Math.clamp(taskToastYPercent < 0 ? 20 : taskToastYPercent, 0, 100);
+        taskToastBackgroundOpacityPercent = Math.clamp(
+                taskToastBackgroundOpacityPercent <= 0 ? 45 : taskToastBackgroundOpacityPercent, 5, 100);
+        itemPickupToastXPercent = Math.clamp(itemPickupToastXPercent, 0, 100);
+        itemPickupToastYPercent = Math.clamp(itemPickupToastYPercent < 0 ? 40 : itemPickupToastYPercent, 0, 100);
+        itemPickupToastScalePercent = Math.clamp(
+                itemPickupToastScalePercent <= 0 ? 100 : itemPickupToastScalePercent, 50, 200);
+        if (minimapCorner == null || !Set.of("top_left", "top_right", "bottom_left", "bottom_right")
+                .contains(minimapCorner)) minimapCorner = "top_right";
         trackingMarkerScalePercent = Math.clamp(
                 trackingMarkerScalePercent <= 0 ? 50 : trackingMarkerScalePercent, 25, 200);
         try {
             popupAnimation = popupAnimation == null ? PopupAnimationProfile.defaults()
                     : new PopupAnimationProfile(popupAnimation.keyframes());
+            taskToastAnimation = taskToastAnimation == null ? PopupAnimationProfile.defaults()
+                    : new PopupAnimationProfile(taskToastAnimation.keyframes());
             var oldDefault = new PopupAnimationProfile(java.util.List.of(
                     new PopupAnimationProfile.Keyframe(0, .88, 0, 8, -2, 0, "smooth"),
                     new PopupAnimationProfile.Keyframe(1, 1, 0, 0, 0, 1, "smooth")));

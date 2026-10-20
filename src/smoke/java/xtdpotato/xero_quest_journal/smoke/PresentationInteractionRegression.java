@@ -185,6 +185,15 @@ final class PresentationInteractionRegression {
             }
             case 11 -> {
                 capture(game, "journey-task-details-popup-zh-1920");
+                int popupWidth = (int) call(game.screen, "panelWidth", new Class[0]);
+                int popupHeight = (int) call(game.screen, "panelHeight", new Class[0]);
+                require(Math.abs(popupWidth - Math.round(game.screen.width * .75F)) <= 1
+                                && Math.abs(popupHeight - Math.round(game.screen.height * .75F)) <= 1,
+                        "Journey task details popup does not occupy 75% of the viewport");
+                require(game.screen.children().stream().filter(StyledButton.class::isInstance)
+                                .map(StyledButton.class::cast)
+                                .noneMatch(button -> button.styleId().equals("journey-quest-popup-open")),
+                        "Journey task popup still contains a redundant open-task button");
                 button("journey-quest-popup-close").onPress();
                 require(game.screen == journey, "Closing the task popup did not return to the same journey");
                 graphEditor = new QuestTriggerGraphScreen(journey, new TriggerGraph(List.of(

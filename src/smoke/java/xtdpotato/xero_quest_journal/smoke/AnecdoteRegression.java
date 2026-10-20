@@ -12,6 +12,8 @@ import xtdpotato.xero_quest_journal.client.ClientPreferences;
 import xtdpotato.xero_quest_journal.client.AnecdoteClientState;
 import xtdpotato.xero_quest_journal.client.AnecdoteScreen;
 import xtdpotato.xero_quest_journal.client.AnecdoteRewardsScreen;
+import xtdpotato.xero_quest_journal.client.QuestScreen;
+import xtdpotato.xero_quest_journal.client.StyledButton;
 import xtdpotato.xero_quest_journal.client.ClientEditMode;
 import xtdpotato.xero_quest_journal.core.io.AnecdoteStore;
 import xtdpotato.xero_quest_journal.core.model.AnecdoteDefinition;
@@ -30,16 +32,18 @@ final class AnecdoteRegression {
     private static final Path OUTPUT = Path.of("..", "build", "verification");
     private static final long DURATION = 3_200_000_000L;
     private static final AnecdoteDefinition ENTRY_A = new AnecdoteDefinition("smoke_anecdote_a",
-            "风雪来信", "风雪", "minecraft:diamond", "山路上的一封信",
+            "风雪来信", "风雪", "", "山路上的一封信",
             List.of(new AnecdoteDefinition.Record("arrival", "雪夜相遇", "在雪夜的山路上，遇到了迷路的旅人。",
                             "minecraft:diamond"),
-                    new AnecdoteDefinition.Record("after", "后来", "后来，她寄来了一封感谢信。", "minecraft:emerald")),
+                    new AnecdoteDefinition.Record("after", "后来", "后来，她寄来了一封感谢信。", "minecraft:emerald"),
+                    new AnecdoteDefinition.Record("farewell", "再会", "旅人终于抵达了目的地。", "minecraft:book")),
             true, false, 0);
     private static final AnecdoteDefinition ENTRY_B = new AnecdoteDefinition("smoke_anecdote_b",
             "尚未发现", "文字超出五个字符", "minecraft:paper", "被遗忘的故事", List.of(), false, false, 1);
     private static int stage, played;
     private static long lastStarted;
     private static long rewardsOpenedAt;
+    private static AnecdoteScreen chronicleScreen;
 
     static boolean tick(Minecraft game) throws Exception {
         switch (stage) {
@@ -68,6 +72,9 @@ final class AnecdoteRegression {
                     require(AnecdoteRuntime.discover(player, ENTRY_A.id()), "Graph discover action failed");
                     require(AnecdoteRuntime.completeRecord(player, ENTRY_A.id(), "arrival"),
                             "Record completion action failed");
+                    require(AnecdoteRuntime.completeRecord(player, ENTRY_A.id(), "after")
+                                    && AnecdoteRuntime.completeRecord(player, ENTRY_A.id(), "farewell"),
+                            "The other chronicle records did not complete");
                 });
                 require(dispatcher.parse("xero_quest open anecdotes", source).getExceptions().isEmpty(),
                         "Chronicle open command did not parse");
@@ -110,7 +117,7 @@ final class AnecdoteRegression {
                                 && restored.anecdoteCompleted(owner, ENTRY_A.id(), "arrival")
                                 && restored.newAnecdoteCompletions(owner).contains(ENTRY_A.id() + "/arrival"),
                         "Anecdote discovery/completion state did not survive save/load");
-                stage++;
+                stage = Boolean.getBoolean("xero.anecdoteUiTest") ? 5 : 1;
             }
             case 1 -> {
                 if (!active()) return false;
@@ -133,7 +140,7 @@ final class AnecdoteRegression {
                     lastStarted = current;
                     played++;
                 }
-                if (System.nanoTime() - current > 500_000_000L && played == 1) {
+                if (System.nanoTime() - current > 500_000_000L) {
                     try (NativeImage image = Screenshot.takeScreenshot(game.getMainRenderTarget())) {
                         Files.createDirectories(OUTPUT);
                         image.writeToFile(OUTPUT.resolve("anecdote-screen-1920.png"));
@@ -193,60 +200,107 @@ final class AnecdoteRegression {
                 AnecdoteToast.tick();
                 require(!active() && QuestClientInbox.takeAnecdote() == null, "Connection cleanup");
                 ClientEditMode.set(true);
+                ClientPreferences.get().reducedMotion = false;
                 game.getWindow().setWindowed(1920, 1080);
                 game.getWindow().setWidth(1920);
                 game.getWindow().setHeight(1080);
                 game.options.guiScale().set(2);
                 game.resizeDisplay();
                 AnecdoteClientState.request();
-                game.setScreen(new AnecdoteScreen(null));
+                game.setScreen(QuestScreen.overview(null));
                 stage++;
             }
             case 6 -> {
-                if (AnecdoteClientState.snapshot().entries().size() < 2) return false;
-                if (AnecdoteClientState.snapshot().completed().stream()
-                        .noneMatch(value -> value.entryId().equals(ENTRY_A.id()) && value.recordId().equals("arrival")))
-                    return false;
-                require(game.screen instanceof AnecdoteScreen, "Chronicle screen did not open");
-                Object openingMotion = field(game.screen, "pageOpen");
-                if (!(boolean) call(openingMotion, "settled")) return false;
-                capture(game, "anecdote-chronicle-1920");
-                var screen = game.screen;
-                var cards = (java.util.List<?>) field(screen, "cardBounds");
-                var entries = (java.util.List<?>) field(screen, "visibleEntries");
-                require(cards.size() >= 2 && entries.size() >= 2, "Chronicle cards missing");
-                int lockedIndex = -1;
-                for (int index = 0; index < entries.size(); index++)
-                    if (ENTRY_B.id().equals(call(entries.get(index), "id"))) lockedIndex = index;
-                require(lockedIndex >= 0, "Undiscovered entry was hidden despite its visibility setting");
-                require(((java.util.List<?>) field(screen, "recordRows")).size() == 2,
-                        "Multiple records did not remain visible under one anecdote");
-                String previous = (String) reflected(screen, "selectedId").get(screen);
-                var bounds = cards.get(lockedIndex);
-                int x = (int) call(bounds, "x") + (int) call(bounds, "width") / 2;
-                int y = (int) call(bounds, "y") + (int) call(bounds, "height") / 2;
-                screen.mouseClicked(x, y, 0);
-                require(previous.equals(reflected(screen, "selectedId").get(screen)),
-                        "Chronicle selected on press instead of release");
-                screen.mouseReleased(x, y, 0);
-                require(ENTRY_B.id().equals(reflected(screen, "selectedId").get(screen)),
-                        "Chronicle did not select on release inside the same card");
-                screen.mouseClicked((int) call(cards.get(0), "x") + 4,
-                        (int) call(cards.get(0), "y") + 4, 0);
-                screen.mouseReleased(1, 1, 0);
-                require(ENTRY_B.id().equals(reflected(screen, "selectedId").get(screen)),
-                        "Chronicle selection changed after release outside the card");
-                int rx = (int) call(cards.get(lockedIndex), "x") + 4,
-                        ry = (int) call(cards.get(lockedIndex), "y") + 4;
-                screen.mouseClicked(rx, ry, 1);
-                require(game.screen.getClass().getSimpleName().equals("AnecdoteEntryEditorScreen"),
-                        "Right-click did not open the selected anecdote editor");
-                var chronicle = new AnecdoteScreen(null);
-                game.setScreen(new AnecdoteRewardsScreen(chronicle));
-                rewardsOpenedAt = System.nanoTime();
+                if (!(game.screen instanceof QuestScreen overview)) return false;
+                var card = overview.children().stream().filter(StyledButton.class::isInstance)
+                        .map(StyledButton.class::cast)
+                        .filter(button -> button.styleId().equals("overview-anecdotes"))
+                        .findFirst().orElseThrow();
+                require(field(card, "icon").equals("anecdote_map"),
+                        "Overview did not use the dedicated pixel map-pin icon for Anecdote Chronicle");
+                require(card.getMessage().equals(Component.translatable(
+                                "screen.xero_quest_journal.overview.category.anecdotes")),
+                        "Anecdote Chronicle overview action uses the wrong localized title");
+                require(overview.children().stream().filter(StyledButton.class::isInstance)
+                                .map(StyledButton.class::cast)
+                                .noneMatch(button -> button.styleId().equals("overview-world")),
+                        "Duplicate World Quests action occupies the Travel Anecdotes slot");
+                card.onPress();
                 stage++;
+                return false;
             }
             case 7 -> {
+                if (game.screen instanceof QuestScreen) return false;
+                if (!(game.screen instanceof AnecdoteScreen chronicle)) return false;
+                {
+                    var opening = field(chronicle, "pageOpen");
+                    if (!(boolean) call(opening, "settled")) return false;
+                    if (AnecdoteClientState.snapshot().entries().size() < 2
+                            || AnecdoteClientState.snapshot().completed().size() < 3) return false;
+                    if (((java.util.List<?>) field(chronicle, "cardBounds")).size() < 2) return false;
+                    chronicleScreen = chronicle;
+                    capture(game, "anecdote-chronicle-1920");
+                    var cards = (java.util.List<?>) field(game.screen, "cardBounds");
+                    var entries = (java.util.List<?>) field(game.screen, "visibleEntries");
+                    require(cards.size() >= 2 && entries.size() >= 2, "Chronicle cards missing");
+                    var selectedEntry = AnecdoteStore.find(ENTRY_A.id());
+                    require(selectedEntry != null && selectedEntry.icon().isBlank(),
+                            "Default scroll icon fixture was replaced with a custom icon");
+                    require(((java.util.List<?>) field(game.screen, "recordRows")).size() == 3,
+                            "Multiple records did not remain visible under one anecdote");
+                    var add = field(game.screen, "addBounds");
+                    int addX = (int) call(add, "x") + (int) call(add, "width") / 2;
+                    int addY = (int) call(add, "y") + (int) call(add, "height") / 2;
+                    require(game.screen.mouseClicked(addX, addY, 0), "Anecdote create button press was not handled");
+                    game.screen.mouseReleased(addX, addY, 0);
+                    require(game.screen.getClass().getSimpleName().equals("AnecdoteEntryEditorScreen")
+                                    && (boolean) field(game.screen, "creating"),
+                            "Anecdote toolbar + did not open the create editor");
+                    game.screen.onClose();
+                    require(game.screen == chronicleScreen && !chronicleScreen.isClosing(),
+                            "Closing an unrendered entry editor did not restore its chronicle");
+                    var rewardAdd = field(chronicleScreen, "rewardAddBounds");
+                    int rewardX = (int) call(rewardAdd, "x") + (int) call(rewardAdd, "width") / 2;
+                    int rewardY = (int) call(rewardAdd, "y") + (int) call(rewardAdd, "height") / 2;
+                    chronicleScreen.mouseClicked(rewardX, rewardY, 0);
+                    chronicleScreen.mouseReleased(rewardX, rewardY, 0);
+                    require(game.screen.getClass().getSimpleName().equals("QuestRewardsScreen"),
+                            "Anecdote reward add button did not open the reward editor");
+                    game.screen.onClose();
+                    var recordAdd = field(chronicleScreen, "recordAddBounds");
+                    int recordX = (int) call(recordAdd, "x") + (int) call(recordAdd, "width") / 2;
+                    int recordY = (int) call(recordAdd, "y") + (int) call(recordAdd, "height") / 2;
+                    require(chronicleScreen.mouseClicked(recordX, recordY, 0), "Record add toolbar click was not handled");
+                    require(game.screen.getClass().getSimpleName().equals("AnecdoteRecordEditorScreen"),
+                            "Anecdote record + did not open its editor");
+                    game.screen.onClose();
+                    require(chronicleScreen.mouseClicked(recordX, recordY, 0), "Empty-page record add click was not handled");
+                    require(game.screen.getClass().getSimpleName().equals("AnecdoteRecordEditorScreen"),
+                            "Record add button did not work while the page was otherwise empty");
+                    game.screen.onClose();
+                    var lockedIndex = entries.indexOf(ENTRY_B);
+                    require(lockedIndex >= 0, "Undiscovered entry was hidden despite its visibility setting");
+                    int x = (int) call(cards.get(lockedIndex), "x") + (int) call(cards.get(lockedIndex), "width") / 2;
+                    int y = (int) call(cards.get(lockedIndex), "y") + (int) call(cards.get(lockedIndex), "height") / 2;
+                    String previous = (String) field(chronicleScreen, "selectedId");
+                    chronicleScreen.mouseClicked(x, y, 0);
+                    require(previous.equals(field(chronicleScreen, "selectedId")),
+                            "Chronicle selected on press instead of release");
+                    chronicleScreen.mouseReleased(x, y, 0);
+                    require(ENTRY_B.id().equals(field(chronicleScreen, "selectedId")),
+                            "Chronicle did not select on release inside the same card");
+                    chronicleScreen.onClose();
+                    require(chronicleScreen.isClosing() && (boolean) field(chronicleScreen, "closingBook"),
+                            "Chronicle did not use the book-close transition");
+                    var rewards = new AnecdoteRewardsScreen(chronicleScreen);
+                    game.setScreen(rewards);
+                    require(rewards.animationPosition() < 1,
+                            "Anecdote reward page skipped the popup-scale entrance animation");
+                    rewardsOpenedAt = System.nanoTime();
+                    stage++;
+                }
+            }
+            case 8 -> {
                 if (System.nanoTime() - rewardsOpenedAt < 650_000_000L) return false;
                 require(game.screen instanceof AnecdoteRewardsScreen, "Anecdote reward sticker page did not open");
                 capture(game, "anecdote-rewards-1920");
@@ -269,9 +323,14 @@ final class AnecdoteRegression {
     }
 
     private static Field reflected(Object object, String name) throws Exception {
-        var value = object.getClass().getDeclaredField(name);
-        value.setAccessible(true);
-        return value;
+        for (Class<?> type = object.getClass(); type != null; type = type.getSuperclass()) {
+            try {
+                var value = type.getDeclaredField(name);
+                value.setAccessible(true);
+                return value;
+            } catch (NoSuchFieldException ignored) {}
+        }
+        throw new NoSuchFieldException(name);
     }
 
     private static Object field(Object object, String name) throws Exception {

@@ -38,6 +38,7 @@ public final class AnecdoteScreen extends AnimatedQuestScreen {
     private int bookLeft, bookTop, bookWidth, bookHeight, leftWidth, rightLeft, rightWidth;
     private int gridTop, gridBottom, cardWidth, cardHeight, cardColumns;
     private int recordsTop, recordsBottom;
+    private boolean compactActions;
 
     public AnecdoteScreen(Screen parent) {
         super(Component.translatable("screen.xero_quest_journal.anecdote.title"));
@@ -64,14 +65,24 @@ public final class AnecdoteScreen extends AnimatedQuestScreen {
         int gridWidth = Math.max(1, leftWidth - pageInset * 2 - (cardColumns - 1) * 7);
         cardWidth = Math.max(36, gridWidth / cardColumns);
         cardHeight = Math.round(cardWidth * 1.25F);
-        recordsTop = bookTop + 68;
         recordsBottom = bookTop + bookHeight - 22;
-        closeBounds = new Rect(bookLeft + bookWidth - 34, Math.max(6, bookTop - 30), 24, 24);
-        rewardBounds = new Rect(bookLeft + bookWidth - 168, Math.max(6, bookTop - 28), 112, 22);
-        rewardAddBounds = new Rect(rewardBounds.x() - 30, rewardBounds.y(), 22, 22);
-        addBounds = new Rect(bookLeft + pageInset, bookTop + 8, 24, 18);
-        editBounds = new Rect(width - 220, 46, 82, 22);
-        recordAddBounds = new Rect(rightLeft + rightWidth - 38, bookTop + 43, 24, 22);
+        compactActions = bookWidth < 520;
+        int actionY = Math.max(5, bookTop - 30);
+        int gap = compactActions ? 4 : 6;
+        int cursor = bookLeft + bookWidth - 10;
+        closeBounds = new Rect(cursor - 24, actionY, 24, 24);
+        cursor = closeBounds.x() - gap;
+        int rewardWidth = compactActions ? 24 : 112;
+        rewardBounds = new Rect(cursor - rewardWidth, actionY, rewardWidth, 24);
+        cursor = rewardBounds.x() - gap;
+        rewardAddBounds = new Rect(cursor - 22, actionY, 22, 24);
+        cursor = rewardAddBounds.x() - gap;
+        int editWidth = compactActions ? 24 : 116;
+        editBounds = new Rect(cursor - editWidth, actionY, editWidth, 24);
+        cursor = editBounds.x() - gap;
+        addBounds = new Rect(cursor - 24, actionY, 24, 24);
+        recordsTop = bookTop + 82;
+        recordAddBounds = new Rect(rightLeft + rightWidth - 34, bookTop + 40, 24, 22);
     }
 
     @Override
@@ -128,39 +139,35 @@ public final class AnecdoteScreen extends AnimatedQuestScreen {
     }
 
     private void drawBackdrop(GuiGraphics g) {
-        g.fill(0, 0, width, height, 0xB51A2B43);
-        g.fill(0, 0, width, Math.max(36, bookTop - 20), 0x18253D5B);
-        g.fill(0, height - Math.max(36, bookTop - 20), width, height, 0x18253D5B);
+        g.fillGradient(0, 0, width, height, 0xCC27334A, 0xDD17212B);
+        for (int row = 0; row < height; row += 32)
+            for (int column = (row / 32 % 2) * 16; column < width; column += 32)
+                if ((column + row / 2) % 7 == 0)
+                    g.fill(column, row, column + 2, row + 2, 0x0CF0D9A8);
+        g.fill(0, 0, width, bookTop - 18, 0x142D4461);
+        g.fill(0, bookTop + bookHeight + 14, width, height, 0x2423333C);
     }
 
     private void drawHeader(GuiGraphics g, int mouseX, int mouseY) {
         JournalNavButton.drawIcon(g, "overview", 24, 12, 22, 0xFFE8D099);
         g.drawString(font, text("title"), 52, 18, 0xFFF1D89B, false);
-        if (ClientEditMode.enabled() && minecraft.player != null && minecraft.player.hasPermissions(2))
-            drawAction(g, rewardAddBounds, Component.empty(), "add", mouseX, mouseY, false);
-        drawAction(g, rewardBounds, text("rewards"), "gift", mouseX, mouseY, false);
+        boolean canEdit = ClientEditMode.enabled() && minecraft.player != null && minecraft.player.hasPermissions(2);
+        drawAction(g, rewardBounds, compactActions ? Component.empty() : text("rewards"),
+                "gift", mouseX, mouseY, false);
         drawAction(g, closeBounds, Component.empty(), "close", mouseX, mouseY, false);
-        if (ClientEditMode.enabled() && minecraft.player != null && minecraft.player.hasPermissions(2))
-            drawAction(g, addBounds, Component.literal("+"), "", mouseX, mouseY, false);
-        var current = selected();
-        if (current != null && ClientEditMode.enabled() && minecraft.player != null
-                && minecraft.player.hasPermissions(2))
-            drawAction(g, editBounds, text("edit"), "edit", mouseX, mouseY, false);
+        if (canEdit) {
+            drawAction(g, addBounds, Component.empty(), "add", mouseX, mouseY, false);
+            if (selected() != null) {
+                drawAction(g, editBounds, compactActions ? Component.empty() : text("edit"),
+                        "edit", mouseX, mouseY, false);
+                drawAction(g, rewardAddBounds, Component.empty(), "add", mouseX, mouseY, false);
+            }
+        }
     }
 
     private void drawBook(GuiGraphics g) {
-        int outer = 0xFFB9A77E, pale = 0xFFEEE4D0;
-        g.fill(bookLeft - 6, bookTop - 5, bookLeft + bookWidth + 6, bookTop + bookHeight + 8, 0xFF354A68);
-        g.fill(bookLeft - 3, bookTop - 3, bookLeft + bookWidth + 3, bookTop + bookHeight + 5, outer);
-        g.renderOutline(bookLeft - 3, bookTop - 3, bookWidth + 6, bookHeight + 8, 0xFFD9C795);
-        g.fill(bookLeft, bookTop, bookLeft + leftWidth, bookTop + bookHeight, 0xFFF3EAD9);
-        g.fill(rightLeft, bookTop, rightLeft + rightWidth, bookTop + bookHeight, 0xFFF5F0E8);
-        g.renderOutline(bookLeft + 1, bookTop + 1, leftWidth - 2, bookHeight - 2, pale);
-        g.renderOutline(rightLeft + 1, bookTop + 1, rightWidth - 2, bookHeight - 2, pale);
-        g.fill(bookLeft + leftWidth - 3, bookTop + 2, bookLeft + leftWidth + 5, bookTop + bookHeight - 2,
-                0x33534A39);
+        AnecdoteBookArt.spread(g, bookLeft, bookTop, bookWidth, bookHeight);
         MailDecor.divider(g, rightLeft + 20, rightLeft + rightWidth - 20, bookTop + 48, 0xFFE2D4B7);
-        MailDecor.diamond(g, bookLeft + bookWidth / 2, bookTop + bookHeight + 10, 7, 0xFFD8B365);
     }
 
     private void drawCards(GuiGraphics g, int mouseX, int mouseY) {
@@ -209,6 +216,7 @@ public final class AnecdoteScreen extends AnimatedQuestScreen {
         int iconY = r.y() + 5;
         if (!entry.icon().isBlank()) QuestIcons.render(g, entry.icon(), iconX, iconY, iconSize, iconSize,
                 discovered ? 1 : .45F);
+        else AnecdoteBookArt.mapScroll(g, iconX, iconY, iconSize, 0xFFD2AD69);
         if (!discovered) g.fill(iconX, iconY, iconX + iconSize, iconY + iconSize, 0x5531383E);
         int footerTop = r.y() + r.height() - footerHeight;
         g.fill(r.x() + 4, footerTop, r.x() + r.width() - 4, footerTop + 1, 0x55B9A77E);
@@ -326,10 +334,19 @@ public final class AnecdoteScreen extends AnimatedQuestScreen {
         g.fill(bounds.x(), bounds.y(), bounds.x() + bounds.width(), bounds.y() + bounds.height(), color);
         g.renderOutline(bounds.x(), bounds.y(), bounds.width(), bounds.height(),
                 hovered ? 0xFFD49A48 : 0xFFBBA77D);
-        JournalNavButton.drawIcon(g, icon, bounds.x() + 3, bounds.y() + 3,
-                bounds.height() - 6, disabled ? 0xFF8A857A : 0xFF6F6047);
-        if (!label.getString().isEmpty()) g.drawString(font, label, bounds.x() + bounds.height(),
-                bounds.y() + (bounds.height() - font.lineHeight) / 2, 0xFF665B4B, false);
+        if (icon.equals("add")) {
+            int centerX = bounds.x() + bounds.width() / 2, centerY = bounds.y() + bounds.height() / 2;
+            int plusColor = disabled ? 0xFF8A857A : 0xFF6F6047;
+            g.fill(centerX - 1, centerY - 6, centerX + 2, centerY + 7, plusColor);
+            g.fill(centerX - 6, centerY - 1, centerX + 7, centerY + 2, plusColor);
+        } else {
+            int iconSize = Math.min(bounds.height() - 6, bounds.width() - 6);
+            JournalNavButton.drawIcon(g, icon, bounds.x() + (bounds.width() - iconSize) / 2,
+                    bounds.y() + (bounds.height() - iconSize) / 2,
+                    iconSize, disabled ? 0xFF8A857A : 0xFF6F6047);
+            if (!label.getString().isEmpty()) g.drawString(font, label, bounds.x() + bounds.height(),
+                    bounds.y() + (bounds.height() - font.lineHeight) / 2, 0xFF665B4B, false);
+        }
     }
 
     private Component text(String key) { return Component.translatable("screen.xero_quest_journal.anecdote." + key); }
@@ -341,23 +358,23 @@ public final class AnecdoteScreen extends AnimatedQuestScreen {
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (super.mouseClicked(mouseX, mouseY, button)) return true;
         if (closeBounds.contains(mouseX, mouseY) && button == 0) { onClose(); return true; }
+        boolean canEdit = ClientEditMode.enabled() && minecraft.player != null && minecraft.player.hasPermissions(2);
         if (rewardBounds.contains(mouseX, mouseY) && button == 0) {
             minecraft.setScreen(new AnecdoteRewardsScreen(this));
-            return true;
-        }
-        boolean canEdit = ClientEditMode.enabled() && minecraft.player != null && minecraft.player.hasPermissions(2);
-        if (canEdit && rewardAddBounds.contains(mouseX, mouseY) && button == 0 && selected() != null) {
-            var entry = selected();
-            minecraft.setScreen(new QuestRewardsScreen(this, entry.rewards(), "manual",
-                    (values, mode) -> AnecdoteClientState.save(new AnecdoteDefinition(entry.id(),
-                            entry.title(), entry.cardText(), entry.icon(), entry.heading(), entry.records(),
-                            entry.defaultDiscovered(), entry.hideWhenLocked(), entry.order(), values)), true));
             return true;
         }
         if (canEdit && addBounds.contains(mouseX, mouseY) && button == 0) {
             var entry = new AnecdoteDefinition(AnecdoteClientState.nextId(), "新逸闻", "新", "", "", List.of(),
                     false, false, AnecdoteClientState.snapshot().entries().size());
             minecraft.setScreen(new AnecdoteEntryEditorScreen(this, entry, true));
+            return true;
+        }
+        if (canEdit && rewardAddBounds.contains(mouseX, mouseY) && button == 0 && selected() != null) {
+            var entry = selected();
+            minecraft.setScreen(new QuestRewardsScreen(this, entry.rewards(), "manual",
+                    (values, mode) -> AnecdoteClientState.save(new AnecdoteDefinition(entry.id(),
+                            entry.title(), entry.cardText(), entry.icon(), entry.heading(), entry.records(),
+                            entry.defaultDiscovered(), entry.hideWhenLocked(), entry.order(), values)), true));
             return true;
         }
         if (canEdit && editBounds.contains(mouseX, mouseY) && button == 0 && selected() != null) {
@@ -395,6 +412,14 @@ public final class AnecdoteScreen extends AnimatedQuestScreen {
                 return true;
             }
         }
+        if (button == 0 && canEdit && selected() != null && recordAddBounds.contains(mouseX, mouseY)) {
+            var entry = selected();
+            var record = new AnecdoteDefinition.Record(AnecdoteEntryEditorScreen.nextRecordId(entry),
+                    "新记录", "");
+            minecraft.setScreen(new AnecdoteRecordEditorScreen(this, entry, record, true,
+                    AnecdoteClientState::save));
+            return true;
+        }
         boolean overRecords = mouseX >= rightLeft && mouseX < rightLeft + rightWidth
                 && mouseY >= recordsTop && mouseY < recordsBottom;
         if (overRecords) {
@@ -416,16 +441,6 @@ public final class AnecdoteScreen extends AnimatedQuestScreen {
                     dragging = false;
                     return true;
                 }
-            }
-            if (button == 0 && canEdit && recordAddBounds.contains(mouseX, mouseY)) {
-                var entry = selected();
-                if (entry != null) {
-                    var record = new AnecdoteDefinition.Record(AnecdoteEntryEditorScreen.nextRecordId(entry),
-                            "新记录", "");
-                    minecraft.setScreen(new AnecdoteRecordEditorScreen(this, entry, record, true,
-                            AnecdoteClientState::save));
-                }
-                return true;
             }
         }
         return false;

@@ -8,6 +8,7 @@ import xtdpotato.xero_quest_journal.client.*;
 import xtdpotato.xero_quest_journal.core.io.*;
 import xtdpotato.xero_quest_journal.core.mailbox.MailboxRuntime;
 import xtdpotato.xero_quest_journal.core.model.*;
+import xtdpotato.xero_quest_journal.core.network.QuestNetwork;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -91,12 +92,22 @@ final class DocumentationGalleryRegression {
                     + " real client screens; locale=" + LANGUAGE + "; native 1920x1080; settled UI capture.\n");
             return true;
         }
-        MailArrivalToast.clear(); QuestUnlockToast.clear(); XeroToast.clear(); game.getToasts().clear();
+        MailArrivalToast.clear(); QuestUnlockToast.clear(); QuestCompletionToast.clear();
+        XeroToast.clear(); game.getToasts().clear();
+        ItemPickupToast.clear();
         if (!opened) {
             ClientEditMode.set(!List.of("journal-current", "overview-current", "journey-current",
                     "mailbox-current", "legendary-current", "hot-events-current",
                     "anecdotes-current", "anecdotes-rewards").contains(scenes.get(index).name()));
-            game.setScreen(scenes.get(index).open().screen());
+            if (scenes.get(index).name().equals("item-pickup-toast")) {
+                game.setScreen(null);
+                ClientPreferences.get().itemPickupToastXPercent = 0;
+                ClientPreferences.get().itemPickupToastYPercent = 40;
+                for (int picked = 1; picked <= 4; picked++)
+                    ItemPickupToast.enqueue(new QuestNetwork.ItemPickupNoticePayload(
+                            new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.DIAMOND),
+                            picked, 70 + picked, 105));
+            } else game.setScreen(scenes.get(index).open().screen());
             if (scenes.get(index).name().equals("task-context-menu")) {
                 set(game.screen, "editMode", true);
                 invoke(game.screen, "init", new Class[0]);
@@ -128,7 +139,8 @@ final class DocumentationGalleryRegression {
             opened = true; pickerReadyFrame = 0; pickerControlsVerified = false; wait = 12;
             return false;
         }
-        if (game.screen == null) throw new AssertionError("Gallery screen closed: " + scenes.get(index).name());
+        if (game.screen == null && !scenes.get(index).name().equals("item-pickup-toast"))
+            throw new AssertionError("Gallery screen closed: " + scenes.get(index).name());
         if (game.screen instanceof AnimatedQuestScreen animated && animated.inputBlocked()) return false;
         if (scenes.get(index).name().equals("item-picker") || scenes.get(index).name().equals("texture-picker")) {
             var picker = get(game.screen, "iconPicker");
@@ -159,7 +171,8 @@ final class DocumentationGalleryRegression {
             image.writeToFile(OUTPUT.resolve(file));
         }
         photographs.add(Map.of("scene", scenes.get(index).name(), "file", file, "locale", LANGUAGE,
-                "width", 1920, "height", 1080, "screen", game.screen.getClass().getSimpleName(),
+                "width", 1920, "height", 1080, "screen",
+                game.screen == null ? "InGameHud" : game.screen.getClass().getSimpleName(),
                 "capturedAt", java.time.Instant.now().toString(), "sha256", HexFormat.of().formatHex(
                         java.security.MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(OUTPUT.resolve(file))))));
         index++; opened = false;
@@ -231,6 +244,7 @@ final class DocumentationGalleryRegression {
                 })));
         if (STANDALONE) {
             result.add(new Scene("overview-current", () -> QuestScreen.overview(null)));
+            result.add(new Scene("item-pickup-toast", () -> null));
             for (String tab : List.of("general", "motion", "notifications", "appearance", "tasks", "tools")) {
                 result.add(new Scene("settings-" + tab, () -> {
                     var screen = new QuestConfigScreen(journal); set(screen, "tab", tab); return screen;

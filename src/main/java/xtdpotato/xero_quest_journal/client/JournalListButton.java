@@ -34,6 +34,7 @@ public final class JournalListButton extends StyledButton {
     private String trackingType = "world";
     private boolean locked;
     private boolean claimable;
+    private boolean claimPressed;
     private int claimIconX, claimIconY, claimIconSize;
     private boolean newTask;
     private java.util.function.Supplier<String> subtitle;
@@ -42,6 +43,11 @@ public final class JournalListButton extends StyledButton {
     public boolean locked() { return locked; }
     public JournalListButton claimable(boolean value) { claimable = value; return this; }
     public boolean claimable() { return claimable; }
+    public JournalListButton claimPressed(boolean value) {
+        claimPressed = value && claimable;
+        return this;
+    }
+    public boolean claimPressed() { return claimPressed; }
     public JournalListButton newTask(boolean value) { newTask = value; return this; }
     public boolean notificationBadge() { return !completed && (claimable || newTask); }
 
@@ -241,14 +247,14 @@ public final class JournalListButton extends StyledButton {
         int top = getY() + (getHeight() - font.lineHeight) / 2;
         if (group && !description.isBlank()) top = getY() + 7;
         String secondLine = group ? "" : subtitleText();
-        boolean twoLines = !secondLine.isBlank() && getHeight() >= font.lineHeight * 2 + 8;
-        if (twoLines) top = getY() + (getHeight() - font.lineHeight * 2 - 3) / 2;
+        boolean twoLines = !secondLine.isBlank() && getHeight() >= font.lineHeight * 2 + 6;
+        if (twoLines) top = getY() + (getHeight() - font.lineHeight * 2 - 2) / 2;
         graphics.drawString(font, font.plainSubstrByWidth(getMessage().getString(), available),
                 left, top, text, style.textShadow());
         if (twoLines) {
             int muted = selected ? 0x8A90A0 : completed ? 0x9AA1AB : 0xB4BCC8;
             graphics.drawString(font, font.plainSubstrByWidth(secondLine, available), left,
-                    top + font.lineHeight + 3, (text & 0xFF000000) | muted, false);
+                    top + font.lineHeight + 2, (text & 0xFF000000) | muted, false);
         }
         if (group) {
             if (!description.isBlank()) {
@@ -273,13 +279,29 @@ public final class JournalListButton extends StyledButton {
                     getY() + (getHeight() - 16) / 2, 16);
             return;
         }
+        if (completed && !group) {
+            int size = 16;
+            int x = getRight() - inset - size + (trailingIcon.width() - size) / 2 + trailingIcon.offsetX();
+            int y = getY() + (getHeight() - size) / 2 + trailingIcon.offsetY();
+            QuestStatusIcons.renderCheckbox(graphics, true, x, y, size, selected,
+                    trailingIcon.alpha() * alpha);
+            claimIconSize = 0;
+            return;
+        }
         if (claimable && !group) {
-            int size = Math.min(16, Math.min(trailingIcon.width(), trailingIcon.height()));
-            claimIconX = getRight() - inset - size + (trailingIcon.width() - size) / 2 + trailingIcon.offsetX();
+            int size = 20;
+            claimIconX = getRight() - inset - size + trailingIcon.offsetX();
             claimIconY = getY() + (getHeight() - size) / 2 + trailingIcon.offsetY();
             claimIconSize = size;
-            JournalNavButton.drawIcon(graphics, "gift", claimIconX, claimIconY, size,
-                    applyAlpha(selected ? 0xFFF6D78C : 0xFFF2CF83, trailingIcon.alpha() * alpha));
+            boolean pressed = claimPressed && isHovered();
+            int outer = pressed ? 0xFFFFC1A8 : 0xFF783D39;
+            int background = pressed ? 0xFFFF8065 : 0xFFB55549;
+            MailDecor.circle(graphics, claimIconX - 1, claimIconY - 1, size + 2,
+                    applyAlpha(outer, trailingIcon.alpha() * alpha));
+            MailDecor.circle(graphics, claimIconX, claimIconY, size,
+                    applyAlpha(background, trailingIcon.alpha() * alpha));
+            JournalNavButton.drawIcon(graphics, "gift", claimIconX + 3, claimIconY + 3, size - 6,
+                    applyAlpha(0xFFFFF8ED, trailingIcon.alpha() * alpha));
             return;
         }
         claimIconSize = 0;
@@ -316,8 +338,8 @@ public final class JournalListButton extends StyledButton {
 
     public boolean claimIconContains(double mouseX, double mouseY) {
         return claimable && !group && !locked && claimIconSize > 0
-                && mouseX >= claimIconX - 3 && mouseX < claimIconX + claimIconSize + 3
-                && mouseY >= claimIconY - 3 && mouseY < claimIconY + claimIconSize + 3;
+                && mouseX >= claimIconX && mouseX < claimIconX + claimIconSize
+                && mouseY >= claimIconY && mouseY < claimIconY + claimIconSize;
     }
 
     @Override

@@ -171,6 +171,7 @@ public final class ClientQuestProgress {
             connection = game.getConnection();
             QuestCompletionToast.clear();
             QuestUnlockToast.clear();
+            ItemPickupToast.clear();
             ClientEditMode.reset();
             views = Map.of();
             tracked = List.of();

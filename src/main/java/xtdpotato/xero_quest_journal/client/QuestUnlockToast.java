@@ -10,6 +10,7 @@ import xtdpotato.xero_quest_journal.core.model.QuestListAccent;
 /** Top-left, type-accented banner for a newly unlocked task. */
 public final class QuestUnlockToast {
     private static final long DURATION_NANOS = 5_000_000_000L;
+    private static double[] renderedCloseBounds;
     private QuestUnlockToast() {}
 
     public static void enqueue(String questId) {
@@ -52,13 +53,18 @@ public final class QuestUnlockToast {
     }
 
     private static double[] closeBounds() {
+        if (renderedCloseBounds != null) return renderedCloseBounds;
         Minecraft game = Minecraft.getInstance();
         int sw = game.getWindow().getGuiScaledWidth(), sh = game.getWindow().getGuiScaledHeight();
         float scale = ClientPreferences.get().taskToastScalePercent / 100F;
-        int y = Math.max(74, Math.min(sh - 94, sh / 5));
-        double screenRight = 22 + (Math.min(sw, 430) - 22) * scale;
-        double centerX = Math.min(sw - 12, screenRight - 12 * scale);
-        double centerY = y - 3 * scale;
+        int width = Math.min(sw - 16, 430);
+        int height = Math.round(90 * scale);
+        int left = Math.round(8 + Math.max(0, sw - width * scale - 16)
+                * ClientPreferences.get().taskToastXPercent / 100F);
+        int top = Math.round(Math.max(8, sh - height - 16)
+                * ClientPreferences.get().taskToastYPercent / 100F + 8);
+        double centerX = Math.min(sw - 12, left + width * scale - 12 * scale);
+        double centerY = top + 9 * scale;
         return new double[]{centerX - 9 * scale, centerY - 9 * scale,
                 centerX + 9 * scale, centerY + 9 * scale};
     }
@@ -74,6 +80,11 @@ public final class QuestUnlockToast {
 
     static long animationNanos() {
         return ClientPreferences.get().popupAnimationMillis * 1_000_000L;
+    }
+
+    static PopupAnimationProfile.Transform taskToastTransform(float enter, float exit, boolean reduced) {
+        if (reduced) return new PopupAnimationProfile.Transform(1, 0, 0, 0, 1);
+        return ClientPreferences.get().taskToastAnimation.sample(exit > 0 ? 1 - exit : enter);
     }
 
     public static void trackCurrent() {
@@ -130,18 +141,56 @@ public final class QuestUnlockToast {
         int screenWidth = game.getWindow().getGuiScaledWidth();
         int screenHeight = game.getWindow().getGuiScaledHeight();
         int x = 22 - Math.round(exit * exit * 16);
-        int y = Math.max(74, Math.min(screenHeight - 94, screenHeight / 5));
+        int y = 20;
         int accent = accent(quest);
         float pulse = reduced ? 0 : (float) ((Math.sin(elapsed / 60_000_000.0) + 1) * .5);
-        float toastScale = preferences.taskToastScalePercent / 100F;
+        float toastScale = Math.min(preferences.taskToastScalePercent / 100F,
+                Math.max(.1F, (screenWidth - 16) / 430F));
         float iconScale = preferences.taskToastIconScalePercent / 100F;
+        int panelWidth = Math.min(screenWidth - 16, 430);
+        int panelHeight = Math.round(90 * toastScale);
+        int desiredLeft = Math.round(8 + Math.max(0, screenWidth - panelWidth * toastScale - 16)
+                * preferences.taskToastXPercent / 100F);
+        int desiredTop = Math.round(8 + Math.max(0, screenHeight - panelHeight - 16)
+                * preferences.taskToastYPercent / 100F);
+        int initialLeft = Math.round(x * (1 - toastScale));
+        int initialTop = Math.round(y - 12 * toastScale);
+        var animation = taskToastTransform(enter, exit, reduced);
+        var panel = HudOverlayLayout.place(screenWidth, screenHeight,
+                new HudOverlayLayout.Rect(desiredLeft, desiredTop,
+                        Math.round(panelWidth * toastScale), panelHeight),
+                HudOverlayLayout.cornerFromPercent(preferences.taskToastXPercent, preferences.taskToastYPercent), 8);
+        int offsetX = panel.x() - initialLeft;
+        int offsetY = panel.y() - initialTop;
+        double panelCenterX = panel.x() + panel.width() / 2.0;
+        double panelCenterY = panel.y() + panel.height() / 2.0;
+        double closeX = panel.right() - 9 * toastScale;
+        double closeY = panel.y() + 9 * toastScale;
+        double angle = Math.toRadians(animation.rotation());
+        double closeDx = (closeX - panelCenterX) * animation.scale();
+        double closeDy = (closeY - panelCenterY) * animation.scale();
+        closeX = panelCenterX + animation.x() + closeDx * Math.cos(angle) - closeDy * Math.sin(angle);
+        closeY = panelCenterY + animation.y() + closeDx * Math.sin(angle) + closeDy * Math.cos(angle);
+        double closeHalfSize = 9 * toastScale * animation.scale();
+        double closeExtent = closeHalfSize * (Math.abs(Math.cos(angle)) + Math.abs(Math.sin(angle)));
+        renderedCloseBounds = new double[]{closeX - closeExtent, closeY - closeExtent,
+                closeX + closeExtent, closeY + closeExtent};
 
         graphics.pose().pushPose();
         graphics.pose().translate(0, 0, 1010);
+        graphics.pose().translate(panelCenterX + animation.x(), panelCenterY + animation.y(), 0);
+        if (animation.rotation() != 0)
+            graphics.pose().mulPose(com.mojang.math.Axis.ZP.rotationDegrees((float) animation.rotation()));
+        graphics.pose().scale((float) animation.scale(), (float) animation.scale(), 1);
+        graphics.pose().translate(-panelCenterX, -panelCenterY, 0);
+        graphics.pose().translate(offsetX, offsetY, 0);
         graphics.pose().translate(x, y, 0);
         graphics.pose().scale(toastScale, toastScale, 1);
         graphics.pose().translate(-x, -y, 0);
-        backing(graphics, 0, y - 12, Math.min(screenWidth, 430), y + 78, alpha * .5F);
+        alpha *= (float) animation.opacity();
+        if (preferences.taskToastBackgroundEnabled)
+            backing(graphics, 0, y - 12, Math.min(screenWidth, 430), y + 78,
+                    alpha * preferences.taskToastBackgroundOpacityPercent / 100F);
 
         int centerX = x + 24;
         int centerY = y + 23;
@@ -228,13 +277,18 @@ public final class QuestUnlockToast {
                 / (double) Math.max(1, game.getWindow().getScreenWidth()));
         int screenMouseY = (int) Math.round(game.mouseHandler.ypos() * screenHeight
                 / (double) Math.max(1, game.getWindow().getScreenHeight()));
-        double[] close = closeBounds();
-        boolean hoveredClose = screenMouseX >= close[0] && screenMouseX < close[2]
+        double[] close = renderedCloseBounds;
+        boolean hoveredClose = close != null && screenMouseX >= close[0] && screenMouseX < close[2]
                 && screenMouseY >= close[1] && screenMouseY < close[3];
-        float toastScaleForClose = preferences.taskToastScalePercent / 100F;
-        double closeX = x + (close[0] + close[2]) / 2.0 / toastScaleForClose - x;
-        double closeY = y + (close[1] + close[3]) / 2.0 / toastScaleForClose - y;
-        int closeCenterX = (int) Math.round(closeX), closeCenterY = (int) Math.round(closeY);
+        double actualCloseX = (close[0] + close[2]) / 2.0;
+        double actualCloseY = (close[1] + close[3]) / 2.0;
+        double inverseDx = (actualCloseX - panelCenterX - animation.x()) / animation.scale();
+        double inverseDy = (actualCloseY - panelCenterY - animation.y()) / animation.scale();
+        double baseCloseX = panelCenterX + inverseDx * Math.cos(angle) + inverseDy * Math.sin(angle);
+        double baseCloseY = panelCenterY - inverseDx * Math.sin(angle) + inverseDy * Math.cos(angle);
+        double closeLocalX = x + (baseCloseX - offsetX - x) / toastScale;
+        double closeLocalY = y + (baseCloseY - offsetY - y) / toastScale;
+        int closeCenterX = (int) Math.round(closeLocalX), closeCenterY = (int) Math.round(closeLocalY);
         MailDecor.circle(graphics, closeCenterX - 9, closeCenterY - 9, 18,
                 fade(hoveredClose ? 0xFF4E5662 : 0xFF29313B, alpha * .9F));
         JournalNavButton.drawIcon(graphics, "close", closeCenterX - 6, closeCenterY - 6, 12,

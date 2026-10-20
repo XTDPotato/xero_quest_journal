@@ -99,6 +99,8 @@ public final class QuestNetwork {
                 (payload, context) -> QuestClientInbox.accept(payload));
         registrar.playToClient(ToastPayload.TYPE, ToastPayload.STREAM_CODEC,
                 (payload, context) -> QuestClientInbox.accept(payload));
+        registrar.playToClient(ItemPickupNoticePayload.TYPE, ItemPickupNoticePayload.STREAM_CODEC,
+                (payload, context) -> QuestClientInbox.accept(payload));
         registrar.playToClient(AnecdotePayload.TYPE, AnecdotePayload.STREAM_CODEC,
                 (payload, context) -> QuestClientInbox.accept(payload));
         registrar.playToClient(OpenScreenPayload.TYPE, OpenScreenPayload.STREAM_CODEC,
@@ -1040,6 +1042,34 @@ public final class QuestNetwork {
         }
 
         @Override public Type<ToastPayload> type() { return TYPE; }
+    }
+
+    public record ItemPickupNoticePayload(net.minecraft.world.item.ItemStack stack, int pickedCount,
+                                          int current, int required) implements CustomPacketPayload {
+        public static final Type<ItemPickupNoticePayload> TYPE = new Type<>(
+                ResourceLocation.fromNamespaceAndPath(XeroQuestJournal.MOD_ID, "item_pickup_notice"));
+        public static final StreamCodec<RegistryFriendlyByteBuf, ItemPickupNoticePayload> STREAM_CODEC =
+                new StreamCodec<>() {
+                    @Override public ItemPickupNoticePayload decode(RegistryFriendlyByteBuf buffer) {
+                        return new ItemPickupNoticePayload(net.minecraft.world.item.ItemStack.STREAM_CODEC.decode(buffer),
+                                buffer.readVarInt(), buffer.readVarInt(), buffer.readVarInt());
+                    }
+                    @Override public void encode(RegistryFriendlyByteBuf buffer, ItemPickupNoticePayload value) {
+                        net.minecraft.world.item.ItemStack.STREAM_CODEC.encode(buffer, value.stack());
+                        buffer.writeVarInt(value.pickedCount());
+                        buffer.writeVarInt(value.current());
+                        buffer.writeVarInt(value.required());
+                    }
+                };
+
+        public ItemPickupNoticePayload {
+            stack = stack == null ? net.minecraft.world.item.ItemStack.EMPTY : stack.copy();
+            if (stack.isEmpty() || pickedCount < 1 || pickedCount > 1_000_000
+                    || current < 0 || current > 1_000_000 || required < 1 || required > 1_000_000)
+                throw new IllegalArgumentException("Invalid tracked item pickup notice");
+        }
+
+        @Override public Type<ItemPickupNoticePayload> type() { return TYPE; }
     }
 
     public record MailboxSendPayload(long requestId, String recipient, String id, String sender,

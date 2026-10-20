@@ -31,8 +31,8 @@ public record JournalListModel(List<Row> rows, int contentHeight) {
         public boolean section() { return !category.isBlank(); }
     }
 
-    /** Single-line task row height; two-line rows (title + subtitle/distance) use {@link #TALL_ROW}. */
-    public static final int QUEST_ROW = 22, TALL_ROW = 32;
+    /** Compact single-line rows; subtitle rows add only the height needed for a second line. */
+    public static final int QUEST_ROW = 22, TALL_ROW = 28;
 
     public JournalListModel withSection(String category) {
         if (rows.isEmpty() || category.isBlank()) return this;

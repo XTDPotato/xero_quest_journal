@@ -13,19 +13,18 @@ Minecraft 1.21.1 NeoForge。Forge 1.20.1、Fabric 1.20.1 和 Fabric 1.21.1
 每个游戏版本/加载器使用独立 JAR。详见 [版本矩阵](docs/porting-matrix.md)
 和 [Fabric 验证报告](docs/fabric-verification.md)。
 
-**0.2.1 · 2026-10-18**：旅行历程选中章节底条默认 3px，可在设置的外观页调整为 1–5px；
-任务和邮件奖励详情统一检查，经验/等级详情补齐对应图标、数量与说明。
-战利品列表超过 10 项才显示搜索，每项“显示详情文本”可单独配置并随自选奖励冻结。
-中英文首页、文档导航和常用功能参考配套更新，常见界面分别使用真实中文/英文
-1920×1080 截图，包含逸闻书册、贴纸页、章节编辑、JS 参考和拼图连接检查。
-最新范围见 [0.2.1 验证](docs/release-verification-0.2.1.md)。
-旧预览记录保留于 [2026-10-18 验证历史](docs/release-verification-2026-10-18.md)。
+**0.2.2 · 2026-10-20**：追踪物品目标新增四条最新优先拾取提示，显示物品、数量和目标进度；
+通知设置可以调整整组提示的位置与缩放，并为 Xaero、JourneyMap、VoxelMap、FTB Chunks
+预留小地图角，任务追踪/通知碰撞时自动移至空闲角落；屏外坐标追踪以旋转的 `<` 指向目标。
+原有 0.2.1 Release 保持不变。
+双语图鉴补充拾取 HUD 实景及通知设置截图，当前发布验证见
+[0.2.2 验证记录](docs/release-verification-0.2.2.md)。
 
 Xero Quest Journal 面向整合包作者、地图作者与喜欢任务引导的玩家，把任务列表、章节历程、世界目标、奖励和邮箱放在一套原生游戏界面中。作者可以在本地世界内编辑任务，也可以用 JSON、HTML 或 XML 配置任务文件。
 
 核心模组保持轻量，媒体解码使用可选后端；任务完成、奖励领取和玩家进度由服务端处理。
 
-> 当前版本为 **0.2.1**。双语图鉴分别采用中文、英文原生 1920×1080 截图；
+> 当前版本为 **0.2.2**。双语图鉴分别采用中文、英文原生 1920×1080 截图；
 > 历史验证与本次验证分开记录。26.1–26.3 尚无完整可安装包。
 
 ![任务日志、进度与底部奖励，中文 1920×1080](docs/images/journal-current-zh-1920.png)
@@ -37,7 +36,7 @@ Xero Quest Journal 面向整合包作者、地图作者与喜欢任务引导的�
 - [中文 1080p 界面图鉴：常见界面、入口和操作](docs/interface-gallery.md)
 - [英文 1080p 界面图鉴](docs/en/interface-gallery.md)
 - [按流程查找文档](docs/README.md)
-- [0.2.1 发布验证与截图来源](docs/release-verification-0.2.1.md)
+- [0.2.2 发布验证与截图来源](docs/release-verification-0.2.2.md)
 - [任务修改与删除的撤销/重做](docs/task-edit-undo.md)
 - [2026-10-18 多版本构建与专项验证](docs/release-verification-2026-10-18.md)
 - [候选选择、结构预览与拼图方块讲解](docs/candidate-selectors-and-jigsaw.md)
@@ -65,7 +64,7 @@ Xero Quest Journal 面向整合包作者、地图作者与喜欢任务引导的�
 | 总览 | 推荐任务、分类入口、可配置背景 |
 | 旅行历程 | 章节标签、主线与支线、任务详情弹窗、当前章节独立外观、多选拖动与尺寸编辑 |
 | 逸闻纪事 | 独立条目与多条记录、发现/隐藏状态、完成贴纸、奖励与通知横幅 |
-| 任务规则 | 持有、累计获取、提交、击杀、方块交互、进度、地点、脚本与组合条件 |
+| 任务规则 | 持有、累计获取、提交、击杀、方块交互、进度、地点、脚本与组合条件；追踪拾取提示最多四条最新优先，可调位置/缩放并避让小地图 |
 | 解锁关系 | 前置任务 DAG、可视化连线、节点移动、循环检查、撤销与重做 |
 | 事件节点 | 任务控件事件图、条件与动作节点、连线、属性编辑 |
 | 脚本编辑 | 分用途参考、可追加示例、行号、语法检查、文件冲突保护；节点文字块双击编辑、内容可折叠 |
@@ -192,16 +191,16 @@ JS、变量、图标、富文本、回收站、设置、动画、物品栏、模
 | Minecraft / 加载器 | 1.20.1 Forge 47.3.0 或 Fabric；1.21.1 NeoForge 21.1.233 或 Fabric |
 | Java | 1.20.1 使用 Java 17；1.21.1 使用 Java 21 |
 | Fabric | 还需对应 Minecraft 版本的 Fabric API；精确测试版本见版本矩阵 |
-| 核心文件 | [0.2.1 Release](https://github.com/XTDPotato/xero_quest_journal/releases/tag/v0.2.1) 中与 Minecraft/加载器完全匹配的单个 JAR |
+| 核心文件 | [0.2.2 Release](https://github.com/XTDPotato/xero_quest_journal/releases/tag/v0.2.2) 中与 Minecraft/加载器完全匹配的单个 JAR |
 | 许可 | MIT，第三方依赖保留各自许可 |
 
-1. 从 [0.2.1 Release](https://github.com/XTDPotato/xero_quest_journal/releases/tag/v0.2.1) 选择与游戏版本、加载器相匹配的核心 JAR，放入实例的 `mods` 目录。
-2. 多人环境下，客户端与服务端应安装相互匹配的版本。当前网络协议为 **10**；相同的显示版本不保证不同开发构建之间的协议兼容，旧 Release 的 `0.1.0` 与当前源码的 `0.2.0` 应分别核对。
+1. 从 [0.2.2 Release](https://github.com/XTDPotato/xero_quest_journal/releases/tag/v0.2.2) 选择与游戏版本、加载器相匹配的核心 JAR，放入实例的 `mods` 目录。
+2. 多人环境下，客户端与服务端应安装相互匹配的版本。当前网络协议为 **10**；相同的显示版本不保证不同开发构建之间的协议兼容，旧 Release 请使用对应的匹配服务端版本。
 3. 启动游戏并进入世界，默认按 `J` 打开任务日志，按 `F8` 打开邮箱、`F7` 打开新邮件。
 4. 任务目录默认位于 `config/xero_quest/groups/`，编辑后使用 `/xero_quest reload` 重载。
 5. 本地集成服务器中，拥有管理员权限的玩家可以开启编辑模式。远端客户端作者编辑仍有限制。
 
-Release 同时提供四个 `0.2.1` 独立安装包和按版本/加载器归类的合集 ZIP。
+Release 同时提供四个 `0.2.2` 独立安装包和按版本/加载器归类的合集 ZIP。
 每个实例只安装一个核心 JAR。不要将源码 ZIP、验证报告或测试世界放入 `mods`。
 
 ### 常用操作
@@ -386,8 +385,8 @@ chmod +x gradlew
 构建输出：
 
 ```text
-build/libs/xero_quest_journal-0.2.1.jar
-build/libs/xero_quest_journal-0.2.1-sources.jar
+build/libs/xero_quest_journal-0.2.2.jar
+build/libs/xero_quest_journal-0.2.2-sources.jar
 ```
 
 `build` 包含核心 JAR 的 **5,000,000 字节上限检查**与可选媒体依赖隔离检查。它不会自动运行真实客户端 smoke 测试。
@@ -453,7 +452,7 @@ tools/                     图标生成与独立检查工具
 
 四个已完成目标和本轮作者工具复验见 [版本矩阵](docs/porting-matrix.md)、
 [Fabric 报告](docs/fabric-verification.md)、[Forge 报告](docs/forge-1.20.1-verification.md)
-及 [0.2.1 验证](docs/release-verification-0.2.1.md)。以下保留历史专项的范围摘要：
+及 [0.2.2 验证](docs/release-verification-0.2.2.md)。以下保留历史专项的范围摘要：
 
 | 验证 | 范围 |
 | --- | --- |
@@ -481,7 +480,7 @@ tools/                     图标生成与独立检查工具
 | --- | --- |
 | [中文文档中心](docs/README.md) / [English documentation](docs/en/README.md) | 按玩家/作者流程、功能和操作目标查找 |
 | [英文首页](README.en.md) | 完整英文安装、功能、实例和英文截图 |
-| [0.2.1 发布验证](docs/release-verification-0.2.1.md) | 本次构建、双语截图、设置检查及测试边界 |
+| [0.2.2 发布验证](docs/release-verification-0.2.2.md) | 本次构建、双语截图、HUD 避让与测试边界 |
 | [使用指南](docs/guide.md) | 目录组织、日常操作、作者流程、备份与故障定位 |
 | [背景与旅行历程编辑](docs/background-and-journey-editor.md) | 背景缩放与音乐、背景节点、章节切换事件、可视化尺寸编辑及任务弹窗 |
 | [中文 1080p 界面图鉴](docs/interface-gallery.md) | 常见界面全屏截图、入口、操作、保存和预览行为 |

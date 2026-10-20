@@ -71,6 +71,12 @@ final class CreationRegression {
                         .containsAll(List.of("context-add_task", "context-add_group", "context-add_chapter")),
                         "All creation disabled");
                 menu().clear();
+                var list = (JournalListModel) field(journal, "journalList");
+                int groupOffset = list.rows().stream().filter(row -> row.key().equals("group:" + GROUP))
+                        .mapToInt(JournalListModel.Row::offset).findFirst().orElseThrow();
+                set(journal, "listScroll", (double) groupOffset);
+                set(journal, "listTargetScroll", (double) groupOffset);
+                call(journal, "updateListButtons");
                 var groups = find(game, "group-" + GROUP);
                 journal.mouseClicked(groups.getX() + 5, groups.getY() + 5, 1);
                 require(menu().stream().map(StyledButton::styleId).toList().containsAll(
@@ -88,6 +94,30 @@ final class CreationRegression {
                 fields(game).get(2).setValue("Keep the description");
                 click(game, find(game, "choose-icon"));
                 require(buttons(game, "icon-entry").size() > 0, "Empty default picker");
+                var iconPicker = field(journal, "iconPicker");
+                int columns = (int) field(iconPicker, "columns");
+                int visibleRows = (int) field(iconPicker, "visibleRows");
+                var pooledIcons = (List<?>) field(journal, "iconChoiceButtons");
+                require(pooledIcons.size() == columns * (visibleRows + 8),
+                        "Icon picker did not pool four rows above and below its viewport");
+                var pickerScroll = field(iconPicker, "scroll");
+                set(pickerScroll, "position", 240.0);
+                set(pickerScroll, "target", 240.0);
+                call(journal, "updateIconPickerViewport");
+                require((int) call(iconPicker, "firstRow") == 2
+                                && ((StyledButton) pooledIcons.getFirst()).getY()
+                                == (int) field(iconPicker, "gridTop") - 160,
+                        "Icon picker did not preserve four buffered rows while scrolling");
+                int gridTop = (int) field(iconPicker, "gridTop");
+                int gridBottom = (int) field(iconPicker, "gridBottom");
+                long renderedTiles = buttons(game, "icon-entry").stream().filter(button -> button.visible).count();
+                require(renderedTiles <= columns * (visibleRows + 1)
+                                && buttons(game, "icon-entry").stream().filter(button -> button.visible)
+                                .allMatch(button -> button.getBottom() > gridTop && button.getY() < gridBottom),
+                        "Icon picker rendered or exposed offscreen tiles");
+                set(pickerScroll, "position", 0.0);
+                set(pickerScroll, "target", 0.0);
+                call(journal, "updateIconPickerViewport");
                 var itemChoices = QuestIcons.itemChoices();
                 require(itemChoices == QuestIcons.itemChoices(), "Item search index was rebuilt");
                 var diamond = itemChoices.stream().filter(choice -> choice.value().equals("minecraft:diamond"))
@@ -98,6 +128,11 @@ final class CreationRegression {
                 require(diamond.matches("\u94bb\u77f3") && diamond.matches("zuanshi")
                                 && diamond.matches("zs") && diamond.matches("minecraft:diamond"),
                         "Localized item search aliases missing");
+                @SuppressWarnings("unchecked")
+                var readyChoices = (Map<Object, List<QuestIcons.IconChoice>>) field(iconPicker, "cachedChoices");
+                readyChoices.put(field(iconPicker, "source"), itemChoices);
+                journal.init(game, journal.width, journal.height);
+                iconPicker = field(journal, "iconPicker");
                 var customStack = new net.minecraft.world.item.ItemStack(
                         net.minecraft.world.item.Items.DIAMOND);
                 customStack.set(net.minecraft.core.component.DataComponents.CUSTOM_NAME,
@@ -123,11 +158,16 @@ final class CreationRegression {
                                 && find(game, "icon-sort-order") != null,
                         "Fullscreen icon picker is missing sort controls");
                 String iconBeforeBrowse = (String) field(form(), "icon");
-                click(game, find(game, "icon-entry"));
+                var diamondTile = buttons(game, "icon-entry").stream().filter(button -> button.visible)
+                        .findFirst().orElseThrow(() -> new AssertionError("No visible diamond tile"));
+                click(game, diamondTile);
                 require(field(form(), "icon").equals(iconBeforeBrowse),
                         "Browsing an icon applied it before confirmation");
                 require(field(field(journal, "iconPicker"), "manual").equals("minecraft:diamond"),
-                        "Item picker did not stage the selected item");
+                        "Item picker did not stage the selected item: manual="
+                                + field(field(journal, "iconPicker"), "manual") + ", tile="
+                                + diamondTile.getX() + "," + diamondTile.getY() + ", firstRow="
+                                + call(field(journal, "iconPicker"), "firstRow"));
                 require(find(game, "icon-preview").active, "Selected icon did not enable fullscreen preview");
                 click(game, find(game, "icon-preview"));
                 require(game.screen.getClass().getSimpleName().equals("QuestIconPreviewScreen"),
@@ -244,6 +284,11 @@ final class CreationRegression {
                 click(game, find(game, "choose-image"));
                 if (find(game, "icon-source-textures").active)
                     click(game, find(game, "icon-source-textures"));
+                var texturePicker = field(journal, "iconPicker");
+                @SuppressWarnings("unchecked")
+                var textureCache = (Map<Object, List<QuestIcons.IconChoice>>) field(texturePicker, "cachedChoices");
+                textureCache.put(field(texturePicker, "source"), QuestIcons.textureChoices());
+                journal.init(game, journal.width, journal.height);
                 fields(game).getFirst().setValue("textures/item/diamond.png");
                 click(game, find(game, "icon-filter"));
                 @SuppressWarnings("unchecked")
@@ -254,9 +299,15 @@ final class CreationRegression {
             }
             case 7 -> {
                 capture(game, "creation-texture-picker");
-                int pageY = find(game, "icon-previous").getY();
-                require(buttons(game, "icon-entry").stream().allMatch(b -> b.getBottom() <= pageY), "Grid overlaps pages");
-                click(game, find(game, "icon-entry"));
+                require(buttons(game, "icon-previous").isEmpty() && buttons(game, "icon-next").isEmpty(),
+                        "Fullscreen icon picker unexpectedly added pagination controls");
+                var tile = buttons(game, "icon-entry").stream().filter(button -> button.visible)
+                        .findFirst().orElseThrow(() -> new AssertionError("Texture picker has no visible item"));
+                int gridBottom = (int) field(field(journal, "iconPicker"), "gridBottom");
+                require(buttons(game, "icon-entry").stream().filter(button -> button.visible)
+                                .allMatch(button -> button.getBottom() <= gridBottom),
+                        "Visible icon tiles overlap the list viewport bottom");
+                click(game, tile);
                 require(((String) field(form(), "description")).isBlank()
                                 && field(field(journal, "iconPicker"), "manual").equals(TEXTURE),
                         "Selecting a texture committed before the Apply action");

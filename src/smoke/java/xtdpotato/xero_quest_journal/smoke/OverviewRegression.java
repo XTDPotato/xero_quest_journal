@@ -211,9 +211,25 @@ final class OverviewRegression {
         }
         var feature = find(game, "overview-feature");
         var first = find(game, "overview-main");
-        var last = find(game, "overview-world");
-        require(first.getY() == feature.getY() && last.getBottom() == feature.getBottom()
+        var last = find(game, "overview-anecdotes");
+        require(first.getY() == feature.getY() && last.getBottom() <= feature.getBottom()
                         && first.getX() > feature.getRight(), "Overview columns do not align");
+        long anecdoteEntries = game.screen.children().stream().filter(StyledButton.class::isInstance)
+                .map(StyledButton.class::cast)
+                .filter(button -> button.styleId().equals("overview-anecdotes")).count();
+        require(anecdoteEntries == 1, "Overview must show exactly one Anecdote Chronicle entry");
+        require(cardInt(last, "dividerX") == cardInt(first, "dividerX")
+                        && cardInt(last, "labelX") == cardInt(first, "labelX")
+                        && cardInt(last, "iconSlotX") + cardInt(last, "iconSlotWidth") / 2
+                        == cardInt(first, "iconSlotX") + cardInt(first, "iconSlotWidth") / 2,
+                "Anecdote category icon or label is misaligned with the other category cards");
+        int expectedArrowSize = Math.max(8, Math.min(14, last.getHeight() - 10));
+        require(cardInt(last, "forwardSize") == cardInt(first, "forwardSize")
+                        && cardInt(last, "forwardSize") == expectedArrowSize,
+                "Anecdote forward icon did not retain its original compact size");
+        require(cardInt(last, "categoryIconSize") <= 32
+                        && cardInt(last, "categoryIconSize") <= last.getHeight() - 8,
+                "Anecdote map icon exceeds its centered category icon slot");
         try (var image = Screenshot.takeScreenshot(game.getMainRenderTarget())) {
             double sx = image.getWidth() / (double) game.screen.width;
             double sy = image.getHeight() / (double) game.screen.height;
@@ -239,6 +255,11 @@ final class OverviewRegression {
         var field = owner.getClass().getDeclaredField(name);
         field.setAccessible(true);
         return field.get(owner);
+    }
+    private static int cardInt(StyledButton button, String name) throws Exception {
+        var method = button.getClass().getDeclaredMethod(name);
+        method.setAccessible(true);
+        return (int) method.invoke(button);
     }
     private static void capture(Minecraft game, String name) throws Exception {
         Files.createDirectories(Path.of("..", "build", "verification"));

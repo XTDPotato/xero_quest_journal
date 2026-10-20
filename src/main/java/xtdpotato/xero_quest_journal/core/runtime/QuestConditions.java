@@ -107,7 +107,7 @@ public final class QuestConditions {
         }
         return new Progress(current, required);
     }
-    private static Progress progress(ServerPlayer player, QuestDefinition quest, Trigger t) {
+    public static Progress progress(ServerPlayer player, QuestDefinition quest, Trigger t) {
         if (!t.children().isEmpty()) {
             int done = (int) t.children().stream().filter(c -> {
                 var p = progress(player, quest, c);

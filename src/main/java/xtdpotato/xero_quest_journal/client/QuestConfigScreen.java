@@ -68,7 +68,7 @@ public final class QuestConfigScreen extends AnimatedQuestScreen {
         int count = switch (tab) {
             case "general" -> 5;
             case "motion" -> canAuthor() ? 4 : 3;
-            case "notifications" -> 3;
+            case "notifications" -> 5;
             case "appearance" -> 5;
             case "tools" -> QuestReiShortcuts.available() ? 4 : 3;
             case "tasks" -> 3 + (ClientPreferences.get().fixedQuestContextMenuPosition ? 2 : 0);
@@ -99,10 +99,20 @@ public final class QuestConfigScreen extends AnimatedQuestScreen {
                         minecraft.setScreen(new MailboxAnimationEditorScreen(this)));
             }
             case "notifications" -> {
-                number("task_toast_scale_label", config.taskToastScalePercent, 5, 10, 200,
-                        value -> config.taskToastScalePercent = value, "task-toast-scale");
                 number("task_toast_icon_scale_label", config.taskToastIconScalePercent, 5, 10, 200,
                         value -> config.taskToastIconScalePercent = value, "task-toast-icon-scale");
+                toggle("hud_auto_avoid_minimap", config.hudAutoAvoidMinimap,
+                        value -> config.hudAutoAvoidMinimap = value);
+                var corner = row("minimap_corner");
+                var cornerChoice = body(new StyledChoiceButton<>(corner.x(), corner.y(), corner.width(), 24,
+                        text("minimap_corner"), List.of("top_left", "top_right", "bottom_left", "bottom_right"),
+                        config.minimapCorner, value -> text("minimap_corner." + value), value -> {
+                            config.minimapCorner = value;
+                            saveLocal();
+                        }, styles, "hud-minimap-corner"));
+                cornerChoice.setTooltip(Tooltip.create(text("minimap_corner_hint")));
+                action("notification_layout", "notification-layout", () ->
+                        minecraft.setScreen(new HudNotificationLayoutScreen(this)));
                 var preview = action("notification_preview", "notification-preview", () ->
                         ClientQuestDefinitions.all().stream().findFirst()
                                 .ifPresent(quest -> QuestUnlockToast.enqueue(quest.id())));

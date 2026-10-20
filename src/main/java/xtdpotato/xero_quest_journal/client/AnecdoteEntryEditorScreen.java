@@ -174,6 +174,7 @@ final class AnecdoteEntryEditorScreen extends AnimatedQuestScreen {
         int imageSize = Math.max(24, Math.min(w - 18, cardHeight - 42));
         if (!iconValue.isBlank())
             QuestIcons.render(g, iconValue, x + (w - imageSize) / 2, y + 8, imageSize, imageSize, 1);
+        else AnecdoteBookArt.mapScroll(g, x + (w - imageSize) / 2, y + 8, imageSize, 0xFFD2AD69);
         int footer = y + cardHeight - 32;
         g.fill(x + 5, footer - 4, x + w - 5, footer - 3, 0x66C3AE86);
         String value = labelValue.isBlank() ? "逸闻" : labelValue;

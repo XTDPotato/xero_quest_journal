@@ -48,6 +48,9 @@ public final class AnecdoteClientState {
     }
 
     public static AnecdoteSnapshot snapshot() { return snapshot; }
+    public static java.util.Optional<AnecdoteDefinition> find(String id) {
+        return snapshot.entries().stream().filter(entry -> entry.id().equals(id)).findFirst();
+    }
     public static String lastResult() { return lastResult; }
     public static void clearResult() { lastResult = ""; }
 

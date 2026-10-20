@@ -10,12 +10,16 @@ import xtdpotato.xero_quest_journal.client.ClientPreferences;
 import xtdpotato.xero_quest_journal.client.ClientQuestProgress;
 import xtdpotato.xero_quest_journal.client.ClientControlState;
 import xtdpotato.xero_quest_journal.client.CoordinateTrackAnimation;
+import xtdpotato.xero_quest_journal.client.CoordinateRoute;
+import xtdpotato.xero_quest_journal.client.CoordinateGuidance;
 import xtdpotato.xero_quest_journal.client.JournalListButton;
 import xtdpotato.xero_quest_journal.client.QuestHudRenderer;
 import xtdpotato.xero_quest_journal.client.QuestIcons;
 import xtdpotato.xero_quest_journal.client.QuestUnlockToast;
 import xtdpotato.xero_quest_journal.client.QuestMarkerProjection;
 import xtdpotato.xero_quest_journal.client.QuestScreen;
+import xtdpotato.xero_quest_journal.client.ItemPickupToast;
+import xtdpotato.xero_quest_journal.client.HudOverlayLayout;
 import xtdpotato.xero_quest_journal.core.io.QuestRepository;
 import xtdpotato.xero_quest_journal.core.model.ListIconConfig;
 import xtdpotato.xero_quest_journal.core.model.TriggerGraph;
@@ -74,6 +78,7 @@ final class TrackingHudRegression {
         switch (stage) {
             case 0 -> {
                 verifyCoordinateAnimationCooldown();
+                verifyHudOverlayCollisionLayout();
                 require(game.level != null
                                 && !(game.getSingleplayerServer().overworld().getChunkSource().getGenerator()
                                 instanceof net.minecraft.world.level.levelgen.FlatLevelSource),
@@ -213,6 +218,20 @@ final class TrackingHudRegression {
                     float animationProgress = QuestHudRenderer.coordinateTrackProgress(fixture.id(), animationNow);
                     require(animationProgress > 0 && animationProgress < 1,
                             "Pressing V did not start the located marker animation");
+                    CoordinateGuidance.tick(game);
+                    var guidanceRoute = CoordinateGuidance.route();
+                    boolean alreadyArrived = game.player.position().distanceToSqr(
+                            location.x(), location.y(), location.z())
+                            <= Math.pow(Math.min(1.75, location.radius()), 2);
+                    require(alreadyArrived || guidanceRoute.size() > 1,
+                            "Pressing V did not build a walkable coordinate guidance route");
+                    for (int routeIndex = 1; routeIndex < guidanceRoute.size(); routeIndex++) {
+                        var previous = guidanceRoute.get(routeIndex - 1);
+                        var next = guidanceRoute.get(routeIndex);
+                        require(Math.abs(previous.x() - next.x()) + Math.abs(previous.z() - next.z()) == 1
+                                        && Math.abs(previous.y() - next.y()) <= 3,
+                                "Coordinate guidance route stepped through a wall or skipped terrain");
+                    }
                     QuestUnlockToast.trackCurrent();
                     require(QuestHudRenderer.coordinateTrackProgress(fixture.id(), System.nanoTime()) < 1,
                             "Repeated V press interrupted/restarted the active marker animation");
@@ -275,6 +294,24 @@ final class TrackingHudRegression {
             }
             case 10 -> {
                 if (!MailBannerTrackingRegression.tick(game)) return false;
+                ItemPickupToast.clear();
+                for (int picked = 1; picked <= 5; picked++)
+                    ItemPickupToast.enqueue(new QuestNetwork.ItemPickupNoticePayload(
+                            new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.DIAMOND),
+                            picked, 70 + picked, 105));
+                require(ItemPickupToast.visibleCount() == 4,
+                        "Item pickup HUD did not enforce its four-row limit");
+                require(ItemPickupToast.newest() != null && ItemPickupToast.newest().pickedCount() == 5
+                                && ItemPickupToast.newest().current() == 75,
+                        "Item pickup HUD did not prioritize the most recent acquisition");
+                game.setScreen(null);
+                stage = 11;
+                wait = 15;
+                return false;
+            }
+            case 11 -> {
+                capture(game, "tracking-hud-item-pickup");
+                ItemPickupToast.clear();
                 ClientPreferences.get().trackingHud = originalHud;
                 ClientPreferences.get().reducedMotion = originalMotion;
                 ClientPreferences.get().trackingMarkerScalePercent = originalMarkerScale;
@@ -294,6 +331,27 @@ final class TrackingHudRegression {
     }
 
     private static void verifyCoordinateAnimationCooldown() {
+        var destination = new QuestLocation("coords", "minecraft:overworld", "",
+                4.5, 64, .5, .5, true);
+        var route = CoordinateRoute.find(new CoordinateRoute.Cell(0, 64, 0), destination, cell -> {
+            var next = new java.util.ArrayList<CoordinateRoute.Cell>();
+            for (int[] direction : CoordinateRoute.directions()) {
+                int x = cell.x() + direction[0], z = cell.z() + direction[1];
+                if (x < 0 || x > 4 || z < -2 || z > 2 || x == 2 && z == 0) continue;
+                next.add(new CoordinateRoute.Cell(x, 64, z));
+            }
+            return next;
+        }, 200);
+        require(route.reached() && route.cells().size() > 5
+                        && route.cells().stream().noneMatch(cell -> cell.x() == 2 && cell.z() == 0),
+                "Coordinate guidance path cut through a wall instead of routing around it");
+        for (int index = 1; index < route.cells().size(); index++) {
+            var previous = route.cells().get(index - 1);
+            var next = route.cells().get(index);
+            require(Math.abs(previous.x() - next.x()) + Math.abs(previous.z() - next.z()) == 1
+                            && Math.abs(previous.y() - next.y()) <= 1,
+                    "Coordinate guidance route contains a non-walkable jump");
+        }
         CoordinateTrackAnimation animation = new CoordinateTrackAnimation();
         require(new ClientPreferences().trackingMarkerScalePercent == 50,
                 "Coordinate marker default scale is not 50 percent");
@@ -319,6 +377,23 @@ final class TrackingHudRegression {
                         && animation.play("coordinate_task",
                         started + CoordinateTrackAnimation.DURATION_NANOS),
                 "Coordinate marker replay did not unlock at the animation end");
+    }
+
+    private static void verifyHudOverlayCollisionLayout() {
+        for (var mapCorner : HudOverlayLayout.Corner.values()) {
+            HudOverlayLayout.clearReservations();
+            HudOverlayLayout.reserveMinimapArea(1920, 1080, mapCorner);
+            var mapTest = HudOverlayLayout.place(1920, 1080,
+                    new HudOverlayLayout.Rect(8, 8, 360, 70), mapCorner, 8);
+            var toast = HudOverlayLayout.place(1920, 1080,
+                    new HudOverlayLayout.Rect(8, 8, 430, 90), mapCorner, 8);
+            var pickups = HudOverlayLayout.place(1920, 1080,
+                    new HudOverlayLayout.Rect(8, 8, 760, 265), mapCorner, 8);
+            require(HudOverlayLayout.avoids(mapTest, toast) && HudOverlayLayout.avoids(mapTest, pickups)
+                            && HudOverlayLayout.avoids(toast, pickups),
+                    "HUD overlays did not relocate around minimap corner " + mapCorner);
+        }
+        HudOverlayLayout.clearReservations();
     }
 
     private static void createImage() throws Exception {

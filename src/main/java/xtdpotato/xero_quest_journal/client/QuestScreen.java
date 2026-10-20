@@ -33,6 +33,10 @@ import java.util.concurrent.CompletableFuture;
 
 public final class QuestScreen extends AnimatedQuestScreen {
     private static final int QUESTS_PER_PAGE = 50;
+    private static final int LIST_OVERSCAN_ROWS = 4;
+    private static final int ICON_PICKER_OVERSCAN_ROWS = 4;
+    private record ScrollTrack(int x, int y, int width, int height, int thumbX, int thumbY,
+                               int thumbWidth, int thumbHeight, double maximum) {}
     private static final long DOUBLE_CLICK_NANOS = 350_000_000L;
     private static final int GUIDE_SNAP_PIXELS = 5;
     private static final List<String> GRAVITY_FLAGS = List.of(
@@ -99,6 +103,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
     private final LinkedHashSet<String> selectedGroupIds = new LinkedHashSet<>();
     private final Set<String> collapsedGroupIds = new HashSet<>(ClientPreferences.get().collapsedJournalGroups);
     private String taskReorderCandidate = "";
+    private String pressedClaimId = "";
     private long taskReorderPressedAt;
     private boolean taskReorderDragging;
     private boolean taskReorderCompatible;
@@ -111,6 +116,9 @@ public final class QuestScreen extends AnimatedQuestScreen {
     private JournalListModel journalList = new JournalListModel(List.of(), 0);
     private JournalListModel groupSlideSource = journalList;
     private final Map<String, UiMotion> groupSlides = new HashMap<>();
+    private final Map<String, SmoothScroll> embeddedScrolls = new HashMap<>();
+    private String scrollTrackDragging = "";
+    private double scrollTrackGrab;
     private Map<String, JournalGroupSlide.Clip> groupRowClips = Map.of();
     private CompletableFuture<QuestBatchAuthoring.Result> batchPending;
     private LayoutEditorState copiedLayout;
@@ -425,6 +433,11 @@ public final class QuestScreen extends AnimatedQuestScreen {
     @Override
     protected void init() {
         clearFrameElements();
+        if (!pressedClaimId.isBlank()) {
+            var pressed = controls.get("quest:" + pressedClaimId);
+            if (pressed instanceof JournalListButton row) row.claimPressed(false);
+            pressedClaimId = "";
+        }
         if (!ClientEditMode.enabled()) editMode = false;
         if (!editMode) movingTask = movingTab = "";
         if (previewTemplate != null) {
@@ -1036,7 +1049,8 @@ public final class QuestScreen extends AnimatedQuestScreen {
         queriedJournal = journalList;
         queriedScrollPixel = pixel;
         queriedListHeight = viewportHeight;
-        double top = pixel - 48, bottom = pixel + viewportHeight + 48;
+        int overscan = (JournalListModel.TALL_ROW + 4) * LIST_OVERSCAN_ROWS;
+        double top = pixel - overscan, bottom = pixel + viewportHeight + overscan;
         // Sliding children temporarily overlap their header and cease to be sorted.
         if (groupSlides.values().stream().anyMatch(motion -> !motion.settled()))
             return queriedRows = journalList.rows().stream()
@@ -1673,10 +1687,9 @@ public final class QuestScreen extends AnimatedQuestScreen {
         int rowHeight = overviewRowHeight();
         List<OverviewEntry> entries = List.of(
                 new OverviewEntry("main", "overview.category.travel", "guide"),
-                new OverviewEntry("anecdotes", "overview.category.anecdotes", "mail_check"),
                 new OverviewEntry("legendary", "overview.category.legendary", "minecraft:totem_of_undying"),
                 new OverviewEntry("hot_events", "overview.category.hot_events", "recommended"),
-                new OverviewEntry("world", "overview.category.world", "other"));
+                new OverviewEntry("anecdotes", "overview.category.anecdotes", "anecdote_map"));
         for (int index = 0; index < entries.size(); index++) {
             OverviewEntry entry = entries.get(index);
             JournalNavButton row = new OverviewCategoryCard(rowLeft, rowTop + index * (rowHeight + rowGap),
@@ -2190,8 +2203,9 @@ public final class QuestScreen extends AnimatedQuestScreen {
                     ? row.group().id().equals(activeGroup) : row.quest().id().equals(selectedId));
             int top = groupClipTop(row.key()), bottom = groupClipBottom(row.key());
             button.clipTo(listLeft(), top, listRight(), Math.max(top, bottom));
+            int overscan = (JournalListModel.TALL_ROW + 4) * LIST_OVERSCAN_ROWS;
             button.visible = listAvailable() && bottom > top
-                    && button.getBottom() > top && button.getY() < bottom;
+                    && button.getBottom() > top - overscan && button.getY() < bottom + overscan;
         }
     }
     private void animateList() {
@@ -2315,6 +2329,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
         int contentBottom;
         if (!orderedElements(false).isEmpty()) {
             contentBottom = orderedElements(false).stream()
+                    .filter(element -> enclosingScroll(element) == null)
                     .mapToInt(element -> canvasTop() + (int) Math.round(layout.position(element.id(), layout.gridSize(), 48).y()
                             * canvasScaleY() * (editMode ? canvasZoom : 1))
                             + displayHeight(element))
@@ -2455,6 +2470,31 @@ public final class QuestScreen extends AnimatedQuestScreen {
 
     private static boolean isBuiltIn(LayoutEditorState.Element element) {
         return element != null && element.kind().startsWith("quest_");
+    }
+
+    private ItemStack itemStack(String value) {
+        if (QuestItemStackValue.encoded(value)) {
+            return minecraft.player == null ? ItemStack.EMPTY
+                    : QuestItemStackValue.decode(value, minecraft.player.registryAccess()).orElse(ItemStack.EMPTY);
+        }
+        var id = ResourceLocation.tryParse(value == null ? "" : value.strip());
+        if (id == null || !BuiltInRegistries.ITEM.containsKey(id)) return ItemStack.EMPTY;
+        var item = BuiltInRegistries.ITEM.get(id);
+        return item == net.minecraft.world.item.Items.AIR ? ItemStack.EMPTY : new ItemStack(item);
+    }
+
+    private static void renderItemStack(GuiGraphics graphics, ItemStack original, int x, int y,
+                                        int width, int height, float alpha) {
+        ItemStack stack = original.copy();
+        stack.setCount(1);
+        float size = Math.max(1, Math.min(width, height));
+        graphics.pose().pushPose();
+        graphics.pose().translate(x + (width - size) / 2F, y + (height - size) / 2F, 0);
+        graphics.pose().scale(size / 16F, size / 16F, 1);
+        graphics.setColor(1, 1, 1, alpha);
+        graphics.renderItem(stack, 0, 0);
+        graphics.setColor(1, 1, 1, 1);
+        graphics.pose().popPose();
     }
 
     private static boolean isTemplateElement(LayoutEditorState.Element element) {
@@ -2663,6 +2703,10 @@ public final class QuestScreen extends AnimatedQuestScreen {
             if (kind.equals("quest_rewards")) {
                 form.layoutWidth = "-1";
                 form.layoutHeight = "-2";
+            } else if (kind.equals("item_display")) {
+                form.layoutWidth = "24";
+                form.layoutHeight = "24";
+                form.description = "minecraft:oak_log";
             } else if (kind.equals("image")) {
                 form.layoutWidth = "48";
                 form.layoutHeight = "48";
@@ -2683,6 +2727,11 @@ public final class QuestScreen extends AnimatedQuestScreen {
             } else if (kind.equals("structure_preview")) {
                 form.layoutWidth = "160";
                 form.layoutHeight = "120";
+            } else if (kind.equals("scroll")) {
+                form.layoutWidth = "180";
+                form.layoutHeight = "100";
+                form.orientation = "vertical";
+                form.showControls = "true";
             } else if (kind.equals("text")) {
                 form.layoutWidth = "-2";
                 form.layoutHeight = "-2";
@@ -2696,9 +2745,27 @@ public final class QuestScreen extends AnimatedQuestScreen {
             } else if (!kind.equals("text")) {
                 form.layoutHeight = "80";
             }
+            if (kind.equals("item_display")) {
+                int[] belowText = defaultItemDisplayPosition();
+                form.x = Integer.toString(belowText[0]);
+                form.y = Integer.toString(belowText[1]);
+            }
         }
         error = null;
         init();
+    }
+
+    private int[] defaultItemDisplayPosition() {
+        LayoutEditorState.Element anchor = layout.elements().values().stream()
+                .filter(element -> element.quest().equals(selectedId)
+                        && (element.kind().equals("quest_description") || isTextElement(element)))
+                .max(Comparator.comparingInt(element ->
+                        layout.position(element.id(), 0, 0).y() + elementHeight(element)))
+                .orElse(null);
+        if (anchor == null) return new int[]{layout.gridSize(), Math.max(0, layout.canvasHeight() - 40)};
+        var position = layout.position(anchor.id(), layout.gridSize(), 48);
+        return new int[]{Math.max(0, position.x()),
+                Math.min(Math.max(0, layout.canvasHeight() - 24), position.y() + elementHeight(anchor) + 8)};
     }
 
     private void editProperties(String kind, String id) {
@@ -2815,6 +2882,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
         next.id = controlId(element);
         next.name = text("layout." + element.kind()).getString();
         next.description = elementDisplayValue(element);
+        if (Set.of("item_display", "scroll").contains(element.kind())) next.propertyPage = "content";
         next.x = Integer.toString(position.x());
         next.y = Integer.toString(position.y());
         next.layoutWidth = element.attribute("layout_width", Integer.toString(element.width()));
@@ -2861,7 +2929,8 @@ public final class QuestScreen extends AnimatedQuestScreen {
         next.loop = element.attribute("loop", "false");
         next.muted = element.attribute("muted", "false");
         next.volume = element.attribute("volume", "1.0");
-        next.showControls = element.attribute("showControls", "true");
+        next.showControls = element.attribute(element.kind().equals("scroll")
+                ? "showScrollbar" : "showControls", "true");
         next.mediaDisplayText = element.attribute("displayText", "");
         next.entryIcon = element.attribute("entryIcon", "minecraft:paper");
         next.entryProgress = element.attribute("entryProgress", "0/1");
@@ -3484,6 +3553,36 @@ public final class QuestScreen extends AnimatedQuestScreen {
                     "toolbar-button"));
             return;
         }
+        if (form.kind.equals("item_display")) {
+            Form editing = form;
+            labeledField("layout.value", form.description, x + 12, y + 80, w - 52, 4096,
+                    value -> form.description = value);
+            var choose = new StyledButton(x + w - 36, y + 80, 24, 20, Component.literal("..."),
+                    ignored -> {
+                        iconPicker = new IconPicker(editing.description, value -> {
+                            if (form != editing) return;
+                            editing.description = value;
+                        }, true);
+                        init();
+                    }, styles, "item-display-choose", "toolbar-button");
+            choose.setTooltip(Tooltip.create(text("item_display.choose")));
+            addRenderableWidget(choose);
+            formLabels.add(new FormLabel(text("item_display.hint"), x + 12, y + 110, w - 24));
+            return;
+        }
+        if (form.kind.equals("scroll")) {
+            labeledChoice("layout.orientation", x + 12, y + 80, w - 24,
+                    List.of("vertical", "horizontal"), form.orientation,
+                    value -> text("layout.orientation." + value), value -> form.orientation = value,
+                    "scroll-orientation");
+            labeledChoice("layout.scrollbar", x + 12, y + 108, w - 24,
+                    List.of("true", "false"), form.showControls,
+                    value -> text("layout.boolean." + value), value -> form.showControls = value,
+                    "scroll-scrollbar");
+            labeledField("layout.spacing", form.spacing, x + 12, y + 136, w - 24, 8,
+                    value -> form.spacing = value);
+            return;
+        }
         if (form.kind.equals("structure_preview") || form.kind.equals("structure_enter")) {
             labeledField("layout.value", form.description, x + 12, y + 80, w - 24, 4096,
                     value -> form.description = value);
@@ -3590,7 +3689,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
                     "layout-orientation");
             labeledField("layout.spacing", form.spacing, x + 12, y + 136, w - 24, 8,
                     value -> form.spacing = value);
-            if (List.of("linear", "relative").contains(form.kind)) {
+            if (List.of("linear", "relative", "scroll").contains(form.kind)) {
                 gravityFlagsControl("layout.gravity", form.gravity, x + 12, y + 164, w - 24,
                         false, value -> form.gravity = value, "layout-gravity");
             }
@@ -3788,7 +3887,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
         iconPicker.visibleRows = rows;
         iconPicker.gridTop = y + 112;
         iconPicker.gridBottom = y + h - 100;
-        int slotCount = columns * (rows + 2);
+        int slotCount = columns * (rows + ICON_PICKER_OVERSCAN_ROWS * 2);
         for (int slot = 0; slot < slotCount; slot++) {
             int index = slot;
             int bx = x + 16 + slot % columns * 40;
@@ -3865,7 +3964,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
     private void updateIconPickerViewport() {
         if (iconPicker == null || iconPicker.columns <= 0) return;
         int firstRow = iconPicker.firstRow();
-        int offset = (int) Math.round(iconPicker.scroll.position()) % 40;
+        int offset = (int) Math.round(iconPicker.scroll.position() - iconPicker.firstRow() * 40.0);
         for (int slot = 0; slot < iconChoiceButtons.size(); slot++) {
             StyledButton icon = iconChoiceButtons.get(slot);
             int column = slot % iconPicker.columns;
@@ -4427,6 +4526,9 @@ public final class QuestScreen extends AnimatedQuestScreen {
             if (form.kind.equals("image") && !QuestIcons.valid(form.description)) {
                 throw new IllegalArgumentException("Invalid image");
             }
+            if (form.kind.equals("item_display") && !validItemDisplayValue(form.description)) {
+                throw new IllegalArgumentException("Invalid displayed item");
+            }
             if (form.kind.equals("video") && !ClientMediaManager.validVideoSource(form.description)) {
                 throw new IllegalArgumentException("Invalid video");
             }
@@ -4473,7 +4575,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
             attributes.put("layout_marginTop", Integer.toString(marginTop));
             attributes.put("layout_marginRight", Integer.toString(marginRight));
             attributes.put("layout_marginBottom", Integer.toString(marginBottom));
-            if (List.of("linear", "relative").contains(form.kind)) {
+            if (List.of("linear", "relative", "scroll").contains(form.kind)) {
                 attributes.put("gravity", normalizeGravity(form.gravity));
             } else {
                 attributes.remove("gravity");
@@ -4506,6 +4608,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
             attributes.put("orientation", form.orientation);
             attributes.put("spacing", Integer.toString(spacing));
             attributes.put("scaleType", form.imageScaleType);
+            if (form.kind.equals("scroll")) attributes.put("showScrollbar", form.showControls);
             if (form.kind.equals("structure_enter")) attributes.put("displayText", form.mediaDisplayText);
             if (form.kind.equals("video") || form.kind.equals("audio")) {
                 attributes.put("displayText", form.mediaDisplayText);
@@ -4555,6 +4658,16 @@ public final class QuestScreen extends AnimatedQuestScreen {
         } catch (Exception ignored) {
             return QuestIcons.valid(value);
         }
+    }
+
+    private boolean validItemDisplayValue(String value) {
+        if (QuestItemStackValue.encoded(value)) {
+            return minecraft.player != null && QuestItemStackValue
+                    .decode(value, minecraft.player.registryAccess()).isPresent();
+        }
+        var id = ResourceLocation.tryParse(value == null ? "" : value.strip());
+        return id != null && BuiltInRegistries.ITEM.containsKey(id)
+                && BuiltInRegistries.ITEM.get(id) != net.minecraft.world.item.Items.AIR;
     }
 
     private static int parseDimension(String value, int fallback) {
@@ -4660,7 +4773,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
                     .map(line -> styledText(element, line)).mapToInt(font::width).max().orElse(0);
             return Math.max(1, Math.round(textWidth * scale) + paddingLeft(element) + paddingRight(element));
         }
-        if (element.kind().equals("image")) {
+        if (element.kind().equals("image") || element.kind().equals("item_display")) {
             return 16 + paddingLeft(element) + paddingRight(element);
         }
         if (element.kind().equals("video")) {
@@ -4676,7 +4789,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
             return Math.max(1, element.width());
         }
         int spacing = Math.max(0, parseInteger(element.attribute("spacing", "4"), 4));
-        boolean horizontal = element.kind().equals("linear")
+        boolean horizontal = List.of("linear", "scroll").contains(element.kind())
                 && element.attribute("orientation", "vertical").equals("horizontal");
         int content;
         if (horizontal) {
@@ -4717,7 +4830,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
             return Math.max(1, Math.max(1, lines) * Math.round((font.lineHeight + 1) * scale)
                     + paddingTop(element) + paddingBottom(element));
         }
-        if (element.kind().equals("image")) {
+        if (element.kind().equals("image") || element.kind().equals("item_display")) {
             return 16 + paddingTop(element) + paddingBottom(element);
         }
         if (element.kind().equals("video")) {
@@ -4733,7 +4846,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
             return Math.max(1, element.height());
         }
         int spacing = Math.max(0, parseInteger(element.attribute("spacing", "4"), 4));
-        boolean vertical = element.kind().equals("linear")
+        boolean vertical = List.of("linear", "scroll").contains(element.kind())
                 && !element.attribute("orientation", "vertical").equals("horizontal");
         int content;
         if (vertical) {
@@ -5606,6 +5719,17 @@ public final class QuestScreen extends AnimatedQuestScreen {
     }
 
     private void renderElements(GuiGraphics g, int mouseX, int mouseY) {
+        var scrollContainers = layout.elements().values().stream()
+                .filter(element -> element.quest().equals(selectedId) && element.kind().equals("scroll"))
+                .toList();
+        Set<String> scrollIds = scrollContainers.stream().map(LayoutEditorState.Element::id)
+                .collect(java.util.stream.Collectors.toSet());
+        embeddedScrolls.keySet().removeIf(id -> !scrollIds.contains(id));
+        for (var container : scrollContainers) {
+            var scroll = embeddedScroll(container);
+            scroll.limit(embeddedScrollMaximum(container));
+            scroll.advance();
+        }
         if (previewTemplate == null && !editMode && form == null && iconPicker == null && menu.isEmpty()
                 && System.nanoTime() - lastControlHover >= 200_000_000L) {
             String hovered = hit(mouseX, mouseY);
@@ -5627,6 +5751,11 @@ public final class QuestScreen extends AnimatedQuestScreen {
             int[] display = elementDisplayPosition(element);
             int x = display[0];
             int y = display[1];
+            int[] scrollClip = scrollClipBounds(element);
+            if (scrollClip[2] <= scrollClip[0] || scrollClip[3] <= scrollClip[1]) continue;
+            boolean nestedClip = scrollClip[0] > detailsLeft || scrollClip[1] > detailsTop()
+                    || scrollClip[2] < canvasRight() || scrollClip[3] < detailContentBottom();
+            if (nestedClip) g.enableScissor(scrollClip[0], scrollClip[1], scrollClip[2], scrollClip[3]);
             p.size(logicalDisplayWidth(element), logicalDisplayHeight(element));
             if (x + elementWidth + 32 < detailsLeft || x - 32 > canvasRight()
                     || y + elementHeight + 32 < detailsTop() || y - 32 > detailContentBottom()) continue;
@@ -5673,6 +5802,12 @@ public final class QuestScreen extends AnimatedQuestScreen {
             if (motion != null) motion.ripple(g, "claim_all", x, y, elementWidth, elementHeight, shape, radius, alpha);
             if (drawContent && element.kind().equals("quest_icon")) {
                 QuestIcons.render(g, selected == null ? "" : selected.icon(), x, y, elementWidth, elementHeight, alpha);
+            } else if (drawContent && element.kind().equals("item_display")) {
+                ItemStack stack = itemStack(effectiveElement(element).value());
+                if (!stack.isEmpty()) renderItemStack(g, stack, x, y, elementWidth, elementHeight, alpha);
+                if (hoveredSurface || pressedSurface)
+                    g.renderOutline(x - 1, y - 1, elementWidth + 2, elementHeight + 2,
+                            applyAlpha(pressedSurface ? 0xFFFFE3A2 : 0xFFF0D28A, alpha));
             } else if (drawContent && element.kind().equals("quest_rewards")) {
                 int hoveredReward = !editMode && menu.isEmpty() && element.id().equals(hit(mouseX, mouseY))
                         ? rewardIndexAt(element, mouseX, mouseY) : -1;
@@ -5708,12 +5843,155 @@ public final class QuestScreen extends AnimatedQuestScreen {
             if (editMode && showEditorBounds) {
                 g.renderOutline(x, y, elementWidth, elementHeight,
                         selectedLayoutIds.contains(element.id()) ? 0xFFF2CF83 : 0xFF79B9A5);
-                if (element.kind().equals("linear") || element.kind().equals("relative")) {
+                if (isLayoutContainerKind(element.kind())) {
                     g.drawString(font, text("layout." + element.kind()), x + 3, y + 3, 0xFF79B9A5);
                 }
             }
+            if (nestedClip) g.disableScissor();
         }
+        for (var container : scrollContainers) renderScrollTrack(g, container, mouseX, mouseY);
         g.disableScissor();
+    }
+
+    private SmoothScroll embeddedScroll(LayoutEditorState.Element container) {
+        return embeddedScrolls.computeIfAbsent(container.id(), ignored -> new SmoothScroll());
+    }
+
+    private boolean horizontalScroll(LayoutEditorState.Element container) {
+        return container.attribute("orientation", "vertical").equals("horizontal");
+    }
+
+    private double embeddedScrollMaximum(LayoutEditorState.Element container) {
+        var position = layout.position(container.id(), 0, 0);
+        boolean horizontal = horizontalScroll(container);
+        int viewportStart = horizontal ? position.x() + paddingLeft(container)
+                : position.y() + paddingTop(container);
+        int viewportSize = horizontal
+                ? elementWidth(container) - paddingLeft(container) - paddingRight(container)
+                : elementHeight(container) - paddingTop(container) - paddingBottom(container);
+        int contentEnd = viewportStart + Math.max(1, viewportSize);
+        for (var child : layout.elements().values()) {
+            if (!container.id().equals(layout.parentOf(child.id()))
+                    || child.attribute("visibility", "visible").equals("gone")) continue;
+            var childPosition = layout.position(child.id(), 0, 0);
+            int end = horizontal ? childPosition.x() + elementWidth(child)
+                    : childPosition.y() + elementHeight(child);
+            contentEnd = Math.max(contentEnd, end + (horizontal ? marginRight(child) : marginBottom(child)));
+        }
+        return Math.max(0, contentEnd - viewportStart - Math.max(1, viewportSize));
+    }
+
+    private LayoutEditorState.Element enclosingScroll(LayoutEditorState.Element element) {
+        for (String parentId = layout.parentOf(element.id()); parentId != null;
+             parentId = layout.parentOf(parentId)) {
+            var parent = layout.elements().get(parentId);
+            if (parent == null || !parent.quest().equals(element.quest())) break;
+            if (parent.kind().equals("scroll")) return parent;
+        }
+        return null;
+    }
+
+    private int[] scrollViewportRect(LayoutEditorState.Element container) {
+        int[] position = elementDisplayPosition(container);
+        int width = displayWidth(container), height = displayHeight(container);
+        int left = position[0] + canvasPixels(paddingLeft(container));
+        int top = position[1] + canvasPixels(paddingTop(container));
+        int right = position[0] + width - canvasPixels(paddingRight(container));
+        int bottom = position[1] + height - canvasPixels(paddingBottom(container));
+        if (parseBoolean(container.attribute("showScrollbar", "true"), true)
+                && embeddedScrollMaximum(container) > 0) {
+            if (horizontalScroll(container)) bottom -= Math.max(4, canvasPixels(6));
+            else right -= Math.max(4, canvasPixels(6));
+        }
+        return new int[]{left, top, Math.max(left, right), Math.max(top, bottom)};
+    }
+
+    private int[] scrollClipBounds(LayoutEditorState.Element element) {
+        int left = detailsLeft, top = detailsTop(), right = canvasRight(), bottom = detailContentBottom();
+        for (String parentId = layout.parentOf(element.id()); parentId != null;
+             parentId = layout.parentOf(parentId)) {
+            var parent = layout.elements().get(parentId);
+            if (parent == null || !parent.quest().equals(element.quest())) break;
+            if (!parent.kind().equals("scroll")) continue;
+            int[] clip = scrollViewportRect(parent);
+            left = Math.max(left, clip[0]); top = Math.max(top, clip[1]);
+            right = Math.min(right, clip[2]); bottom = Math.min(bottom, clip[3]);
+            int[] parentPosition = elementDisplayPosition(parent);
+            left = Math.max(left, parentPosition[0]);
+            top = Math.max(top, parentPosition[1]);
+            right = Math.min(right, parentPosition[0] + displayWidth(parent));
+            bottom = Math.min(bottom, parentPosition[1] + displayHeight(parent));
+        }
+        return new int[]{left, top, Math.max(left, right), Math.max(top, bottom)};
+    }
+
+    private ScrollTrack scrollTrack(LayoutEditorState.Element container) {
+        if (!parseBoolean(container.attribute("showScrollbar", "true"), true)) return null;
+        int[] box = elementDisplayPosition(container);
+        int width = displayWidth(container), height = displayHeight(container);
+        boolean horizontal = horizontalScroll(container);
+        double maximum = embeddedScrollMaximum(container);
+        if (maximum <= 0) return null;
+        int trackX = horizontal ? box[0] + 2 : box[0] + width - Math.max(4, canvasPixels(5));
+        int trackY = horizontal ? box[1] + height - Math.max(4, canvasPixels(5)) : box[1] + 2;
+        int trackWidth = horizontal ? Math.max(1, width - 4) : Math.max(3, canvasPixels(3));
+        int trackHeight = horizontal ? Math.max(3, canvasPixels(3)) : Math.max(1, height - 4);
+        int trackLength = horizontal ? trackWidth : trackHeight;
+        double scale = (horizontal ? canvasScaleX() : canvasScaleY()) * (editMode ? canvasZoom : 1);
+        int contentLength = trackLength + (int) Math.ceil(maximum * scale);
+        int thumbLength = Math.min(trackLength, Math.max(canvasPixels(10),
+                trackLength * trackLength / Math.max(1, contentLength)));
+        double progress = embeddedScroll(container).position() / maximum;
+        int thumbOffset = (int) Math.round(Math.max(0, trackLength - thumbLength)
+                * Math.clamp(progress, 0, 1));
+        int thumbX = horizontal ? trackX + thumbOffset : trackX;
+        int thumbY = horizontal ? trackY : trackY + thumbOffset;
+        return new ScrollTrack(trackX, trackY, trackWidth, trackHeight,
+                thumbX, thumbY, horizontal ? thumbLength : trackWidth,
+                horizontal ? trackHeight : thumbLength, maximum);
+    }
+
+    private void renderScrollTrack(GuiGraphics g, LayoutEditorState.Element container,
+                                  int mouseX, int mouseY) {
+        ScrollTrack track = scrollTrack(container);
+        if (track == null) return;
+        int[] clip = scrollClipBounds(container);
+        g.enableScissor(clip[0], clip[1], clip[2], clip[3]);
+        int background = 0x80555C66, thumb = 0xFFD9DDE3;
+        if (mouseX >= track.thumbX() && mouseX < track.thumbX() + track.thumbWidth()
+                && mouseY >= track.thumbY() && mouseY < track.thumbY() + track.thumbHeight())
+            thumb = 0xFFFFE0A0;
+        g.fill(track.x(), track.y(), track.x() + track.width(), track.y() + track.height(), background);
+        g.fill(track.thumbX(), track.thumbY(), track.thumbX() + track.thumbWidth(),
+                track.thumbY() + track.thumbHeight(), thumb);
+        g.disableScissor();
+    }
+
+    private LayoutEditorState.Element scrollTrackAt(double x, double y) {
+        List<LayoutEditorState.Element> ordered = orderedElements(true);
+        for (int index = ordered.size() - 1; index >= 0; index--) {
+            var element = ordered.get(index);
+            if (!element.quest().equals(selectedId) || !element.kind().equals("scroll")
+                    || !editMode && !runtimeVisible(element) || !insideScrollClips(element, x, y)) continue;
+            ScrollTrack track = scrollTrack(element);
+            if (track != null && x >= track.x() - 2 && x < track.x() + track.width() + 2
+                    && y >= track.y() - 2 && y < track.y() + track.height() + 2) return element;
+        }
+        return null;
+    }
+
+    private void moveScrollTrack(LayoutEditorState.Element container, double x, double y) {
+        ScrollTrack track = scrollTrack(container);
+        if (track == null) return;
+        boolean horizontal = horizontalScroll(container);
+        double start = horizontal ? track.x() : track.y();
+        double length = horizontal ? track.width() : track.height();
+        double thumb = horizontal ? track.thumbWidth() : track.thumbHeight();
+        double pointer = horizontal ? x : y;
+        double value = (pointer - start - scrollTrackGrab) / Math.max(1, length - thumb);
+        SmoothScroll scroll = embeddedScroll(container);
+        scroll.limit(track.maximum());
+        scroll.jump(Math.clamp(value, 0, 1) * track.maximum());
     }
 
     private int detailContentBottom() {
@@ -5756,29 +6034,40 @@ public final class QuestScreen extends AnimatedQuestScreen {
         var runtime = editMode ? Map.<String, String>of() : ClientControlState.properties(element.quest(), QuestPresentationClient.sourceId(element));
         int mappedX = canvasX(parseInteger(runtime.getOrDefault("x", Integer.toString(position.x())), position.x()));
         int mappedY = canvasY(parseInteger(runtime.getOrDefault("y", Integer.toString(position.y())), position.y()));
+        int[] display;
         if (editMode) {
-            return new int[]{
+            display = new int[]{
                     (int) Math.round(canvasLeft() + (mappedX - canvasLeft()) * canvasZoom + canvasPanX),
                     (int) Math.round(canvasTop() + (mappedY - canvasTop()) * canvasZoom + canvasPanY - detailScroll)};
+        } else {
+            // Keep saved coordinates intact; move an out-of-bounds root and its children together for preview.
+            var root = element;
+            String parent;
+            while ((parent = layout.parentOf(root.id())) != null) {
+                var candidate = layout.elements().get(parent);
+                if (candidate == null || !candidate.quest().equals(selectedId)) break;
+                root = candidate;
+            }
+            var origin = layout.position(root.id(), layout.gridSize(), 48);
+            int originX = canvasX(origin.x());
+            int originY = canvasY(origin.y());
+            int left = canvasLeft();
+            int top = canvasTop();
+            int right = Math.max(left, canvasX(taskWidth()) - displayWidth(root));
+            int bottom = Math.max(top, canvasY(taskHeight()) - displayHeight(root));
+            int dx = Math.max(left, Math.min(originX, right)) - originX;
+            int dy = Math.max(top, Math.min(originY, bottom)) - originY;
+            display = new int[]{mappedX + dx + (int) Math.round(canvasPanX),
+                    mappedY + dy - (int) Math.floor(detailScroll)};
         }
-        // Keep saved coordinates intact; move an out-of-bounds root and its children together for preview.
-        var root = element;
-        String parent;
-        while ((parent = layout.parentOf(root.id())) != null) {
-            var candidate = layout.elements().get(parent);
-            if (candidate == null || !candidate.quest().equals(selectedId)) break;
-            root = candidate;
+        var scroll = enclosingScroll(element);
+        if (scroll != null) {
+            double value = embeddedScroll(scroll).position();
+            int offset = (int) Math.round(value * canvasScaleX() * (editMode ? canvasZoom : 1));
+            if (horizontalScroll(scroll)) display[0] -= offset;
+            else display[1] -= offset;
         }
-        var origin = layout.position(root.id(), layout.gridSize(), 48);
-        int originX = canvasX(origin.x());
-        int originY = canvasY(origin.y());
-        int left = canvasLeft();
-        int top = canvasTop();
-        int right = Math.max(left, canvasX(taskWidth()) - displayWidth(root));
-        int bottom = Math.max(top, canvasY(taskHeight()) - displayHeight(root));
-        int dx = Math.max(left, Math.min(originX, right)) - originX;
-        int dy = Math.max(top, Math.min(originY, bottom)) - originY;
-        return new int[]{mappedX + dx + (int) Math.round(canvasPanX), mappedY + dy - (int) Math.floor(detailScroll)};
+        return display;
     }
 
     private int displayWidth(LayoutEditorState.Element element) {
@@ -6623,8 +6912,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
         if (isFixedSystemControl(target)) {
             return;
         }
-        elementParent = target != null && layout.elements().containsKey(target)
-                && List.of("linear", "relative").contains(layout.elements().get(target).kind()) ? target : null;
+        elementParent = isLayoutContainer(target) ? target : null;
         List<Map.Entry<String, Runnable>> entries = new ArrayList<>();
         if (target != null && target.startsWith("system:category-")) {
             if (!target.equals("system:category-add")
@@ -6702,7 +6990,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
             if (layout.elements().get(target).kind().equals("quest_rewards")) {
                 entries.add(Map.entry("rewards.edit", this::openRewardsEditor));
             }
-            if (List.of("linear", "relative").contains(layout.elements().get(target).kind())) {
+            if (isLayoutContainerKind(layout.elements().get(target).kind())) {
                 entries.add(Map.entry("put_into_layout", () -> layoutContentsMenu(target)));
                 if (inDetails(x, y)) addLayoutEntries(entries);
             }
@@ -6791,11 +7079,13 @@ public final class QuestScreen extends AnimatedQuestScreen {
         entries.add(Map.entry("conditions.edit", () -> openConditionsEditor(selectedId)));
         entries.add(Map.entry("add_text", () -> openForm("text", "normal")));
         entries.add(Map.entry("add_quest_entry_text", () -> openForm("quest_entry_text", "normal")));
+        entries.add(Map.entry("add_item_display", () -> openForm("item_display", "normal")));
         entries.add(Map.entry("add_image", () -> openForm("image", "normal")));
         entries.add(Map.entry("add_video", () -> openForm("video", "normal")));
         entries.add(Map.entry("add_audio", () -> openForm("audio", "normal")));
         entries.add(Map.entry("add_linear", () -> openForm("linear", "normal")));
         entries.add(Map.entry("add_relative", () -> openForm("relative", "normal")));
+        entries.add(Map.entry("add_scroll", () -> openForm("scroll", "normal")));
     }
 
     private List<Map.Entry<String, Runnable>> layoutInsertEntries() {
@@ -6805,20 +7095,24 @@ public final class QuestScreen extends AnimatedQuestScreen {
                 Map.entry("add_structure_enter", () -> openForm("structure_enter", "normal")),
                 Map.entry("add_text", () -> openForm("text", "normal")),
                 Map.entry("add_quest_entry_text", () -> openForm("quest_entry_text", "normal")),
+                Map.entry("add_item_display", () -> openForm("item_display", "normal")),
                 Map.entry("add_image", () -> openForm("image", "normal")),
                 Map.entry("add_video", () -> openForm("video", "normal")),
                 Map.entry("add_audio", () -> openForm("audio", "normal")),
                 Map.entry("add_linear", () -> openForm("linear", "normal")),
                 Map.entry("add_relative", () -> openForm("relative", "normal")),
+                Map.entry("add_scroll", () -> openForm("scroll", "normal")),
                 Map.entry("add_rewards", () -> openForm("quest_rewards", "normal")));
     }
 
     private boolean isLayoutContainer(String id) {
-        if (id == null) {
-            return false;
-        }
+        if (id == null) return false;
         var element = layout.elements().get(id);
-        return element != null && List.of("linear", "relative").contains(element.kind());
+        return element != null && isLayoutContainerKind(element.kind());
+    }
+
+    private static boolean isLayoutContainerKind(String kind) {
+        return List.of("linear", "relative", "scroll").contains(kind);
     }
 
     private void openLayoutInsertMenu() {
@@ -7178,7 +7472,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
 
     private void selectedParentMenu() {
         var parents = layout.elements().values().stream()
-                .filter(element -> element.quest().equals(selectedId) && List.of("linear", "relative").contains(element.kind()))
+                .filter(element -> element.quest().equals(selectedId) && isLayoutContainerKind(element.kind()))
                 .filter(element -> !selectedLayoutIds.contains(element.id())
                         && selectedLayoutIds.stream().noneMatch(id -> layout.isDescendant(element.id(), id))).toList();
         List<Map.Entry<String, Runnable>> entries = new ArrayList<>();
@@ -7247,6 +7541,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
         if (!inDetails(x, y)) return null;
         for (var element : orderedElements(true)) {
             if (!editMode && !runtimeVisible(element)) continue;
+            if (!insideScrollClips(element, x, y)) continue;
             int elementWidth = displayWidth(element);
             int elementHeight = displayHeight(element);
             int[] display = elementDisplayPosition(element);
@@ -7258,6 +7553,20 @@ public final class QuestScreen extends AnimatedQuestScreen {
             }
         }
         return null;
+    }
+
+    private boolean insideScrollClips(LayoutEditorState.Element element, double x, double y) {
+        for (String parentId = layout.parentOf(element.id()); parentId != null;
+             parentId = layout.parentOf(parentId)) {
+            var parent = layout.elements().get(parentId);
+            if (parent == null || !parent.quest().equals(element.quest())) break;
+            if (parent.kind().equals("scroll")) {
+                int[] viewport = scrollViewportRect(parent);
+                if (x < viewport[0] || x >= viewport[2] || y < viewport[1] || y >= viewport[3])
+                    return false;
+            }
+        }
+        return true;
     }
 
     @Override
@@ -7276,6 +7585,22 @@ public final class QuestScreen extends AnimatedQuestScreen {
         if (overviewMode && !editMode && form == null && iconPicker == null) {
             if (inputBlocked() || overviewCardPending()) return true;
             return super.mouseClicked(x, y, button) || button == 1;
+        }
+        if (button == 0 && form == null && iconPicker == null) {
+            var container = scrollTrackAt(x, y);
+            if (container != null) {
+                ScrollTrack track = scrollTrack(container);
+                boolean horizontal = horizontalScroll(container);
+                double pointer = horizontal ? x : y;
+                double thumbStart = horizontal ? track.thumbX() : track.thumbY();
+                double thumbLength = horizontal ? track.thumbWidth() : track.thumbHeight();
+                scrollTrackGrab = pointer >= thumbStart && pointer < thumbStart + thumbLength
+                        ? pointer - thumbStart : thumbLength / 2.0;
+                scrollTrackDragging = container.id();
+                moveScrollTrack(container, x, y);
+                setFocused(null);
+                return true;
+            }
         }
         if (coordinateEditor != null) {
             if (coordinateEditor.isMouseOver(x, y)) return coordinateEditor.mouseClicked(x, y, button);
@@ -7433,12 +7758,19 @@ public final class QuestScreen extends AnimatedQuestScreen {
             StyledButton row = controls.get(target);
             if (row instanceof JournalListButton questRow && questRow.claimable()
                     && questRow.claimIconContains(x, y)) {
-                runAction(target.substring("quest:".length()), true);
+                pressedClaimId = target.substring("quest:".length());
+                questRow.claimPressed(true);
                 return true;
             }
         }
         if (button == 0 && !editMode && target != null && layout.elements().containsKey(target)) {
             var element = layout.elements().get(target);
+            if (element.kind().equals("item_display")) {
+                String value = effectiveElement(element).value();
+                minecraft.setScreen(new QuestRewardPopupScreen(this,
+                        new QuestDefinition.Reward("item", value, 1)));
+                return true;
+            }
             if (!element.kind().equals("quest_rewards") && (xtdpotato.xero_quest_journal.core.model.ControlProperties.button(element.kind())
                     || element.attributes().containsKey("eventGraph"))) {
                 pressedControlId = target;
@@ -7550,7 +7882,8 @@ public final class QuestScreen extends AnimatedQuestScreen {
             StyledButton clickedRow = target == null ? null : controls.get(target);
             if (!editMode && clickedRow instanceof JournalListButton questRow
                     && questRow.claimable() && questRow.claimIconContains(x, y)) {
-                runAction(target.substring("quest:".length()), true);
+                pressedClaimId = target.substring("quest:".length());
+                questRow.claimPressed(true);
                 return true;
             }
             listTargetScroll = listScroll;
@@ -7659,7 +7992,18 @@ public final class QuestScreen extends AnimatedQuestScreen {
     @Override
     public boolean mouseDragged(double x, double y, int button, double dx, double dy) {
         if (historyPending != null) return true;
+        if (button == 0 && !pressedClaimId.isBlank()) {
+            var row = controls.get("quest:" + pressedClaimId);
+            if (row instanceof JournalListButton claimRow)
+                claimRow.claimPressed(claimRow.claimIconContains(x, y));
+            return true;
+        }
         if (dragChoicePopup(x, y, button, dx, dy)) return true;
+        if (button == 0 && !scrollTrackDragging.isBlank()) {
+            var container = layout.elements().get(scrollTrackDragging);
+            if (container != null && container.kind().equals("scroll")) moveScrollTrack(container, x, y);
+            return true;
+        }
         if (iconPicker != null && iconPicker.dragging && button == 0) {
             iconPicker.scroll.to(iconPicker.scroll.target() - (y - iconPicker.dragY));
             iconPicker.dragY = y;
@@ -7778,6 +8122,20 @@ public final class QuestScreen extends AnimatedQuestScreen {
 
     @Override
     public boolean mouseReleased(double x, double y, int button) {
+        if (!pressedClaimId.isBlank() && button == 0) {
+            String id = pressedClaimId;
+            pressedClaimId = "";
+            var row = controls.get("quest:" + id);
+            boolean claim = row instanceof JournalListButton claimRow && claimRow.claimable()
+                    && claimRow.claimIconContains(x, y) && ("quest:" + id).equals(hit(x, y));
+            if (row instanceof JournalListButton claimRow) claimRow.claimPressed(false);
+            if (claim) runAction(id, true);
+            return true;
+        }
+        if (button == 0 && !scrollTrackDragging.isBlank()) {
+            scrollTrackDragging = "";
+            return true;
+        }
         if (iconPicker != null && button == 0 && iconPicker.dragging) {
             iconPicker.dragging = false;
             return true;
@@ -7917,6 +8275,17 @@ public final class QuestScreen extends AnimatedQuestScreen {
             }
             return true;
         }
+        if (form == null && iconPicker == null && (horizontal != 0 || vertical != 0)) {
+            var scrollContainer = scrollContainerAt(x, y);
+            if (scrollContainer != null) {
+                SmoothScroll scroll = embeddedScroll(scrollContainer);
+                scroll.limit(embeddedScrollMaximum(scrollContainer));
+                double delta = horizontalScroll(scrollContainer)
+                        ? horizontal != 0 ? horizontal : -vertical : vertical;
+                if (delta != 0) scroll.wheel(delta * 32);
+                return true;
+            }
+        }
         if (form != null || iconPicker != null) {
             if (iconPicker == null && vertical != 0 && inFormBody(x, y)) {
                 form.motion.limit(formMaxScroll());
@@ -7962,6 +8331,19 @@ public final class QuestScreen extends AnimatedQuestScreen {
             return true;
         }
         return super.mouseScrolled(x, y, horizontal, vertical);
+    }
+
+    private LayoutEditorState.Element scrollContainerAt(double x, double y) {
+        List<LayoutEditorState.Element> ordered = orderedElements(true);
+        for (int index = ordered.size() - 1; index >= 0; index--) {
+            var element = ordered.get(index);
+            if (!element.quest().equals(selectedId) || !element.kind().equals("scroll")
+                    || !editMode && !runtimeVisible(element) || !insideScrollClips(element, x, y)) continue;
+            int[] position = elementDisplayPosition(element);
+            if (x >= position[0] && x < position[0] + displayWidth(element)
+                    && y >= position[1] && y < position[1] + displayHeight(element)) return element;
+        }
+        return null;
     }
 
     private boolean inDetails(double x, double y) {
@@ -8707,7 +9089,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
         }
 
         int firstRow() {
-            return (int) Math.floor(scroll.position() / 40);
+            return Math.max(0, (int) Math.floor(scroll.position() / 40) - ICON_PICKER_OVERSCAN_ROWS);
         }
     }
 

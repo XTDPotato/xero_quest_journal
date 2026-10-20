@@ -5,6 +5,8 @@
 ## Browse And Edit A Chapter
 
 The journey timeline supports chapter tabs, canvas dragging, zoom and task-detail popups.
+Task details occupy about 75% of the viewport; the footer shows rewards without a redundant
+button to reopen the task screen. Closing returns to the same journey.
 Selected-tab underline height defaults to **3 GUI pixels**.
 Settings → Appearance provides a 1-5px numeric field and stepper buttons.
 The preference applies immediately and saves locally.

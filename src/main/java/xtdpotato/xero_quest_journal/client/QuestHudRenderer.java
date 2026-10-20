@@ -7,6 +7,7 @@ import net.minecraft.locale.Language;
 import xtdpotato.xero_quest_journal.core.model.QuestDefinition;
 import xtdpotato.xero_quest_journal.core.model.QuestTrackingStyle;
 import xtdpotato.xero_quest_journal.core.runtime.QuestLocation;
+import java.util.List;
 
 /**
  * Genshin-style tracking HUD: type icon, the current objective with a fading gold underline and a
@@ -38,6 +39,7 @@ public final class QuestHudRenderer {
     }
 
     public static void clear() {
+        CoordinateGuidance.clear();
         for (String id : ClientQuestProgress.trackedIds()) {
             ClientQuestProgress.toggleTracking(id);
         }
@@ -51,12 +53,17 @@ public final class QuestHudRenderer {
         QuestDefinition quest = ClientQuestDefinitions.find(questId);
         QuestLocation target = quest == null ? null : location(quest);
         if (target == null || !target.kind().equals("coords") || !target.resolved()) return false;
+        CoordinateGuidance.start(questId);
         return markerAnimation.play(questId, System.nanoTime());
     }
 
     public static boolean replayTrackedCoordinateAnimation() {
         String id = trackedId();
         return id != null && playCoordinateTrackAnimation(id);
+    }
+
+    public static void clearCoordinateGuidance() {
+        CoordinateGuidance.clear();
     }
 
     public static void acceptLocatedQuest(
@@ -154,8 +161,16 @@ public final class QuestHudRenderer {
         Runnable draw = () -> {
             int y = 42;
             int screenWidth = game.getWindow().getGuiScaledWidth();
+            int screenHeight = game.getWindow().getGuiScaledHeight();
             long now = System.nanoTime();
             boolean reduced = ClientPreferences.get().reducedMotion;
+            int blockHeight = Math.max(26, snapshot.stream()
+                    .mapToInt(line -> line.completed() ? 24 : 34).sum());
+            var block = HudOverlayLayout.place(screenWidth, screenHeight,
+                    new HudOverlayLayout.Rect(0, y, Math.min(360, Math.max(120, screenWidth - 16)), blockHeight),
+                    HudOverlayLayout.Corner.TOP_LEFT, 8);
+            graphics.pose().pushPose();
+            graphics.pose().translate(block.x(), block.y() - y, 0);
             for (var line : snapshot) {
                 int textX = 40;
                 int maxWidth = Math.max(1, Math.min(240, screenWidth - textX - 16));
@@ -188,6 +203,7 @@ public final class QuestHudRenderer {
                 }
                 y += line.completed() ? 24 : 34;
             }
+            graphics.pose().popPose();
             renderLocationMarkers(graphics, markerSnapshot, game);
         };
         if (motion.settled()) {
@@ -251,6 +267,7 @@ public final class QuestHudRenderer {
             double dy = target.y() - game.player.getY();
             double dz = target.z() - game.player.getZ();
             double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            renderCoordinateGuidance(graphics, marker.questId(), camera, width, height, game);
             var projection = QuestMarkerProjection.project(camera,
                     new net.minecraft.world.phys.Vec3(target.x(), target.y(), target.z()),
                     width, height, game.options.fov().get());
@@ -289,13 +306,92 @@ public final class QuestHudRenderer {
                 double rayX = markerX - centerX, rayY = markerY - centerY;
                 float angle = (float) Math.toDegrees(Math.atan2(rayY, rayX)) - 180;
                 graphics.pose().pushPose();
-                graphics.pose().translate(markerX - size / 2.0 - 9, markerY + size / 2.0 - 7, 0);
-                graphics.pose().translate(7, 7, 0);
+                graphics.pose().translate(markerX - size / 2.0 - 2, markerY + size / 2.0, 0);
                 graphics.pose().mulPose(com.mojang.math.Axis.ZP.rotationDegrees(angle));
-                graphics.pose().translate(-7, -7, 0);
-                JournalNavButton.drawIcon(graphics, "back", 0, 0, 14, 0xFFF5F6F8);
+                graphics.pose().scale(1.5F, 1.5F, 1);
+                graphics.drawCenteredString(game.font, Component.literal("<"),
+                        0, -game.font.lineHeight / 2, 0xFFF5F6F8);
                 graphics.pose().popPose();
             }
+        }
+    }
+
+    private static void renderCoordinateGuidance(GuiGraphics graphics, String questId,
+                                                 net.minecraft.client.Camera camera, int width, int height,
+                                                 Minecraft game) {
+        if (!CoordinateGuidance.active(questId)) return;
+        List<CoordinateRoute.Cell> route = CoordinateGuidance.route();
+        if (route.size() < 2) return;
+        int stride = Math.max(1, route.size() / 42);
+        long now = System.nanoTime();
+        int sample = 0;
+        int offscreenSample = 0;
+        QuestMarkerProjection.Marker previousOnScreen = null;
+        for (int index = Math.max(1, stride); index < route.size(); index += stride) {
+            var cell = route.get(index);
+            var point = cell.center().add(0, .12, 0);
+            var projection = QuestMarkerProjection.project(camera, point, width, height, game.options.fov().get());
+            if (projection.onScreen() && previousOnScreen != null) {
+                int segment = Math.abs(projection.x() - previousOnScreen.x())
+                        + Math.abs(projection.y() - previousOnScreen.y());
+                if (segment <= 72) drawGuidanceSegment(graphics, previousOnScreen.x(), previousOnScreen.y(),
+                        projection.x(), projection.y(), fade(0xFFFFD45A, .42F));
+            }
+            previousOnScreen = projection.onScreen() ? projection : null;
+            double distance = point.distanceTo(game.player.position());
+            float depthAlpha = Math.max(.42F, 1F - (float) distance / 220F);
+            float twinkle = (float) ((Math.sin(now / 180_000_000.0 + sample * 1.73) + 1) * .5);
+            float pulse = .5F + twinkle * .5F;
+            int radius = 3 + Math.round(twinkle * (sample % 4 == 0 ? 5 : 3));
+            int screenX = projection.x(), screenY = projection.y();
+            boolean major = sample % 4 == 0;
+            if (!projection.onScreen()) {
+                if (offscreenSample >= 7) { sample++; continue; }
+                double rayX = screenX - width / 2.0, rayY = screenY - height / 2.0;
+                double rayLength = Math.max(1, Math.hypot(rayX, rayY));
+                double inset = 24 + offscreenSample++ * 16;
+                screenX -= (int) Math.round(rayX / rayLength * inset);
+                screenY -= (int) Math.round(rayY / rayLength * inset);
+                if (screenX < 8 || screenX >= width - 8 || screenY < 8 || screenY >= height - 8) {
+                    sample++;
+                    continue;
+                }
+                depthAlpha = Math.max(depthAlpha, .82F);
+                radius = Math.min(radius + 2, 7);
+                major = offscreenSample == 1 || offscreenSample == 4;
+            }
+            drawGuidanceStar(graphics, screenX, screenY, radius, depthAlpha * pulse, major);
+            sample++;
+        }
+    }
+
+    private static void drawGuidanceSegment(GuiGraphics graphics, int fromX, int fromY,
+                                            int toX, int toY, int color) {
+        int steps = Math.max(Math.abs(toX - fromX), Math.abs(toY - fromY));
+        if (steps <= 0) return;
+        for (int index = 0; index <= steps; index++) {
+            if ((index & 1) != 0) continue;
+            int x = fromX + (toX - fromX) * index / steps;
+            int y = fromY + (toY - fromY) * index / steps;
+            graphics.fill(x, y, x + 2, y + 2, color);
+        }
+    }
+
+    private static void drawGuidanceStar(GuiGraphics graphics, int x, int y,
+                                         int radius, float alpha, boolean major) {
+        int glow = fade(0xFFFFD86B, alpha * (major ? .25F : .13F));
+        int gold = fade(0xFFFFD45A, alpha * (major ? .9F : .62F));
+        int core = fade(0xFFFFF4C6, alpha);
+        graphics.fill(x - radius * 2, y - 1, x + radius * 2 + 1, y + 2, glow);
+        graphics.fill(x - 1, y - radius * 2, x + 2, y + radius * 2 + 1, glow);
+        graphics.fill(x - radius, y, x + radius + 1, y + 1, gold);
+        graphics.fill(x, y - radius, x + 1, y + radius + 1, gold);
+        graphics.fill(x - 1, y - 1, x + 2, y + 2, core);
+        if (major) {
+            graphics.fill(x - radius * 2 - 1, y, x - radius - 1, y + 1, gold);
+            graphics.fill(x + radius + 1, y, x + radius * 2 + 1, y + 1, gold);
+            graphics.fill(x, y - radius * 2 - 1, x + 1, y - radius - 1, gold);
+            graphics.fill(x, y + radius + 1, x + 1, y + radius * 2 + 1, gold);
         }
     }
 

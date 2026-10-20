@@ -3,6 +3,7 @@ package xtdpotato.xero_quest_journal.smoke;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
 import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.screens.Screen;
 import org.lwjgl.glfw.GLFW;
 import xtdpotato.xero_quest_journal.client.ClientQuestDefinitions;
 import xtdpotato.xero_quest_journal.client.JourneyScreen;
@@ -176,7 +177,7 @@ final class JourneyRegression {
                 require((boolean) field(card, "activationPending") && !overview.isClosing()
                                 && game.screen == overview, "Screen closed before press animation completed");
                 // A second category cannot replace the pending navigation.
-                var other = button(overview, "overview-world");
+                var other = button(overview, "overview-anecdotes");
                 overview.mouseClicked(other.getX() + 3, other.getY() + 3, 0);
                 require(!(boolean) field(other, "activationPending"), "Duplicate category click accepted");
                 wait = 6;
@@ -384,11 +385,18 @@ final class JourneyRegression {
                                 && ((QuestDefinition.Trigger) invoke(conditions.get(1), "trigger"))
                                 .type().equals("location"),
                         "Popup did not expose item and structure completion conditions");
+                require(Math.abs((int) invoke(popup, "panelWidth")
+                                - Math.round(((Screen) popup).width * .75F)) <= 1
+                                && Math.abs((int) invoke(popup, "panelHeight")
+                                - Math.round(((Screen) popup).height * .75F)) <= 1,
+                        "Journey task detail popup does not use the 75% viewport layout");
                 require(!((List<?>) invoke(popup, "displayedRewards")).isEmpty()
-                                && (int) invoke(popup, "footerTop")
-                                < button((net.minecraft.client.gui.screens.Screen) popup,
-                                "journey-quest-popup-open").getY(),
-                        "Popup rewards are not pinned above its bottom action");
+                                && (int) invoke(popup, "footerTop") < ((Screen) popup).height - 8,
+                        "Popup rewards are not visible in the bottom footer");
+                require(((Screen) popup).children().stream().filter(StyledButton.class::isInstance)
+                                .map(StyledButton.class::cast)
+                                .noneMatch(button -> button.styleId().equals("journey-quest-popup-open")),
+                        "Task details popup contains a redundant task-screen navigation button");
                 ClientPreferences.get().reducedMotion = true;
                 ((AnimatedQuestScreen) popup).advanceTransition();
                 var hit = ((List<?>) field(popup, "conditionHits")).getFirst();
@@ -405,10 +413,8 @@ final class JourneyRegression {
                 require(((AnimatedQuestScreen) popup).mouseClicked(structureX, structureY, 0)
                                 && (int) field(popup, "expandedCondition") == 1,
                         "Clicking a structure condition did not reveal its inspection details");
-                button((net.minecraft.client.gui.screens.Screen) popup, "journey-quest-popup-open").onPress();
-                require(game.screen instanceof QuestScreen, "Popup navigation did not open the quest journal");
-                game.screen.onClose();
-                require(game.screen == journey, "Closing task journal did not return to the journey");
+                ((AnimatedQuestScreen) popup).onClose();
+                require(game.screen == journey, "Closing task details did not return to the journey");
                 journey.onClose();
                 wait = 5;
             }

@@ -1,4 +1,4 @@
-param([string]$Preview = "preview.5", [switch]$VersionRelease)
+param([string]$Preview = "preview.5", [switch]$VersionRelease, [string]$OutputDirectoryName = "")
 $ErrorActionPreference = "Stop"
 if ($Preview -notmatch '^preview\.[0-9]+$') { throw "Expected preview.N" }
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -7,7 +7,13 @@ $versionLine = Get-Content -LiteralPath (Join-Path $repoRoot "gradle.properties"
 $modVersion = ($versionLine -split '=', 2)[1].Trim()
 if ($modVersion -notmatch '^[0-9]+\.[0-9]+\.[0-9]+$') { throw "Invalid mod_version" }
 $releaseName = if ($VersionRelease) { $modVersion } else { $Preview }
-$output = Join-Path $repoRoot "build/releases/$releaseName"
+$outputDirectory = if ([string]::IsNullOrWhiteSpace($OutputDirectoryName)) {
+    $releaseName
+} else {
+    if ($OutputDirectoryName -notmatch '^[A-Za-z0-9._-]{1,80}$') { throw "Invalid output directory name" }
+    $OutputDirectoryName
+}
+$output = Join-Path $repoRoot "build/releases/$outputDirectory"
 if (Test-Path -LiteralPath $output) { throw "Release output already exists: $output" }
 $targets = @(
     @{ Loader="neoforge"; Minecraft="1.21.1"; Source="build/libs/xero_quest_journal-$modVersion.jar" },
@@ -37,6 +43,7 @@ foreach ($target in $targets) {
                 "client/JourneyAppearanceScreen", "client/JourneyPreviewScene", "client/JourneyQuestPopupScreen",
                 "client/QuestSearchFilterScreen", "client/CoordinateTrackAnimation",
                 "core/runtime/QuestVariableMath", "client/AnecdoteScreen", "client/AnecdoteRewardsScreen",
+                "client/ItemPickupToast", "client/HudOverlayLayout",
                 "core/runtime/AnecdoteRuntime", "core/model/AnecdoteDefinition",
                 "core/io/QuestAuthoringHistory", "core/model/LootDefinition",
                 "core/model/QuestTitleText", "core/model/QuestJigsawInfo",

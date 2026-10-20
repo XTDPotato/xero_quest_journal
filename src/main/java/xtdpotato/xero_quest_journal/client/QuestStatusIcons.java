@@ -50,6 +50,22 @@ public final class QuestStatusIcons {
                 applyAlpha(color, alpha), !highlighted);
     }
 
+    /** Shared square checkbox mark for claimed and multi-selected task rows. */
+    public static void renderCheckbox(GuiGraphics graphics, boolean checked, int x, int y, int size,
+                                      boolean highlighted, float alpha) {
+        int edge = Math.max(8, size);
+        int frame = applyAlpha(highlighted ? 0xFFF5E6C2 : 0xFFC5CDD5, alpha);
+        int fill = applyAlpha(checked ? 0xFF26352E : 0xA41D232B, alpha);
+        graphics.fill(x + 1, y + 1, x + edge - 1, y + edge - 1, fill);
+        graphics.renderOutline(x, y, edge, edge, frame);
+        if (checked) {
+            int markSize = Math.max(7, edge - 5);
+            JournalNavButton.drawIcon(graphics, "mail_check",
+                    x + (edge - markSize) / 2, y + (edge - markSize) / 2,
+                    markSize, applyAlpha(highlighted ? 0xFF9FE27E : 0xFF83CF69, alpha));
+        }
+    }
+
     private static int applyAlpha(int color, float alpha) {
         int sourceAlpha = color >>> 24;
         return color & 0x00FFFFFF | Math.clamp(Math.round(sourceAlpha * alpha), 0, 255) << 24;

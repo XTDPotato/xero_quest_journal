@@ -13,7 +13,18 @@ final class OverviewCategoryCard extends JournalNavButton {
 
     OverviewCategoryCard(int x, int y, int width, int height, Component title, OnPress action,
                            ButtonStyleSheet styles, String id, String icon) {
+        this(x, y, width, height, title, action, styles, id, icon, null);
+    }
+
+    OverviewCategoryCard(int listX, int listY, int x, int y, int width, int height, Component title,
+                         OnPress action, ButtonStyleSheet styles, String id, String icon) {
+        this(x, y, width, height, title, action, styles, id, icon, new int[]{listX, listY});
+    }
+
+    private OverviewCategoryCard(int x, int y, int width, int height, Component title, OnPress action,
+                                 ButtonStyleSheet styles, String id, String icon, int[] clipping) {
         super(x, y, width, height, title, action, styles, id, Kind.ACTION, icon);
+        if (clipping != null) clipTo(clipping[0], clipping[1], clipping[0] + width, clipping[1] + height);
         this.icon = icon;
         extraCss("""
                 .journal-action { background-color:#715b49b8; border-color:#dcc59888; border-width:1px; color:#ffffff; }
@@ -83,6 +94,15 @@ final class OverviewCategoryCard extends JournalNavButton {
     }
 
     @Override protected String motionShape() { return "rectangle"; }
+    int iconSlotWidth() { return getWidth() < 130 ? 24 : 42; }
+    int iconSlotX() { return getX() + (getWidth() < 130 ? 5 : 12); }
+    int dividerX() { return iconSlotX() + iconSlotWidth() + (getWidth() < 130 ? 4 : 10); }
+    int labelX() { return dividerX() + (getWidth() < 130 ? 7 : 12); }
+    int forwardSize() { return Math.max(8, Math.min(14, getHeight() - 10)); }
+    int categoryIconSize() {
+        return Math.min(getHeight() - 8, getWidth() < 130 ? 16 : 24);
+    }
+
     @Override protected void renderSurface(GuiGraphics g, ButtonStyle style, int background, int border) {
         g.fill(getX(), getY(), getRight(), getBottom(), background);
         // Soft top light and darker foot give the parchment card some depth.
@@ -99,17 +119,21 @@ final class OverviewCategoryCard extends JournalNavButton {
     }
     @Override protected void renderContent(GuiGraphics g, ButtonStyle style, int color) {
         var font = Minecraft.getInstance().font;
-        int iconSize = Math.min(getWidth() < 130 ? 12 : 24, getHeight() - 8);
-        int iconX = getX() + 5, textX = iconX + iconSize + 8;
-        JournalNavButton.drawIcon(g, icon, iconX, getY() + (getHeight() - iconSize) / 2, iconSize, 0xFFF1D5A0);
-        int divider = textX - 5;
+        int iconSize = categoryIconSize();
+        int iconX = iconSlotX() + (iconSlotWidth() - iconSize) / 2;
+        int iconY = getY() + (getHeight() - iconSize) / 2;
+        if (icon.equals("anecdote_map"))
+            AnecdoteBookArt.mapScroll(g, iconX, iconY, iconSize, 0xFFF1D5A0);
+        else JournalNavButton.drawIcon(g, icon, iconX, iconY, iconSize, 0xFFF1D5A0);
+        int divider = dividerX();
+        int textX = labelX();
         for (int y = getY() + 6; y < getBottom() - 5; y += 3) g.fill(divider, y, divider + 1, y + 1, 0x779F9078);
-        int knob = Math.max(8, Math.min(14, getHeight() - 10));
+        int knob = forwardSize();
         var lines = font.split(getMessage(), Math.max(1, getRight() - textX - knob - 14));
         int count = Math.min(lines.size(), Math.max(1, (getHeight() - 6) / font.lineHeight));
         int y = getY() + (getHeight() - count * font.lineHeight) / 2;
         for (int i = 0; i < count; i++) g.drawString(font, lines.get(i), textX, y + i * font.lineHeight, color, false);
-        // Round "go" knob with a chevron instead of a bare arrow.
+        // Keep the compact navigation mark from the original category cards.
         int knobX = getRight() - knob - 8, knobY = getY() + (getHeight() - knob) / 2;
         MailDecor.circle(g, knobX, knobY, knob, 0xCCDCC598);
         MailDecor.circle(g, knobX + 1, knobY + 1, knob - 2, 0xFF4A3B2C);

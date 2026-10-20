@@ -175,6 +175,10 @@ tasks.register("prepareForgeSources") {
             if (relative.endsWith("QuestProgressData.java")) {
                 text = text.replace("quests.removeFirst()", "quests.remove(0)")
             }
+            if (relative.endsWith("CoordinateGuidance.java")) {
+                text = text.replace("dimensions.width()", "dimensions.width")
+                        .replace("dimensions.height()", "dimensions.height")
+            }
             if (!relative.startsWith("xtdpotato/xero_quest_journal/client/")) {
                 text = text.replace("player.registryAccess()", "player.getServer().registryAccess()")
                         .replace("author.registryAccess()", "author.getServer().registryAccess()")
@@ -247,10 +251,18 @@ tasks.register("prepareForgeSources") {
                         .replace("EntityItemPickupEvent.Post", "EntityItemPickupEvent")
                         .replace(".getOriginalStack()", ".getItem().getItem()")
                         .replace(".getCurrentStack()", ".getItem().getItem()")
+                        .replace("if (!(event.getPlayer() instanceof ServerPlayer player)) return;",
+                                "if (!(event.getEntity() instanceof ServerPlayer player)) return;")
                         .replace("if (event.getPlayer() instanceof ServerPlayer player)\n            acquired(",
                                 "if (event.getEntity() instanceof ServerPlayer player)\n            acquired(")
                         .replace("event.getItem().getItem().getCount() - event.getItem().getItem().getCount()",
                                 "event.getItem().getItem().getCount()")
+            }
+            if (relative.endsWith("QuestNetwork.java")) {
+                text = text.replace("net.minecraft.world.item.ItemStack.STREAM_CODEC.decode(buffer)",
+                                "net.minecraft.world.item.ItemStack.of(buffer.readNbt())")
+                        .replace("net.minecraft.world.item.ItemStack.STREAM_CODEC.encode(buffer, value.stack())",
+                                "buffer.writeNbt(value.stack().save(new net.minecraft.nbt.CompoundTag()))")
             }
             if (relative.endsWith("QuestGraphEvents.java")) {
                 text = text.replace("ItemEntityPickupEvent", "EntityItemPickupEvent")

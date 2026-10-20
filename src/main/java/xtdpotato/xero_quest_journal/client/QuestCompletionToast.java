@@ -57,23 +57,50 @@ public final class QuestCompletionToast {
         float enter = Math.clamp((float) elapsed / animationNanos, 0, 1);
         float exit = reduced ? 0 : Math.clamp((float) (elapsed - fadeStart) / animationNanos, 0, 1);
         int screenWidth = game.getWindow().getGuiScaledWidth();
+        int screenHeight = game.getWindow().getGuiScaledHeight();
         int x = 26 - Math.round(exit * exit * 16)
                 - (reduced ? 0 : Math.round((1 - smooth(enter)) * 12));
-        int y = Math.max(42, game.getWindow().getGuiScaledHeight() / 5);
+        int y = 16;
         int iconSize = 42;
-        float toastScale = preferences.taskToastScalePercent / 100F;
+        float toastScale = Math.min(preferences.taskToastScalePercent / 100F,
+                Math.max(.1F, (screenWidth - 16) / 430F));
         float iconScale = preferences.taskToastIconScalePercent / 100F;
         int iconSlot = Math.max(iconSize, Math.round(iconSize * iconScale / toastScale));
         int titleX = x + iconSlot + 16;
         int maxTextWidth = Math.max(1, Math.min(320, screenWidth - titleX - 24));
+        int panelWidth = Math.min(screenWidth - 16, titleX + maxTextWidth + 40);
+        int panelHeight = Math.round(64 * toastScale);
+        int desiredLeft = Math.round(8 + Math.max(0, screenWidth - panelWidth * toastScale - 16)
+                * preferences.taskToastXPercent / 100F);
+        int desiredTop = Math.round(8 + Math.max(0, screenHeight - panelHeight - 16)
+                * preferences.taskToastYPercent / 100F);
+        int initialLeft = Math.round(x * (1 - toastScale));
+        int initialTop = Math.round(y - 10 * toastScale);
+        var animation = QuestUnlockToast.taskToastTransform(enter, exit, reduced);
+        var panel = HudOverlayLayout.place(screenWidth, screenHeight,
+                new HudOverlayLayout.Rect(desiredLeft, desiredTop,
+                        Math.round(panelWidth * toastScale), panelHeight),
+                HudOverlayLayout.cornerFromPercent(preferences.taskToastXPercent, preferences.taskToastYPercent), 8);
+        int shiftX = panel.x() - initialLeft;
+        int shiftY = panel.y() - initialTop;
 
         graphics.pose().pushPose();
         graphics.pose().translate(0, 0, 1010);
+        double panelCenterX = panel.x() + panel.width() / 2.0;
+        double panelCenterY = panel.y() + panel.height() / 2.0;
+        graphics.pose().translate(panelCenterX + animation.x(), panelCenterY + animation.y(), 0);
+        if (animation.rotation() != 0)
+            graphics.pose().mulPose(com.mojang.math.Axis.ZP.rotationDegrees((float) animation.rotation()));
+        graphics.pose().scale((float) animation.scale(), (float) animation.scale(), 1);
+        graphics.pose().translate(-panelCenterX, -panelCenterY, 0);
+        graphics.pose().translate(shiftX, shiftY, 0);
         graphics.pose().translate(x, y, 0);
         graphics.pose().scale(toastScale, toastScale, 1);
         graphics.pose().translate(-x, -y, 0);
-        QuestUnlockToast.backing(graphics, 0, y - 10, Math.min(screenWidth, titleX + maxTextWidth + 40), y + 54,
-                alpha * .5F);
+        alpha *= (float) animation.opacity();
+        if (preferences.taskToastBackgroundEnabled)
+            QuestUnlockToast.backing(graphics, 0, y - 10, panelWidth, y + 54,
+                    alpha * preferences.taskToastBackgroundOpacityPercent / 100F);
         int centerX = x + iconSize / 2, centerY = y + iconSize / 2;
         float stamp = reduced ? 1 : QuestUnlockToast.easeOutBack(QuestUnlockToast.segment(enter, 0, .38F));
         graphics.pose().pushPose();

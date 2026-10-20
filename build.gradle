@@ -121,7 +121,7 @@ sourceSets {
 
 def clientRegression = [
         'smokeTest', 'mailboxTest', 'templateTest', 'rewardsTest', 'creationTest',
-        'animationTest', 'popupAnimationTest', 'rewardPopupTest', 'recipeViewerTest', 'anecdoteTest',
+        'animationTest', 'popupAnimationTest', 'rewardPopupTest', 'recipeViewerTest', 'anecdoteTest', 'anecdoteUiTest',
         'canvasEditorTest', 'controlGraphTest', 'locationItemTest', 'mediaTest',
         'hotEventsTest', 'runtimeTest', 'structureSceneTest', 'buttonImageTest',
         'unlockGraphTest', 'journeyTest', 'overviewTest', 'journalFocusTest', 'mailReferenceTest',
@@ -146,6 +146,10 @@ neoForge {
             if (project.hasProperty('anecdoteTest')) {
                 systemProperty 'xero.anecdoteTest', 'true'
                 gameDirectory = file('run-anecdote')
+            }
+            if (project.hasProperty('anecdoteUiTest')) {
+                systemProperty 'xero.anecdoteUiTest', 'true'
+                gameDirectory = file('run-anecdote-ui')
             }
             if (project.hasProperty('authoringDocsTest')) {
                 systemProperty 'xero.authoringDocsTest', 'true'

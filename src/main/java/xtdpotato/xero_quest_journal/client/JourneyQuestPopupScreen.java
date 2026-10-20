@@ -16,7 +16,7 @@ final class JourneyQuestPopupScreen extends AnimatedQuestScreen {
     private static final int ROW_HEIGHT = 32;
     private static final int ITEM_ROW_HEIGHT = 44;
     private static final int EXPANDED_HEIGHT = 34;
-    private static final int FOOTER_AND_ACTION_HEIGHT = JournalDetailRenderer.FOOTER_HEIGHT + 44;
+    private static final int FOOTER_AND_PADDING_HEIGHT = JournalDetailRenderer.FOOTER_HEIGHT + 12;
     private record ConditionRow(int index, int depth, QuestDefinition.Trigger trigger) {}
     private record ConditionHit(ConditionRow row, int top, int bottom, int cardLeft, int cardRight) {}
 
@@ -35,11 +35,11 @@ final class JourneyQuestPopupScreen extends AnimatedQuestScreen {
         this.quest = ClientQuestDefinitions.find(questId);
     }
 
-    private int panelWidth() { return Math.min(560, width - 28); }
+    private int panelWidth() { return Math.min(Math.round(width * .75F), width - 24); }
     private int panelLeft() { return (width - panelWidth()) / 2; }
-    private int panelHeight() { return Math.min(420, height - 28); }
+    private int panelHeight() { return Math.min(Math.round(height * .75F), height - 24); }
     private int panelTop() { return (height - panelHeight()) / 2; }
-    private int footerTop() { return panelTop() + panelHeight() - FOOTER_AND_ACTION_HEIGHT; }
+    private int footerTop() { return panelTop() + panelHeight() - FOOTER_AND_PADDING_HEIGHT; }
     private int bodyTop() { return panelTop() + 58; }
     private int bodyBottom() { return footerTop() - 6; }
     private List<QuestDefinition.Reward> displayedRewards() {
@@ -94,10 +94,6 @@ final class JourneyQuestPopupScreen extends AnimatedQuestScreen {
         addRenderableWidget(new EditorIconButton(x + w - 34, y + 10,
                 Component.translatable("screen.xero_quest_journal.close"), this::onClose, styles,
                 "journey-quest-popup-close", "close"));
-        addRenderableWidget(new JournalNavButton(x + 18, y + panelHeight() - 34, w - 36, 22,
-                Component.translatable("screen.xero_quest_journal.journey.go_to_task"),
-                ignored -> closeTo(QuestScreen.task(parent, questId)), styles,
-                "journey-quest-popup-open", JournalNavButton.Kind.ACTION, "overview")).active = quest != null;
     }
     @Override protected void renderModalBackground(GuiGraphics graphics, float delta) {
         if (parent != null) parent.render(graphics, -10000, -10000, delta);

@@ -36,6 +36,8 @@ pwsh -File tools/verify-interface-gallery.ps1 -Document docs/en/interface-galler
 | JS 参考 / Script reference | [查看](js-editor-reference-zh-1920.png) | [View](js-editor-reference-en-1920.png) |
 | 拼图连接 / Jigsaw | [查看](jigsaw-inspector-zh-1920.png) | [View](jigsaw-inspector-en-1920.png) |
 | 外观设置 / Appearance settings | [查看](settings-appearance-zh-1920.png) | [View](settings-appearance-en-1920.png) |
+| 追踪拾取提示 / Tracked pickup notices | [查看](item-pickup-toast-zh-1920.png) | [View](item-pickup-toast-en-1920.png) |
+| 拾取通知位置/缩放 / Pickup notice placement/scale | [查看](settings-notifications-zh-1920.png) | [View](settings-notifications-en-1920.png) |
 
 [项目首页](../../README.md) · [完整界面图鉴与操作](../interface-gallery.md)
 

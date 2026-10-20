@@ -120,8 +120,9 @@ The left preview reflects the right inspector's draft.
 
 ![Chapter appearance](../images/journey-appearance-en-1920.png)
 
-Click a task card to open its popup. Inspect conditions and bottom rewards there.
-The explicit navigation button opens the full journal; Close returns to the journey.
+Click a task card to open its details in a popup occupying about 75% of the viewport.
+The footer shows the task rewards only; it does not add a redundant “Open task screen” button.
+Close returns to the journey.
 
 ![Journey task popup](../images/journey-task-details-popup-en-1920.png)
 
@@ -260,8 +261,22 @@ Motion options include reduced motion, popup duration and animation editor entri
 ![Motion settings](../images/settings-motion-en-1920.png)
 
 Notification controls adjust overall/icon size and offer a preview.
+The pickup notice size setting scales the whole group from 50% to 200%. X/Y position the
+scaled group within the usable screen area: X runs left-to-right and Y top-to-bottom.
+Zero and 100 align to each axis's ends; defaults are size=100%, X=0%, Y=40%.
+Values can be typed or stepped, take effect immediately and are saved locally.
+Automatic minimap avoidance reserves a selected corner when Xaero, JourneyMap, VoxelMap or
+FTB Chunks is detected. Task tracking and notice groups are placed in priority order and try
+other free corners on collision. The corner is a selectable estimate, not a live read of
+third-party private HUD settings; disable the reservation if the minimap uses another layout.
 
 ![Notification settings](../images/settings-notifications-en-1920.png)
+
+When a tracked item objective gains an item, the HUD shows its icon, localized name, picked
+count and objective progress. Up to four notices are visible, newest first; rows slide in,
+remain briefly, then fade out. Timers pause while a screen is open.
+
+![Tracked item pickup notices](../images/item-pickup-toast-en-1920.png)
 
 Appearance includes the new selected-tab underline height, tracking marker size,
 theme and background controls.

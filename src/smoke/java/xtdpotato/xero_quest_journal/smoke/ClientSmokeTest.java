@@ -89,6 +89,7 @@ public final class ClientSmokeTest {
         if ((!Boolean.getBoolean("xero.smokeTest") && !Boolean.getBoolean("xero.mailboxTest") && !Boolean.getBoolean("xero.mailReferenceTest")
                 && !Boolean.getBoolean("xero.authoringDocsTest")
                 && !Boolean.getBoolean("xero.anecdoteTest")
+                && !Boolean.getBoolean("xero.anecdoteUiTest")
                 && !Boolean.getBoolean("xero.popupAnimationTest")
                 && !Boolean.getBoolean("xero.mailBodyEditorTest")
                 && !Boolean.getBoolean("xero.mailAdminTest")
@@ -131,8 +132,7 @@ public final class ClientSmokeTest {
             xtdpotato.xero_quest_journal.client.ClientEditMode.set(true);
         }
         try {
-            long timeout = Boolean.getBoolean("xero.anecdoteTest")
-                    ? 90_000_000_000L : 360_000_000_000L;
+            long timeout = 360_000_000_000L;
             require(System.nanoTime() - START < timeout, "Client test timed out at stage " + stage);
             if (game.getOverlay() != null || --waitTicks > 0) {
                 return;
@@ -173,6 +173,7 @@ public final class ClientSmokeTest {
                                     + " world marker projection and V animation replay cooldown;"
                                     + " 1920x1080 and compact screenshots, and HUD hide/show preference;"
                                     + " camera-basis left/right/up/front/behind across yaw/pitch and reversed view;"
+                                    + " latest-first item acquisition HUD with four-row cap and progress pills;"
                                     + " mail banner template/reward/JSON/NBT/network/edit round-trips, click/release/task/back;"
                                     + " countdown persistence, real/game clocks, live-variable timing and invalid-value fallback;"
                                     + " compact banner editor bounds and opaque task-style status capsule pixels;\n");
@@ -297,6 +298,7 @@ public final class ClientSmokeTest {
                                     + "syntax-only editor validation, draft retention, JS inspector bounds, complete command export, "
                                     + "six full-screen settings tabs and 100ms tab timing, node quick editing/full-content display, "
                                     + "pinyin field menus, hold-drag owner-preserving variables, anchored independent inventory entries, "
+                                    + "visual task/pickup notice positioning and proportional resize, "
                                     + "Chinese 1920x1080 screenshots.\n");
                     finished = true;
                     game.stop();
@@ -468,7 +470,7 @@ public final class ClientSmokeTest {
                                     + "chapter-only appearance isolation, full-scene multiple selection,\n"
                                     + "live width/height/ratio handles, framed chapter markers,\n"
                                     + "background mode/music graph execution, gallery draft save, chapter switch events,\n"
-                                    + "click-opened quest details with explicit navigation,\n"
+                                    + "75-percent journey task detail popup, rewards footer without duplicate navigation,\n"
                                     + "distinct icons, finite line endpoints, overscroll rebound,\n"
                                     + "desktop/compact editor geometry, loot toolbar and hot-event exit icon,\n"
                                     + "single native tooltip per frame, edit/exit glyphs, chapter selection glyph and multi-selector.\n");
@@ -800,19 +802,26 @@ public final class ClientSmokeTest {
                 }
                 return;
             }
-            if (Boolean.getBoolean("xero.anecdoteTest") && stage >= 2) {
+            if ((Boolean.getBoolean("xero.anecdoteTest") || Boolean.getBoolean("xero.anecdoteUiTest"))
+                    && stage >= 2) {
                 if (game.player == null || game.level == null) return;
                 if (AnecdoteRegression.tick(game)) {
                     Files.createDirectories(OUTPUT);
-                    Files.writeString(OUTPUT.resolve("anecdote-result.txt"),
-                            "PASS: command/selector parsing and permission checks, queue payload codec,\n"
+                    Files.writeString(OUTPUT.resolve(Boolean.getBoolean("xero.anecdoteUiTest")
+                                    ? "anecdote-ui-result.txt" : "anecdote-result.txt"),
+                            Boolean.getBoolean("xero.anecdoteUiTest")
+                                    ? "PASS: anecdote overview navigation, default map icon, create entry/reward/record editors,"
+                                    + " press/release selection, completed stickers, book-close and reward entrance;"
+                                    + " command/selector parsing, codec and persistence. Toast playback stages skipped.\n"
+                                    : "PASS: command/selector parsing and permission checks, queue payload codec,\n"
                                     + "single-shot playback, serial queue including 24 identical requests, full fade-out gate,\n"
                                     + "no idle replay, world/screen overlays, reduced motion, disconnect cleanup,\n"
                                     + "1920x1080 and compact screenshots with transparent outer background;\n"
                                     + "independent JSON entries, hidden/discovered state and NBT round-trip,\n"
                                     + "multiple records per entry, press/release selection, outside-release cancellation,\n"
                                     + "right-click author editor, recent completed sticker page and chronicle screenshot.\n");
-                    Files.copy(OUTPUT.resolve("anecdote-result.txt"), OUTPUT.resolve("result.txt"),
+                    Files.copy(OUTPUT.resolve(Boolean.getBoolean("xero.anecdoteUiTest")
+                                    ? "anecdote-ui-result.txt" : "anecdote-result.txt"), OUTPUT.resolve("result.txt"),
                             java.nio.file.StandardCopyOption.REPLACE_EXISTING);
                     finished = true;
                     game.stop();

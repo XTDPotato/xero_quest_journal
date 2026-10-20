@@ -15,9 +15,9 @@ import java.util.List;
 final class PopupAnimationEditorScreen extends AnimatedQuestScreen {
     private static final int KEYFRAME_GAP = 4;
     private final Screen parent;
+    private final boolean taskToast;
     private final ButtonStyleSheet styles = ButtonStyleSheet.load();
-    private final List<PopupAnimationProfile.Keyframe> frames = new ArrayList<>(
-            ClientPreferences.get().popupAnimation.keyframes());
+    private final List<PopupAnimationProfile.Keyframe> frames;
     private int selected;
     private double playhead;
     private boolean timelineDragging, playing, repeatPreview;
@@ -27,8 +27,16 @@ final class PopupAnimationEditorScreen extends AnimatedQuestScreen {
     private String message = "";
 
     PopupAnimationEditorScreen(Screen parent) {
-        super(label("animation.title"));
+        this(parent, false);
+    }
+
+    PopupAnimationEditorScreen(Screen parent, boolean taskToast) {
+        super(label(taskToast ? "task_toast_animation.title" : "animation.title"));
         this.parent = parent;
+        this.taskToast = taskToast;
+        var preferences = ClientPreferences.get();
+        frames = new ArrayList<>((taskToast ? preferences.taskToastAnimation
+                : preferences.popupAnimation).keyframes());
         loadFields();
     }
 
@@ -210,7 +218,8 @@ final class PopupAnimationEditorScreen extends AnimatedQuestScreen {
         commitFields();
         if (!message.isEmpty()) return;
         var preferences = ClientPreferences.get();
-        preferences.popupAnimation = currentProfile();
+        if (taskToast) preferences.taskToastAnimation = currentProfile();
+        else preferences.popupAnimation = currentProfile();
         if (preferences.save()) {
             closeTo(parent);
         } else {
@@ -242,7 +251,8 @@ final class PopupAnimationEditorScreen extends AnimatedQuestScreen {
         g.fill(x, y, x + w, y + h, 0xFF242A34);
         g.fill(x, y, x + w, y + 40, 0xFF333D4B);
         g.fill(x, y + 39, x + w, y + 40, 0xFF66768A);
-        g.drawString(font, label("animation.title"), x + pad, y + 13, 0xFFF3D48B, false);
+        g.drawString(font, label(taskToast ? "task_toast_animation.title" : "animation.title"),
+                x + pad, y + 13, 0xFFF3D48B, false);
         g.drawString(font, label("animation.timeline"), x + pad, y + 51, 0xFFD4DCE7, false);
         int ty = trackY();
         g.fill(trackLeft(), ty, trackRight(), ty + 3, 0xFF596576);

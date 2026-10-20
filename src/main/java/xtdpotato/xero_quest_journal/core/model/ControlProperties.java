@@ -32,6 +32,7 @@ public final class ControlProperties {
         }
         DEFAULTS.put("gravity", "top|left");
         DEFAULTS.put("orientation", "vertical"); DEFAULTS.put("spacing", "4");
+        DEFAULTS.put("showScrollbar", "true");
         DEFAULTS.put("textColor", "#ffffff"); DEFAULTS.put("textStyle", "normal");
         DEFAULTS.put("textSize", "1.0"); DEFAULTS.put("maxLines", "0");
         DEFAULTS.put("shadowColor", "#000000"); DEFAULTS.put("shadowRadius", "0");
@@ -59,10 +60,11 @@ public final class ControlProperties {
             return List.of("audio", "video", "structure_enter", "quest_progress", "quest_objective").contains(kind);
         if (key.startsWith("buttonImage") || key.equals("textColorHover") || key.equals("textColorPressed"))
             return button(kind);
-        if (key.equals("value")) return !List.of("linear", "relative").contains(kind);
-        if (key.equals("gravity")) return List.of("linear", "relative").contains(kind);
+        if (key.equals("value")) return !List.of("linear", "relative", "scroll").contains(kind);
+        if (key.equals("gravity")) return List.of("linear", "relative", "scroll").contains(kind);
         if (key.equals("orientation") || key.equals("spacing"))
-            return List.of("linear", "relative").contains(kind);
+            return List.of("linear", "relative", "scroll").contains(kind);
+        if (key.equals("showScrollbar")) return kind.equals("scroll");
         if (key.startsWith("text") || key.equals("maxLines") || key.startsWith("shadow"))
             return List.of("text", "button", "structure_enter", "quest_entry_text", "quest_title",
                     "quest_description", "quest_progress", "quest_status", "quest_type", "quest_objective",

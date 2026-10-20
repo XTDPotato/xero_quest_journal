@@ -108,10 +108,17 @@ tasks.register("prepareFabricSources") {
             def text = source.getText("UTF-8")
             if (shortPath.endsWith("QuestReiPlugin.java"))
                 text = text.replace("@me.shedaniel.rei.forge.REIPluginClient", "")
+            if (shortPath.endsWith("QuestNetwork.java"))
+                text = text.replace("net.minecraft.world.item.ItemStack.STREAM_CODEC.decode(buffer)",
+                                "net.minecraft.world.item.ItemStack.of(buffer.readNbt())")
+                        .replace("net.minecraft.world.item.ItemStack.STREAM_CODEC.encode(buffer, value.stack())",
+                                "buffer.writeNbt(value.stack().save(new net.minecraft.nbt.CompoundTag()))")
             if (shortPath.endsWith("QuestConditionEvents.java") || shortPath.endsWith("QuestGraphEvents.java")
                     || shortPath.endsWith("QuestStructureEvents.java") || shortPath.endsWith("QuestSceneBlocks.java")) {
                 text = new File(file("../../../src/main/java"), relative).getText("UTF-8")
             }
+            if (shortPath.endsWith("QuestConditionEvents.java"))
+                text = text.replace("player.registryAccess()", "player.getServer().registryAccess()")
             text = text.replaceAll(/(?m)^import net\.(?:neoforged|minecraftforge)\.(?:bus\.api|eventbus\.api|fml\.common|api\.distmarker)\.[^;]+;\r?\n/, "")
                     .replaceAll(/@EventBusSubscriber\([\s\S]*?\)\s*/, "")
                     .replaceAll(/@SubscribeEvent(?:\([^)]*\))?\s*/, "")
@@ -133,6 +140,8 @@ tasks.register("prepareFabricSources") {
                     "net.minecraftforge.event.TickEvent.ServerTickEvent": "xtdpotato.xero_quest_journal.fabriccompat.FabricEvents.ServerTickEvent",
                     "net.neoforged.neoforge.common.util.TriState": "xtdpotato.xero_quest_journal.fabriccompat.FabricEvents.TriState",
                     "xtdpotato.xero_quest_journal.forgecompat.PacketDistributor": "xtdpotato.xero_quest_journal.fabriccompat.FabricNetwork",
+                    "net.neoforged.neoforge.network.PacketDistributor": "xtdpotato.xero_quest_journal.fabriccompat.FabricNetwork",
+                    "net.minecraftforge.network.PacketDistributor": "xtdpotato.xero_quest_journal.fabriccompat.FabricNetwork",
                     "xtdpotato.xero_quest_journal.forgecompat.PayloadRegistrar": "xtdpotato.xero_quest_journal.fabriccompat.FabricPayloadRegistrar",
                     "xtdpotato.xero_quest_journal.forgecompat.RegisterPayloadHandlersEvent": "xtdpotato.xero_quest_journal.fabriccompat.FabricRegisterPayloads",
                     "xtdpotato.xero_quest_journal.forgecompat.IPayloadContext": "xtdpotato.xero_quest_journal.fabriccompat.FabricPayloadContext"

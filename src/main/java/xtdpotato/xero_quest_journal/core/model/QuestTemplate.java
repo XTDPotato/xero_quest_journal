@@ -62,7 +62,7 @@ public record QuestTemplate(
             visited.add(element.id());
             for (String parent = element.parent(); !parent.isBlank(); ) {
                 Element container = byId.get(parent);
-                if (container == null || !List.of("linear", "relative").contains(container.kind())
+                if (container == null || !List.of("linear", "relative", "scroll").contains(container.kind())
                         || !visited.add(parent)) {
                     throw new IllegalArgumentException("Invalid or cyclic template parent");
                 }
@@ -108,8 +108,8 @@ public record QuestTemplate(
             parent = parent == null ? "" : parent;
             if (!List.of("text", "image", "video", "audio", "linear", "relative", "quest_title", "quest_type",
                     "quest_status", "quest_progress", "quest_description", "quest_icon", "quest_rewards",
-                    "quest_objective", "quest_place", "quest_entry_text", "button", "structure_preview",
-                    "structure_enter")
+                    "quest_objective", "quest_place", "quest_entry_text", "item_display", "button",
+                    "structure_preview", "structure_enter", "scroll")
                     .contains(kind) || width > 4096 || height > 4096
                     || Math.abs((long) x) > 16384 || Math.abs((long) y) > 16384
                     || value.length() > 4096 || attributes.size() > 64) {

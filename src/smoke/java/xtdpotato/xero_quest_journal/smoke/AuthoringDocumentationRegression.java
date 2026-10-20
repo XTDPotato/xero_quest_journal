@@ -32,6 +32,9 @@ final class AuthoringDocumentationRegression {
     private static QuestTriggerGraphScreen graphEditor;
     private static QuestRewardsScreen rewardsEditor;
     private static String savedScript;
+    private static boolean pickupPositionVerified;
+    private static boolean layoutEditorOpened;
+    private static boolean originalNoticeReducedMotion;
     private static TriggerGraph graph = graph("eventType === \"click\" && Number(experienceLevel) >= 10;", false);
 
     static boolean tick(Minecraft game) throws Exception {
@@ -93,6 +96,11 @@ final class AuthoringDocumentationRegression {
             }
             case 4 -> {
                 if ((double) call(field(settings, "tabMotion"), "position") != 1) return false;
+                if (tabIndex == 2 && !pickupPositionVerified) {
+                    if (!verifyPickupPositionSetting(game)) return false;
+                    pickupPositionVerified = true;
+                    return false;
+                }
                 capture(game, "settings-" + TABS[tabIndex] + "-zh-1920");
                 if (++tabIndex < TABS.length) {
                     button(settings, "config-tab-" + TABS[tabIndex]).onPress();
@@ -370,6 +378,154 @@ final class AuthoringDocumentationRegression {
         game.getWindow().setHeight(1080);
         game.resizeDisplay();
     }
+
+    private static boolean verifyPickupPositionSetting(Minecraft game) throws Exception {
+        var preferences = ClientPreferences.get();
+        if (!layoutEditorOpened) {
+            originalNoticeReducedMotion = preferences.reducedMotion;
+            preferences.reducedMotion = true;
+            button(game.screen, "notification-layout").onPress();
+            require(game.screen instanceof HudNotificationLayoutScreen,
+                    "Visual notice layout editor did not open");
+            layoutEditorOpened = true;
+            return false;
+        }
+        require(game.screen instanceof HudNotificationLayoutScreen,
+                "Visual notice layout editor closed before interaction checks");
+        int originalX = preferences.itemPickupToastXPercent;
+        int originalY = preferences.itemPickupToastYPercent;
+        int originalPickupScale = preferences.itemPickupToastScalePercent;
+        int originalTaskX = preferences.taskToastXPercent;
+        int originalTaskY = preferences.taskToastYPercent;
+        boolean originalAutoAvoid = preferences.hudAutoAvoidMinimap;
+        String originalMinimapCorner = preferences.minimapCorner;
+        int originalScale = preferences.taskToastScalePercent;
+        boolean originalTaskBackground = preferences.taskToastBackgroundEnabled;
+        int originalTaskBackgroundOpacity = preferences.taskToastBackgroundOpacityPercent;
+        PopupAnimationProfile originalTaskAnimation = preferences.taskToastAnimation;
+        var editor = (HudNotificationLayoutScreen) game.screen;
+        capture(game, "notification-layout-editor-zh-1920");
+        int[] bounds = (int[]) call(editor, "selectedRect");
+        double factor = (double) call(editor, "sceneScale");
+        double sceneX = (double) call(editor, "sceneX"), sceneY = (double) call(editor, "sceneY");
+        double centerX = bounds[0] + bounds[2] / 2.0, centerY = bounds[1] + bounds[3] / 2.0;
+        editor.mouseClicked(centerX, centerY, 0);
+        editor.mouseDragged(centerX + 36 * factor, centerY + 24 * factor, 0, 36 * factor, 24 * factor);
+        editor.mouseReleased(centerX + 36 * factor, centerY + 24 * factor, 0);
+        require((int) field(editor, "taskX") > 0 && (int) field(editor, "taskY") > originalTaskY,
+                "Dragging task notice did not update its normalized position: "
+                        + field(editor, "taskX") + "," + field(editor, "taskY"));
+        bounds = (int[]) call(editor, "selectedRect");
+        double scaleX = bounds[0] + bounds[2] - 2, scaleY = bounds[1] + bounds[3] - 2;
+        editor.mouseClicked(scaleX, scaleY, 0);
+        editor.mouseDragged(scaleX + 30 * factor, scaleY + 30 * factor, 0, 30 * factor, 30 * factor);
+        editor.mouseReleased(scaleX + 30 * factor, scaleY + 30 * factor, 0);
+        require((int) field(editor, "taskScale") > originalScale,
+                "Dragging the lower-right handle did not resize the task notice");
+        var taskBackgroundBox = editor.children().stream()
+                .filter(net.minecraft.client.gui.components.Checkbox.class::isInstance)
+                .map(net.minecraft.client.gui.components.Checkbox.class::cast)
+                .filter(box -> box.getMessage().getString().equals(
+                        net.minecraft.network.chat.Component.translatable(
+                                "screen.xero_quest_journal.notification_layout.task_background").getString()))
+                .findFirst().orElseThrow();
+        taskBackgroundBox.onPress();
+        ((net.minecraft.client.gui.components.EditBox) field(editor, "backgroundOpacityInput")).setValue("65");
+        require((boolean) field(editor, "taskBackground")
+                        && (int) field(editor, "taskBackgroundOpacity") == 65,
+                "Task notice background controls did not update the preview: enabled="
+                        + field(editor, "taskBackground") + ", opacity=" + field(editor, "taskBackgroundOpacity"));
+        button(editor, "notification-task-animation").onPress();
+        require(game.screen.getClass().getSimpleName().equals("PopupAnimationEditorScreen"),
+                "Task notice animation editor did not open");
+        set(game.screen, "scaleValue", "0.75");
+        button(game.screen, "popup-animation-preview").onPress();
+        require((boolean) field(game.screen, "playing"),
+                "Task notice keyframe animation preview did not start");
+        button(game.screen, "popup-animation-preview").onPress();
+        button(game.screen, "popup-animation-save").onPress();
+        require(game.screen == editor
+                        && Math.abs(preferences.taskToastAnimation.sample(0).scale() - .75) < .001
+                        && preferences.taskToastAnimation.sample(0).rotation() == 0,
+                "Task notice animation profile did not save or default rotation changed");
+        button(editor, "notification-play-preview").onPress();
+        require((boolean) field(editor, "previewPlaying"),
+                "Visual layout editor did not play the task notice animation");
+        button(editor, "notification-layout-pickup").onPress();
+        ((net.minecraft.client.gui.components.EditBox) field(editor, "scaleInput")).setValue("135");
+        require((int) field(editor, "pickupScale") == 135,
+                "Pickup notice scale input did not update the visual preview");
+        bounds = (int[]) call(editor, "selectedRect");
+        centerX = bounds[0] + bounds[2] / 2.0;
+        centerY = bounds[1] + bounds[3] / 2.0;
+        editor.mouseClicked(centerX, centerY, 0);
+        editor.mouseDragged(centerX + 42 * factor, centerY + 24 * factor, 0, 42 * factor, 24 * factor);
+        editor.mouseReleased(centerX + 42 * factor, centerY + 24 * factor, 0);
+        require((int) field(editor, "pickupX") != originalX || (int) field(editor, "pickupY") != originalY,
+                "Dragging pickup notice did not update its normalized position");
+        ((StyledChoiceButton<Integer>) buttonChoice(editor, "notification-minimap-corner")).select(2);
+        var avoidBox = editor.children().stream().filter(net.minecraft.client.gui.components.Checkbox.class::isInstance)
+                .map(net.minecraft.client.gui.components.Checkbox.class::cast).findFirst().orElseThrow();
+        avoidBox.onPress();
+        button(editor, "notification-layout-save").onPress();
+        require(game.screen == settings, "Applying notice layout did not return to settings");
+        require(preferences.itemPickupToastXPercent != originalX || preferences.itemPickupToastYPercent != originalY,
+                "Pickup notice drag was not applied");
+        require(preferences.taskToastXPercent > 0 && preferences.taskToastYPercent > originalTaskY,
+                "Task notice drag was not applied");
+        require(preferences.itemPickupToastScalePercent == 135 && preferences.minimapCorner.equals("bottom_left")
+                        && !preferences.hudAutoAvoidMinimap && preferences.taskToastBackgroundEnabled
+                        && preferences.taskToastBackgroundOpacityPercent == 65,
+                "Visual notice options did not apply");
+        Path file = xtdpotato.xero_quest_journal.platform.PlatformServices.configDir()
+                .resolve("xero_quest/ui/client.json");
+        var saved = new com.google.gson.Gson().fromJson(Files.readString(file), ClientPreferences.class);
+        require(saved.itemPickupToastXPercent == preferences.itemPickupToastXPercent
+                        && saved.itemPickupToastYPercent == preferences.itemPickupToastYPercent
+                        && saved.itemPickupToastScalePercent == 135
+                        && saved.taskToastXPercent == preferences.taskToastXPercent
+                        && saved.taskToastYPercent == preferences.taskToastYPercent
+                        && saved.taskToastBackgroundEnabled && saved.taskToastBackgroundOpacityPercent == 65
+                        && Math.abs(saved.taskToastAnimation.sample(0).scale() - .75) < .001
+                        && saved.minimapCorner.equals("bottom_left") && !saved.hudAutoAvoidMinimap,
+                "Visual notice layout and task animation did not persist");
+        var legacy = new com.google.gson.Gson().fromJson("{\"taskToastScalePercent\":33}", ClientPreferences.class);
+        require(legacy.itemPickupToastXPercent == 0 && legacy.itemPickupToastYPercent == 40
+                        && legacy.itemPickupToastScalePercent == 100,
+                "Legacy client preferences did not inherit pickup notice defaults");
+        require(legacy.taskToastXPercent == 0 && legacy.taskToastYPercent == 20,
+                "Legacy client preferences did not inherit task notice layout defaults");
+        require(!legacy.taskToastBackgroundEnabled && legacy.taskToastBackgroundOpacityPercent == 45
+                        && legacy.taskToastAnimation.sample(0).rotation() == 0,
+                "Legacy client preferences did not inherit transparent task notice defaults");
+        require(legacy.hudAutoAvoidMinimap && legacy.minimapCorner.equals("top_right"),
+                "Legacy client preferences did not inherit minimap avoidance defaults");
+        preferences.itemPickupToastXPercent = originalX;
+        preferences.itemPickupToastYPercent = originalY;
+        preferences.itemPickupToastScalePercent = originalPickupScale;
+        preferences.taskToastXPercent = originalTaskX;
+        preferences.taskToastYPercent = originalTaskY;
+        preferences.taskToastBackgroundEnabled = originalTaskBackground;
+        preferences.taskToastBackgroundOpacityPercent = originalTaskBackgroundOpacity;
+        preferences.taskToastAnimation = originalTaskAnimation;
+        preferences.hudAutoAvoidMinimap = originalAutoAvoid;
+        preferences.minimapCorner = originalMinimapCorner;
+        preferences.taskToastScalePercent = originalScale;
+        preferences.reducedMotion = originalNoticeReducedMotion;
+        require(preferences.save(), "Could not restore pickup notification test preferences");
+        settings.resize(game, settings.width, settings.height);
+        layoutEditorOpened = false;
+        return true;
+    }
+
+    private static net.minecraft.client.gui.components.AbstractWidget buttonChoice(Screen screen, String id) {
+        return screen.children().stream()
+                .filter(net.minecraft.client.gui.components.AbstractWidget.class::isInstance)
+                .map(net.minecraft.client.gui.components.AbstractWidget.class::cast)
+                .filter(widget -> widget instanceof StyledChoiceButton<?> choice && choice.styleId().equals(id))
+                .findFirst().orElseThrow();
+    }
+
     private static void capture(Minecraft game, String name) throws Exception {
         require(game.getLanguageManager().getSelected().equals("zh_cn"), "Screenshot language is not Chinese");
         try (var image = Screenshot.takeScreenshot(game.getMainRenderTarget())) {

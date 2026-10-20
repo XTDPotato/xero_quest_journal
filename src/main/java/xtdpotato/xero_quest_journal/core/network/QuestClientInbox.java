@@ -23,6 +23,8 @@ public final class QuestClientInbox {
             new java.util.ArrayDeque<>();
     private static final java.util.ArrayDeque<QuestNetwork.ToastPayload> toasts =
             new java.util.ArrayDeque<>();
+    private static final java.util.ArrayDeque<QuestNetwork.ItemPickupNoticePayload> itemPickups =
+            new java.util.ArrayDeque<>();
     private static final java.util.ArrayDeque<QuestNetwork.AnecdotePayload> anecdotes =
             new java.util.ArrayDeque<>();
     private static AnecdoteNetwork.Snapshot anecdoteSnapshot;
@@ -130,6 +132,15 @@ public final class QuestClientInbox {
 
     public static synchronized QuestNetwork.ToastPayload takeToast() {
         return toasts.pollFirst();
+    }
+
+    public static synchronized void accept(QuestNetwork.ItemPickupNoticePayload payload) {
+        if (itemPickups.size() >= 32) itemPickups.removeFirst();
+        itemPickups.addLast(payload);
+    }
+
+    public static synchronized QuestNetwork.ItemPickupNoticePayload takeItemPickup() {
+        return itemPickups.pollFirst();
     }
 
     public static synchronized void accept(QuestNetwork.AnecdotePayload payload) {
@@ -243,6 +254,7 @@ public final class QuestClientInbox {
         mailTemplates = null;
         openScreen = null;
         toasts.clear();
+        itemPickups.clear();
         anecdotes.clear();
         anecdoteSnapshot = null;
         anecdoteResult = null;
