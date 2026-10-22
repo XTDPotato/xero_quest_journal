@@ -57,8 +57,8 @@ public final class QuestClientInbox {
         if (snapshotChunks.stream().anyMatch(java.util.Objects::isNull)) return;
         Map<String, xtdpotato.xero_quest_journal.core.runtime.QuestRuntime.View> views = new LinkedHashMap<>();
         for (var chunk : snapshotChunks) views.putAll(chunk.views());
-        snapshot = new QuestNetwork.ProgressSnapshotPayload(payload.taskPagination(), views, payload.tracked(),
-                payload.focusGroup());
+        snapshot = new QuestNetwork.ProgressSnapshotPayload(0, 1, payload.taskPagination(), views, payload.tracked(),
+                payload.focusGroup(), payload.tasksPerPage());
         snapshotChunks = null;
     }
 
@@ -238,11 +238,16 @@ public final class QuestClientInbox {
     public static synchronized QuestNetwork.OpenScreenPayload takeOpenScreen() {
         var next = openScreen;
         openScreen = null;
-        locatedQuests.clear();
         return next;
     }
+    private static QuestGenerationNetwork.Offer generationOffer;
+    public static synchronized void accept(QuestGenerationNetwork.Offer offer) { generationOffer = offer; }
+    public static synchronized QuestGenerationNetwork.Offer generationOffer() { return generationOffer; }
+    public static synchronized void clearGenerationOffer() { generationOffer = null; }
 
     public static synchronized void clear() {
+        generationOffer = null;
+        locatedQuests.clear();
         uiTheme = null;
         daily = null;
         snapshot = null;

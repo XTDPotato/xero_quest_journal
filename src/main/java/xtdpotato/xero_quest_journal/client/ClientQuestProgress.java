@@ -21,6 +21,7 @@ public final class ClientQuestProgress {
     private static List<String> tracked = List.of();
     private static String focusGroup = "";
     private static boolean taskPagination;
+    private static int tasksPerPage = 50;
     private static boolean receivedSnapshot;
     private static boolean unreadTasks;
     private static final Map<Long, CompletableFuture<String>> pendingActions = new LinkedHashMap<>();
@@ -153,6 +154,10 @@ public final class ClientQuestProgress {
         return Minecraft.getInstance().getSingleplayerServer() != null
                 ? QuestConfig.defaults().taskPagination : taskPagination;
     }
+    public static int tasksPerPage() {
+        return Math.clamp(Minecraft.getInstance().getSingleplayerServer() != null
+                ? QuestConfig.defaults().tasksPerPage : tasksPerPage, 10, 1000);
+    }
 
     public static QuestCatalog catalog() { return catalog; }
     public static long catalogRevision() { return catalogRevision; }
@@ -170,6 +175,7 @@ public final class ClientQuestProgress {
         if (connection != game.getConnection()) {
             connection = game.getConnection();
             QuestCompletionToast.clear();
+            QuestHudRenderer.clearCoordinateGuidance();
             QuestUnlockToast.clear();
             ItemPickupToast.clear();
             ClientEditMode.reset();
@@ -177,6 +183,7 @@ public final class ClientQuestProgress {
             tracked = List.of();
             focusGroup = "";
             taskPagination = false;
+            tasksPerPage = 50;
             receivedSnapshot = false;
             unreadTasks = false;
             pendingActions.values().forEach(future -> future.complete("remote_unavailable"));
@@ -238,10 +245,12 @@ public final class ClientQuestProgress {
         }
         var snapshot = QuestClientInbox.takeSnapshot();
         if (snapshot != null && (!receivedSnapshot || !views.equals(snapshot.views()) || !tracked.equals(snapshot.tracked())
-                || taskPagination != snapshot.taskPagination() || !focusGroup.equals(snapshot.focusGroup()))) {
+                || taskPagination != snapshot.taskPagination() || tasksPerPage != snapshot.tasksPerPage()
+                || !focusGroup.equals(snapshot.focusGroup()))) {
             boolean hadSnapshot = receivedSnapshot;
             boolean structuralChange = !hadSnapshot || !tracked.equals(snapshot.tracked())
-                    || taskPagination != snapshot.taskPagination() || !focusGroup.equals(snapshot.focusGroup())
+                    || taskPagination != snapshot.taskPagination() || tasksPerPage != snapshot.tasksPerPage()
+                    || !focusGroup.equals(snapshot.focusGroup())
                     || !views.keySet().equals(snapshot.views().keySet())
                     || snapshot.views().entrySet().stream()
                     .anyMatch(entry -> !sameListState(views.get(entry.getKey()), entry.getValue()));
@@ -268,6 +277,7 @@ public final class ClientQuestProgress {
                     && !view.status().equals("claimed") && (view.newTask() || view.status().equals("complete")));
             tracked = snapshot.tracked();
             taskPagination = snapshot.taskPagination();
+            tasksPerPage = snapshot.tasksPerPage();
             focusGroup = snapshot.focusGroup();
             revision++;
             if (structuralChange) listRevision++;
@@ -368,6 +378,22 @@ public final class ClientQuestProgress {
             pendingActions.remove(requestId);
             deadlines.remove(requestId);
             result.complete("remote_unavailable");
+        }
+        return result;
+    }
+
+    public static CompletableFuture<String> setTasksPerPage(int value) {
+        var game = Minecraft.getInstance();
+        if (value < 10 || value > 1000) return CompletableFuture.completedFuture("invalid_config");
+        if (game.getConnection() == null) return CompletableFuture.completedFuture("remote_unavailable");
+        if (pendingActions.size() >= 8) return CompletableFuture.completedFuture("busy");
+        long requestId = ++nextRequestId;
+        var result = new CompletableFuture<String>();
+        pendingActions.put(requestId, result);
+        deadlines.put(requestId, System.nanoTime() + 15_000_000_000L);
+        try { PacketDistributor.sendToServer(new QuestNetwork.PageSizePayload(requestId, value)); }
+        catch (RuntimeException failure) {
+            pendingActions.remove(requestId); deadlines.remove(requestId); result.complete("remote_unavailable");
         }
         return result;
     }
@@ -473,6 +499,29 @@ public final class ClientQuestProgress {
             deadlines.remove(requestId);
             result.complete("remote_unavailable");
         }
+        return result;
+    }
+
+    public static CompletableFuture<String> changeTemplateLibrary(String kind, String id, String target, boolean after) {
+        if (Minecraft.getInstance().getConnection() == null) return CompletableFuture.completedFuture("remote_unavailable");
+        if (pendingActions.size() >= 8) return CompletableFuture.completedFuture("busy");
+        long request = ++nextRequestId;
+        var result = new CompletableFuture<String>();
+        pendingActions.put(request, result);
+        deadlines.put(request, System.nanoTime() + 15_000_000_000L);
+        try { PacketDistributor.sendToServer(new xtdpotato.xero_quest_journal.core.network.TemplateLibraryNetwork.Change(
+                request, ClientQuestDefinitions.revision(), kind, id, target, after)); }
+        catch (RuntimeException failure) { pendingActions.remove(request); deadlines.remove(request); result.complete("remote_unavailable"); }
+        return result;
+    }
+    public static CompletableFuture<String> chooseGenerationMode(String mode, String namespace, boolean recipes) {
+        if (Minecraft.getInstance().getConnection() == null) return CompletableFuture.completedFuture("remote_unavailable");
+        if (pendingActions.size() >= 8) return CompletableFuture.completedFuture("busy");
+        long request = ++nextRequestId;
+        var result = new CompletableFuture<String>(); pendingActions.put(request, result);
+        deadlines.put(request, System.nanoTime() + 15_000_000_000L);
+        try { PacketDistributor.sendToServer(new xtdpotato.xero_quest_journal.core.network.QuestGenerationNetwork.Choose(request, mode, namespace, recipes)); }
+        catch (RuntimeException failure) { pendingActions.remove(request); deadlines.remove(request); result.complete("remote_unavailable"); }
         return result;
     }
 

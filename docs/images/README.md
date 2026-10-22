@@ -76,6 +76,7 @@ pwsh -File tools/verify-interface-gallery.ps1 -Document docs/en/interface-galler
 | [js-reward-file-zh-1920.png](js-reward-file-zh-1920.png) | 奖励源码及动作 API 参考 |
 | [mailbox-authoring-zh-1920.png](mailbox-authoring-zh-1920.png) | 当前邮箱界面 |
 | [overview-authoring-zh-1920.png](overview-authoring-zh-1920.png) | 当前总览界面 |
+| [anecdote-reward-layout-editor-en-1920.png](anecdote-reward-layout-editor-en-1920.png) | 逸闻奖励控件的精确位置/缩放输入与吸附编辑，英文客户端 |
 | [journey-chapter-multiselect-zh-1920.png](journey-chapter-multiselect-zh-1920.png) | 当前章节外观：左侧实时预览、多选拖动与右侧属性编辑 |
 | [journey-chapter-marker-zh-1920.png](journey-chapter-marker-zh-1920.png) | 当前章节标记：白色中心菱形、淡蓝外框与透明光晕 |
 | [journey-toolbar-edit-tooltip-zh-1920.png](journey-toolbar-edit-tooltip-zh-1920.png) | 进入时间线编辑，单一悬浮提示 |
@@ -114,14 +115,14 @@ pwsh -File tools/verify-interface-gallery.ps1 -Document docs/en/interface-galler
 | [unlock-graph-current-zh-1920.png](unlock-graph-current-zh-1920.png) | 前置任务关系 |
 | [task-templates-zh-1920.png](task-templates-zh-1920.png) | 模板选择和预览 |
 | [location-editor-zh-1920.png](location-editor-zh-1920.png) | 维度、坐标与半径 |
-| [legendary-current-zh-1920.png](legendary-current-zh-1920.png) | 传说人物任务 |
+| [legendary-current-zh-1920.png](legendary-current-zh-1920.png) | 传说任务 |
 | [hot-events-current-zh-1920.png](hot-events-current-zh-1920.png) | 热点事件画布 |
 | [value-picker-current-zh-1920.png](value-picker-current-zh-1920.png) | 可编辑候选列表 |
 | [suggestion-recycle-bin-zh-1920.png](suggestion-recycle-bin-zh-1920.png) | 回收站多选、全选和反选 |
 | [journey-chapter-identity-zh-1920.png](journey-chapter-identity-zh-1920.png) | 章节名称与图标 |
 | [journey-task-details-popup-zh-1920.png](journey-task-details-popup-zh-1920.png) | 历程任务详情与显式导航 |
 | [hot-background-node-zh-1920.png](hot-background-node-zh-1920.png) | 背景节点属性 |
-| [legendary-background-inspector-zh-1920.png](legendary-background-inspector-zh-1920.png) | 传说人物背景预览 |
+| [legendary-background-inspector-zh-1920.png](legendary-background-inspector-zh-1920.png) | 传说任务背景预览 |
 
 ## 历史功能截图
 
@@ -148,5 +149,18 @@ pwsh -File tools/verify-interface-gallery.ps1 -Document docs/en/interface-galler
 | [async-search.png](async-search.png) | 大目录异步检索后的筛选结果 | `journal-async-search.png` |
 
 原始文件在开发环境的 `build/verification/` 中生成。仓库只保留与文档对应的图像；README 使用相对路径，克隆仓库后和 GitHub 页面上均可显示。
+
+## 2026-10-20 搜索与解锁图开发截图
+
+以下来自独立测试目录中的真实客户端正常渲染帧，均为原始 1920×1080。
+语言、时间及 SHA256 记录在 [专项截图清单](../reference/task-workflow-captures.json)。
+详见 [统一搜索与解锁图](../task-search-and-unlock-graph.md)。
+
+| 截图 | 内容 |
+| --- | --- |
+| [combined-search-filters-zh-1920.png](combined-search-filters-zh-1920.png) | 中文搜索范围与筛选共用滚动区域 |
+| [combined-search-filters-en-1920.png](combined-search-filters-en-1920.png) | 英文统一搜索与筛选 |
+| [unlock-group-rows-minimap-zh-1920.png](unlock-group-rows-minimap-zh-1920.png) | 分组排列、前置模式与等比视野框 |
+| [template-objective-hover-zh-1920.png](template-objective-hover-zh-1920.png) | 模板编辑后控件保留及目标行白边 |
 
 截图中的 Minecraft 世界、物品和第三方资源保留各自权利，不因项目源码采用 MIT 而改变许可。

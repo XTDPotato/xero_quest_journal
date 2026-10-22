@@ -181,6 +181,33 @@ A successful built-in predicate is not evidence that KubeJS integration passed.
 
 ## In-Game Editor
 
+Typing an identifier or `.` opens suggestions below the code field in a separate region,
+with types or function signatures. The list scrolls without covering the code or status bar.
+Click and release inside the same candidate to apply it; focus stays in the code field.
+
+| Operation | Input |
+| --- | --- |
+| Apply selected candidate | `Tab` |
+| Select another candidate | `Alt+Up/Down` |
+| Request suggestions explicitly | `Ctrl+Space` |
+| Dismiss current suggestions | `Esc` |
+| Undo / redo edits and completion | Toolbar buttons, `Ctrl+Z`, `Ctrl+Y` or `Ctrl+Shift+Z` |
+
+Plain arrow keys, Enter, text selection and clipboard operations continue to edit text.
+Completion replaces the whole identifier at the caret, including an existing suffix, while
+preserving surrounding code. An insertion over the character limit is rejected without truncation.
+Undo/redo restores the caret and selection as well as the text.
+
+Candidates distinguish graph predicates, condition files and rewards; `message` and `command`
+are offered only for rewards. KubeJS offers this bridge's string-valued `event` fields,
+`global` members and logging methods. This is not a complete KubeJS/ProbeJS type database
+and does not inspect other script files or execute server scripts.
+
+Background Rhino parsing recognizes lexical declarations, parameters, object literal properties,
+simple aliases and common Math/JSON/string/array members. Comments and string contents do not
+trigger code suggestions. Dynamic properties, function return types and third-party extensions
+may remain unknown. Results from earlier text/caret positions are discarded.
+
 The header identifies the script's purpose. Reference and Examples panels match that environment.
 Append Example keeps the existing draft and rejects overflow rather than truncating it.
 Use `Ctrl+S` to save; saving checks syntax without executing a reward.
@@ -189,6 +216,16 @@ Code, reference and status have separate clipping/scroll regions. Narrow windows
 reference visibility. Resizing preserves the draft. File saves retain their relative path
 and check source fingerprints to avoid overwriting external edits.
 Graph source updates a graph draft; save the owning graph/task as well.
+
+The focused real-client regression runs on Java 21 / NeoForge 1.21.1:
+
+```powershell
+.\gradlew.bat runClient -PscriptCompletionTest --offline --console=plain
+```
+
+It covers contextual candidates, locals/properties, literals/comments, caret replacement,
+editing and history, asynchronous stale results, press/release, character limits and compact layout.
+This verifies the editor, not execution by an installed third-party KubeJS mod.
 
 ![Code and reference](../images/js-editor-reference-en-1920.png)
 

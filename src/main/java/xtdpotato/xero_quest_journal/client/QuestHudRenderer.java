@@ -64,6 +64,7 @@ public final class QuestHudRenderer {
 
     public static void clearCoordinateGuidance() {
         CoordinateGuidance.clear();
+        locatedLocations.clear();
     }
 
     public static void acceptLocatedQuest(
@@ -71,6 +72,7 @@ public final class QuestHudRenderer {
         QuestLocation location = QuestLocation.parse(payload.location());
         if (location != null && location.kind().equals("coords") && location.resolved())
             locatedLocations.put(payload.questId(), location);
+        if (ClientQuestProgress.isTracked(payload.questId())) playCoordinateTrackAnimation(payload.questId());
     }
 
     public static QuestLocation locatedLocation(String questId) {

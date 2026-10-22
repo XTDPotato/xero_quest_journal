@@ -12,6 +12,16 @@ import java.util.*;
 public final class QuestControlData extends SavedData {
     private CompoundTag players = new CompoundTag();
     private CompoundTag teams = new CompoundTag();
+    public String guidance(ServerPlayer player, QuestDefinition quest, String target) {
+        return teams.getCompound(teamKey(player)).getCompound("guidance").getString(quest.progressKey() + "/" + target);
+    }
+    public void guidance(ServerPlayer player, QuestDefinition quest, String target, String location) {
+        String team = teamKey(player);
+        if (!teams.contains(team)) teams.put(team, new CompoundTag());
+        var data = teams.getCompound(team);
+        if (!data.contains("guidance")) data.put("guidance", new CompoundTag());
+        data.getCompound("guidance").putString(quest.progressKey() + "/" + target, location); setDirty();
+    }
     public static QuestControlData get(ServerPlayer player) {
         return player.server.overworld().getDataStorage().computeIfAbsent(new Factory<>(QuestControlData::new,
                 (tag, registries) -> {

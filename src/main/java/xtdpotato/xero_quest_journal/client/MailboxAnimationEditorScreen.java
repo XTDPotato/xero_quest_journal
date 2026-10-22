@@ -2,6 +2,7 @@ package xtdpotato.xero_quest_journal.client;
 
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.MultiLineEditBox;
+import net.minecraft.client.gui.components.Checkbox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
@@ -24,6 +25,9 @@ public final class MailboxAnimationEditorScreen extends AnimatedQuestScreen {
     private String lastValue = "";
     private boolean restoring;
     private MailFavoriteButton previewStar;
+    private MailboxActionButton previewAction;
+    private boolean playing, repeatPreview;
+    private long playbackStarted;
     private String message;
     private int previewLeft, previewTop, previewRight, previewBottom;
 
@@ -56,6 +60,8 @@ public final class MailboxAnimationEditorScreen extends AnimatedQuestScreen {
                 text("animation.event"), MailboxAnimationStore.EVENTS, event,
                 value -> text("animation.event." + value), value -> {
                     storeSource();
+                    source = null;
+                    playing = false;
                     event = value;
                     undo.clear(); redo.clear();
                     init();
@@ -65,6 +71,8 @@ public final class MailboxAnimationEditorScreen extends AnimatedQuestScreen {
             var button = new StyledButton(tabX, toolsY, 29, 22, Component.literal(tab.toUpperCase()),
                     ignored -> {
                         storeSource();
+                        source = null;
+                        playing = false;
                         language = tab;
                         undo.clear(); redo.clear();
                         init();
@@ -87,6 +95,12 @@ public final class MailboxAnimationEditorScreen extends AnimatedQuestScreen {
                 styles, "mail-animation-redo", "redo");
         addRenderableWidget(undoButton);
         addRenderableWidget(redoButton);
+        var play = new StyledButton(76, 67, 112, 22,
+                text(playing ? "animation.replay" : "animation.play"),
+                ignored -> playPreview(), styles, "mail-animation-play", "toolbar-button");
+        addRenderableWidget(play);
+        addRenderableWidget(Checkbox.builder(text("animation.repeat"), font).pos(194, 69)
+                .selected(repeatPreview).onValueChange((box, value) -> repeatPreview = value).build());
         addRenderableWidget(new StyledButton(Math.max(74, width - 152), buttonY, 68, 22,
                 text("animation.save"), ignored -> save(), styles, "mail-animation-save", "toolbar-button"));
         addRenderableWidget(new StyledButton(width - 78, buttonY, 66, 22,
@@ -95,9 +109,35 @@ public final class MailboxAnimationEditorScreen extends AnimatedQuestScreen {
                 previewTop + 54, 28, event.equals("favorite"), ignored -> previewStar.trigger(!previewStar.targetStarred()),
                 styles);
         addRenderableWidget(previewStar);
-        previewStar.visible = !List.of("notice", "new_badge").contains(event);
+        previewStar.visible = isFavoriteEvent(event);
+        previewAction = null;
+        if (!event.startsWith("row_") && (event.endsWith("_hover") || event.endsWith("_click"))) {
+            String actionKey = event.substring(0, event.lastIndexOf('_'));
+            previewAction = new MailboxActionButton((previewLeft + previewRight) / 2 - 80,
+                    previewTop + 52, 160, 26, text("animation.event." + event), ignored -> {},
+                    styles, actionKey.equals("edit") ? "mail-edit-animations" : "mail-" + actionKey,
+                    JournalNavButton.Kind.ACTION,
+                    "mail_envelope", actionKey);
+            previewAction.visible = true;
+            addRenderableWidget(previewAction);
+        }
         setInitialFocus(source);
         MailboxAnimationStore.preview(draft);
+    }
+
+    private static boolean isFavoriteEvent(String value) {
+        return List.of("favorite", "unfavorite", "hover", "press").contains(value);
+    }
+
+    private void playPreview() {
+        storeSource();
+        playing = true;
+        playbackStarted = System.nanoTime();
+        if (previewStar != null && isFavoriteEvent(event)) {
+            boolean target = event.equals("favorite") || event.equals("hover") || event.equals("press");
+            previewStar.trigger(target);
+        }
+        if (previewAction != null && event.endsWith("_click")) previewAction.onPress();
     }
 
     private String sourceValue() {
@@ -150,12 +190,24 @@ public final class MailboxAnimationEditorScreen extends AnimatedQuestScreen {
     }
 
     @Override protected void renderContents(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        double progress = previewProgress();
         backdrop(graphics, 0xFF161A20);
         graphics.drawString(font, title, 12, 12, 0xFFF0D59B, false);
         graphics.drawString(font, text("animation.preview"), previewLeft, previewTop - 15, 0xFFD8E1EC, false);
         graphics.fill(previewLeft, previewTop, previewRight, previewBottom, 0xFF242C36);
         graphics.renderOutline(previewLeft, previewTop, previewRight - previewLeft,
                 previewBottom - previewTop, 0xFF637589);
+        int previewMouseX = mouseX, previewMouseY = mouseY;
+        if (playing && event.equals("row_hover")) {
+            previewMouseX = (previewLeft + previewRight) / 2;
+            previewMouseY = previewTop + 128;
+        } else if (playing && previewStar != null && isFavoriteEvent(event)) {
+            previewMouseX = previewStar.getX() + previewStar.getWidth() / 2;
+            previewMouseY = previewStar.getY() + previewStar.getHeight() / 2;
+        } else if (playing && previewAction != null && event.endsWith("_hover")) {
+            previewMouseX = previewAction.getX() + previewAction.getWidth() / 2;
+            previewMouseY = previewAction.getY() + previewAction.getHeight() / 2;
+        }
         if (event.startsWith("row_")) {
             int rowWidth = Math.min(220, previewRight - previewLeft - 20);
             int rowX = (previewLeft + previewRight - rowWidth) / 2;
@@ -165,7 +217,7 @@ public final class MailboxAnimationEditorScreen extends AnimatedQuestScreen {
             MailRowButton row = new MailRowButton(rowX, rowY, rowWidth, 42, sample,
                     ignored -> {}, styles);
             row.setSelectionHighlighted(event.equals("row_selected"));
-            row.render(graphics, mouseX, mouseY, partialTick);
+            row.render(graphics, previewMouseX, previewMouseY, partialTick);
         }
         if (event.equals("notice")) {
             int width = Math.min(previewRight - previewLeft - 16,
@@ -173,12 +225,41 @@ public final class MailboxAnimationEditorScreen extends AnimatedQuestScreen {
             int height = Math.round(MailboxAnimationStore.scalar("notice", "height", 30, 18, 100));
             int x = (previewLeft + previewRight - width) / 2;
             int y = (previewTop + previewBottom - height) / 2;
-            MailArrivalToast.drawBanner(graphics, x, y, width, height, 1);
+            MailArrivalToast.drawBanner(graphics, x, y, width, height,
+                    playing ? (float) Math.min(1, progress * 4) : 1);
         }
-        if (event.equals("new_badge")) MailRowButton.newBadge(graphics,
-                (previewLeft + previewRight) / 2 - 20, previewTop + 40, 40);
+        if (event.equals("new_badge")) {
+            graphics.pose().pushPose();
+            float scale = playing ? .85F + .15F * (float) Math.min(1, progress * 4) : 1;
+            int centerX = (previewLeft + previewRight) / 2, centerY = previewTop + 60;
+            graphics.pose().translate(centerX, centerY, 0);
+            graphics.pose().scale(scale, scale, 1);
+            graphics.pose().translate(-centerX, -centerY, 0);
+            MailRowButton.newBadge(graphics, centerX - 20, centerY - 20, 40);
+            graphics.pose().popPose();
+        }
         if (message != null) graphics.drawString(font, text(message), 12, height - 43, 0xFFFF8C8C, false);
-        super.renderContents(graphics, mouseX, mouseY, partialTick);
+        super.renderContents(graphics, previewMouseX, previewMouseY, partialTick);
+    }
+
+    private double previewProgress() {
+        if (!playing) return 0;
+        double duration = Math.max(100, MailboxAnimationStore.style(event).durationMillis());
+        return Math.clamp((System.nanoTime() - playbackStarted) / (duration * 1_000_000.0), 0, 1);
+    }
+
+    @Override public void tick() {
+        if (!playing || previewProgress() < 1) return;
+        if (!repeatPreview) {
+            playing = false;
+            return;
+        }
+        playbackStarted = System.nanoTime();
+        if (previewStar != null && isFavoriteEvent(event)) {
+            boolean target = event.equals("favorite") || event.equals("hover") || event.equals("press");
+            previewStar.trigger(target);
+        }
+        if (previewAction != null && event.endsWith("_click")) previewAction.onPress();
     }
 
     @Override public boolean keyPressed(int key, int scan, int modifiers) {
@@ -191,6 +272,7 @@ public final class MailboxAnimationEditorScreen extends AnimatedQuestScreen {
     }
 
     @Override public void onClose() {
+        playing = false;
         MailboxAnimationStore.clearPreview();
         closeTo(parent);
     }

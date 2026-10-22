@@ -22,11 +22,23 @@ final class AnecdoteRecordsEditorScreen extends AnimatedQuestScreen {
 
     AnecdoteRecordsEditorScreen(Screen parent, AnecdoteDefinition entry,
                                 Consumer<List<AnecdoteDefinition.Record>> changed) {
-        super(Component.translatable("screen.xero_quest_journal.anecdote.records"));
+        super(Component.translatable("screen.xero_quest_journal.anecdote.records_title", entry.title()));
         this.parent = parent;
         this.entry = entry;
         this.changed = changed;
         records.addAll(entry.records());
+    }
+
+    @Override protected void init() {
+        clearWidgets();
+        int margin = Math.max(18, width / 18);
+        int panelW = Math.min(width - margin * 2, 900);
+        int left = (width - panelW) / 2;
+        var close = new EditorIconButton(left + panelW - 38, 44,
+                Component.translatable("screen.xero_quest_journal.close"),
+                this::onClose, ButtonStyleSheet.load(), "anecdote-records-close", "close");
+        close.setTooltip(net.minecraft.client.gui.components.Tooltip.create(close.getMessage()));
+        addRenderableWidget(close);
     }
 
     private Component text(String key, Object... args) {
@@ -41,9 +53,10 @@ final class AnecdoteRecordsEditorScreen extends AnimatedQuestScreen {
         int top = 42, bottom = height - 48;
         g.fill(left, top, left + panelW, bottom, 0xFFF1E8D8);
         g.renderOutline(left, top, panelW, bottom - top, 0xFFC7B38C);
-        g.drawString(font, text("records_title", entry.title()), left + 14, top + 12, 0xFF53586A, false);
+        g.drawString(font, font.plainSubstrByWidth(title.getString(), Math.max(24, panelW - 190)),
+                left + 14, top + 12, 0xFF53586A, false);
         boolean editable = ClientEditMode.enabled() && minecraft.player != null && minecraft.player.hasPermissions(2);
-        if (editable) drawToolbar(g, left + panelW - 136, top + 6, mx, my);
+        if (editable) drawToolbar(g, left + panelW - 166, top + 6, mx, my);
         int listTop = top + 42, listBottom = bottom - 12, rowH = 36, gap = 5;
         scroll.limit(Math.max(0, records.size() * (rowH + gap) - (listBottom - listTop)));
         scroll.advance();
@@ -88,7 +101,7 @@ final class AnecdoteRecordsEditorScreen extends AnimatedQuestScreen {
                 || !minecraft.player.hasPermissions(2)) return false;
         int margin = Math.max(18, width / 18), panelW = Math.min(width - margin * 2, 900);
         int left = (width - panelW) / 2, top = 42;
-        if (x >= left + panelW - 136 && x < left + panelW - 14 && y >= top + 6 && y < top + 30) {
+        if (x >= left + panelW - 166 && x < left + panelW - 44 && y >= top + 6 && y < top + 30) {
             if (records.size() >= AnecdoteDefinition.MAX_RECORDS) return true;
             var fresh = new AnecdoteDefinition.Record(AnecdoteEntryEditorScreen.nextRecordId(entry, records),
                     "新记录", "");
@@ -112,7 +125,7 @@ final class AnecdoteRecordsEditorScreen extends AnimatedQuestScreen {
     }
 
     private void openRecord(AnecdoteDefinition.Record record, boolean creating) {
-        minecraft.setScreen(new AnecdoteRecordEditorScreen(this, entry, record, creating, updated -> {
+        minecraft.setScreen(new AnecdoteRecordEditorScreen(this, entry.withRecords(records), record, creating, updated -> {
             records.clear();
             records.addAll(updated.records());
             changed.accept(List.copyOf(records));

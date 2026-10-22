@@ -29,6 +29,12 @@ public final class QuestKeyMappings {
             GLFW.GLFW_KEY_V,
             "key.categories.xero_quest_journal"
     );
+    public static final KeyMapping DISMISS_NEW_TASK = new KeyMapping(
+            "key.xero_quest_journal.dismiss_new_task",
+            InputConstants.Type.KEYSYM,
+            GLFW.GLFW_KEY_GRAVE_ACCENT,
+            "key.categories.xero_quest_journal"
+    );
 
     private QuestKeyMappings() {
     }

@@ -84,6 +84,11 @@ public final class ClientQuestDefinitions {
                 : ClientQuestProgress.catalog().types();
     }
 
+    public static xtdpotato.xero_quest_journal.core.TemplateLibraryStore.Library templateLibrary() {
+        return local() ? xtdpotato.xero_quest_journal.core.TemplateLibraryStore.get()
+                : ClientQuestProgress.catalog().templateLibrary();
+    }
+
     public static List<QuestCatalog.Group> groups() {
         Object identity = local() ? QuestRepository.groups() : ClientQuestProgress.catalog();
         var order = journalOrder();

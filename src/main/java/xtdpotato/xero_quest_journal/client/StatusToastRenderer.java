@@ -28,6 +28,14 @@ public final class StatusToastRenderer {
     }
 
     public static void draw(GuiGraphics graphics, Font font, Layout layout, int centerX, int y, float opacity) {
+        graphics.flush();
+        graphics.pose().pushPose();
+        graphics.pose().translate(0, 0, 2500);
+        try { drawContents(graphics, font, layout, centerX, y, opacity); graphics.flush(); }
+        finally { graphics.pose().popPose(); }
+    }
+
+    private static void drawContents(GuiGraphics graphics, Font font, Layout layout, int centerX, int y, float opacity) {
         int width = layout.width(), height = layout.height(), x = centerX - width / 2;
         int cap = Math.min(height, width);
         int alpha = Math.clamp(Math.round(opacity * 255), 0, 255) << 24;
@@ -52,15 +60,21 @@ public final class StatusToastRenderer {
             draw(graphics, font, layout, centerX, y);
             return;
         }
-        Runnable draw = () -> draw(graphics, font, layout, centerX, y);
-        COMPOSITOR.capture(graphics, draw);
-        var game = net.minecraft.client.Minecraft.getInstance();
-        int screenWidth = game.getWindow().getGuiScaledWidth();
-        int screenHeight = game.getWindow().getGuiScaledHeight();
-        int left = centerX - layout.width() / 2;
-        COMPOSITOR.transformed(graphics, screenWidth, screenHeight, left, y,
-                left + layout.width(), y + layout.height(), transform.scale(), transform.x(),
-                transform.y(), transform.rotation(), transform.opacity());
+        graphics.flush();
+        graphics.pose().pushPose();
+        graphics.pose().translate(0, 0, 2500);
+        try {
+            Runnable draw = () -> drawContents(graphics, font, layout, centerX, y, 1);
+            COMPOSITOR.capture(graphics, draw);
+            var game = net.minecraft.client.Minecraft.getInstance();
+            int screenWidth = game.getWindow().getGuiScaledWidth();
+            int screenHeight = game.getWindow().getGuiScaledHeight();
+            int left = centerX - layout.width() / 2;
+            COMPOSITOR.transformed(graphics, screenWidth, screenHeight, left, y,
+                    left + layout.width(), y + layout.height(), transform.scale(), transform.x(),
+                    transform.y(), transform.rotation(), transform.opacity());
+            graphics.flush();
+        } finally { graphics.pose().popPose(); }
     }
 
     public static double lifetimeProgress(long startedAt, long lifetimeMillis) {

@@ -80,9 +80,11 @@ final class QuestIconPreviewScreen extends AnimatedQuestScreen {
             g.fill(x, y, x + drawSize, y + drawSize, 0xFF343B45);
         QuestIcons.render(g, value, x, y, drawSize, drawSize, 1);
         g.disableScissor();
+        int captionHeight = font.lineHeight + 12;
+        g.fill(left() + 1, bottom() - captionHeight - 1, right() - 1, bottom() - 1, 0xDD15191F);
         g.drawString(font, font.plainSubstrByWidth(text("icon_picker.preview.hint").getString(),
-                        Math.max(1, width - 32)),
-                16, bottom() - font.lineHeight - 8, 0xFFB6C0CD, false);
+                        Math.max(1, right() - left() - 20)),
+                left() + 10, bottom() - font.lineHeight - 7, 0xFFB6C0CD, false);
         g.fill(0, height - 48, width, height, 0xFF252C34);
         super.renderContents(g, mouseX, mouseY, partialTick);
     }

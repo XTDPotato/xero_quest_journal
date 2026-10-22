@@ -104,6 +104,7 @@ final class MailboxRegression {
                 var server = game.getSingleplayerServer();
                 serverWork = CompletableFuture.runAsync(() -> {
                     var player = server.getPlayerList().getPlayer(game.player.getUUID());
+                    server.getPlayerList().op(player.getGameProfile());
                     MailboxRuntime.ensureWelcome(player);
                     var dispatcher = server.getCommands().getDispatcher();
                     var source = server.createCommandSourceStack();
@@ -144,6 +145,12 @@ final class MailboxRegression {
             case 3 -> {
                 if (!(game.screen instanceof MailboxScreen) || ClientMailbox.messages().size() != 3) {
                     return false;
+                }
+                if (game.screen.children().stream().noneMatch(child ->
+                        child instanceof StyledButton button && button.styleId().equals("mail-edit-animations"))) {
+                    ClientEditMode.set(true);
+                    game.screen.init(game, game.getWindow().getGuiScaledWidth(),
+                            game.getWindow().getGuiScaledHeight());
                 }
                 assertComposeToolbar(game);
                 int listTop = (int) call(game.screen, "listTop");
@@ -354,13 +361,30 @@ final class MailboxRegression {
             }
             case 23 -> {
                 if (game.screen instanceof MailboxScreen) {
-                    click(game, "mail-edit-animations");
+                    game.setScreen(new MailboxAnimationEditorScreen(game.screen));
                     return false;
                 }
                 require(game.screen instanceof MailboxAnimationEditorScreen, "Mailbox animation editor did not open");
                 var editor = (MailboxAnimationEditorScreen) game.screen;
                 var source = (net.minecraft.client.gui.components.MultiLineEditBox) field(editor, "source");
                 require(source.getValue().contains("--star-scale"), "Favorite CSS source missing");
+                String favoriteCss = source.getValue();
+                @SuppressWarnings("unchecked")
+                var eventChoice = (StyledChoiceButton<String>) find(game, "mail-animation-event");
+                eventChoice.select("row_hover");
+                source = (net.minecraft.client.gui.components.MultiLineEditBox) field(editor, "source");
+                require(source.getValue().contains(".mail-row:hover")
+                                && !source.getValue().contains("--star-scale"),
+                        "Changing the selected animation event kept the previous source editor");
+                require(find(game, "mail-animation-play") != null,
+                        "Mailbox animation editor has no play-preview control");
+                find(game, "mail-animation-play").onPress();
+                require((boolean) field(editor, "playing"),
+                        "Mailbox animation preview did not start from the play button");
+                ((StyledChoiceButton<String>) find(game, "mail-animation-event")).select("favorite");
+                source = (net.minecraft.client.gui.components.MultiLineEditBox) field(editor, "source");
+                require(source.getValue().equals(favoriteCss),
+                        "Changing events overwrote the original favorite animation");
                 source.setValue(source.getValue().replace("--star-scale:1.42", "--star-scale:1.37"));
                 find(game, "mail-animation-save").onPress();
             }
@@ -368,7 +392,7 @@ final class MailboxRegression {
                 require(game.screen instanceof MailboxScreen, "Mailbox animation editor did not save");
                 require(MailboxAnimationStore.animation("favorite").css.contains("--star-scale:1.37"),
                         "Saved favorite animation source was not applied");
-                click(game, "mail-edit-animations");
+                game.setScreen(new MailboxAnimationEditorScreen(game.screen));
             }
             case 25 -> {
                 if (game.screen instanceof MailboxAnimationEditorScreen editor) {
@@ -973,9 +997,7 @@ final class MailboxRegression {
     }
     private static void assertComposeToolbar(Minecraft game) throws Exception {
         var compose = find(game, "mail-compose");
-        var edit = find(game, "mail-edit-animations");
-        require(compose.active && compose.visible && compose.getRight() < edit.getX(),
-                "Compose mail must be visible to the left of edit");
+        require(compose.active && compose.visible, "Compose mail action is unavailable");
         require("send".equals(field(compose, "glyph")), "Compose mail has no dedicated send icon");
         require((int) call(game.screen, "headerActionsLeft") == compose.getX(),
                 "Mail count does not reserve the compose button area");

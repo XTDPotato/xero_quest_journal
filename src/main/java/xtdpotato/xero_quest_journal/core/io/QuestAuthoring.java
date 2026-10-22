@@ -676,6 +676,13 @@ public final class QuestAuthoring {
     public static Result editUnlockGraph(ServerPlayer author, long expectedRevision,
                                          Map<String, List<String>> parentsByTask,
                                          Map<String, String> expectedHashes, QuestUnlockLayout layout) {
+        return editUnlockGraph(author, expectedRevision, parentsByTask, expectedHashes, layout, Map.of());
+    }
+
+    public static Result editUnlockGraph(ServerPlayer author, long expectedRevision,
+                                         Map<String, List<String>> parentsByTask,
+                                         Map<String, String> expectedHashes, QuestUnlockLayout layout,
+                                         Map<String, String> prerequisiteModes) {
         if (author == null || author.getServer() == null || !author.getServer().isSameThread()
                 || !author.hasPermissions(2)) return failure("permission");
         synchronized (QuestRepository.class) {
@@ -687,6 +694,8 @@ public final class QuestAuthoring {
             Set<String> ids = new HashSet<>();
             tasks.forEach(task -> ids.add(task.id()));
             if (!parentsByTask.keySet().equals(ids)
+                    || prerequisiteModes == null || !ids.containsAll(prerequisiteModes.keySet())
+                    || prerequisiteModes.values().stream().anyMatch(value -> !List.of("all", "any").contains(value))
                     || !ids.containsAll(layout.positions().keySet())
                     || !validPrerequisites(parentsByTask, ids)) return failure("parent");
             if (tasks.stream().anyMatch(task -> QuestRepository.fileOf(task.id()) == null))
@@ -707,13 +716,16 @@ public final class QuestAuthoring {
                     if (!QuestRepository.fingerprint(source).equals(expectedHashes.get(task.id())))
                         return failure("conflict");
                     List<String> parents = parentsByTask.get(task.id());
-                    if (task.parents().equals(parents)) continue;
+                    String mode = prerequisiteModes.getOrDefault(task.id(), task.completionPolicy().prerequisiteMode());
+                    if (task.parents().equals(parents) && task.completionPolicy().prerequisiteMode().equals(mode)) continue;
                     String updated;
                     if (file.toString().endsWith(".json")) {
                         var json = JsonParser.parseString(source).getAsJsonObject();
                         json.add("parents", GSON.toJsonTree(parents));
+                        json.add("completionPolicy", GSON.toJsonTree(task.completionPolicy().withPrerequisiteMode(mode)));
                         updated = GSON.toJson(json);
-                    } else updated = QuestDocuments.parents(source, parents);
+                    } else updated = QuestDocuments.completionPolicy(QuestDocuments.parents(source, parents),
+                            task.completionPolicy().withPrerequisiteMode(mode));
                     if (!QuestRepository.parseDefinition(file, updated).id().equals(task.id()))
                         return failure("definitions");
                     originals.put(file, source);

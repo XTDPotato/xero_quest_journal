@@ -6,6 +6,7 @@ import net.minecraft.client.Screenshot;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
+import net.minecraft.world.item.ItemStack;
 import org.lwjgl.glfw.GLFW;
 import xtdpotato.xero_quest_journal.client.AnecdoteToast;
 import xtdpotato.xero_quest_journal.client.ClientPreferences;
@@ -13,6 +14,7 @@ import xtdpotato.xero_quest_journal.client.AnecdoteClientState;
 import xtdpotato.xero_quest_journal.client.AnecdoteScreen;
 import xtdpotato.xero_quest_journal.client.AnecdoteRewardsScreen;
 import xtdpotato.xero_quest_journal.client.QuestScreen;
+import xtdpotato.xero_quest_journal.client.QuestRewardPopupScreen;
 import xtdpotato.xero_quest_journal.client.StyledButton;
 import xtdpotato.xero_quest_journal.client.ClientEditMode;
 import xtdpotato.xero_quest_journal.core.io.AnecdoteStore;
@@ -40,9 +42,16 @@ final class AnecdoteRegression {
             true, false, 0);
     private static final AnecdoteDefinition ENTRY_B = new AnecdoteDefinition("smoke_anecdote_b",
             "尚未发现", "文字超出五个字符", "minecraft:paper", "被遗忘的故事", List.of(), false, false, 1);
+    private static final AnecdoteDefinition ENTRY_C = new AnecdoteDefinition("smoke_anecdote_c",
+            "图节点联动", "记录测试", "minecraft:book", "自动解锁测试",
+            List.of(new AnecdoteDefinition.Record("first", "初次记录", "由节点完成时自动解锁逸闻。")),
+            false, false, 2);
     private static int stage, played;
     private static long lastStarted;
     private static long rewardsOpenedAt;
+    private static long rewardLayoutEditorOpenedAt;
+    private static long rewardLayoutSaveStartedAt;
+    private static xtdpotato.xero_quest_journal.core.model.AnecdoteRewardLayout savedRewardLayoutBeforeEdit;
     private static AnecdoteScreen chronicleScreen;
 
     static boolean tick(Minecraft game) throws Exception {
@@ -61,20 +70,29 @@ final class AnecdoteRegression {
                 ClientPreferences.get().reducedMotion = false;
                 var server = game.getSingleplayerServer();
                 var source = game.player.createCommandSourceStack().withPermission(2);
+                server.getPlayerList().op(game.player.getGameProfile());
                 var root = server.getCommands().getDispatcher().getRoot().getChild("xero_anecdote");
                 require(root != null, "Missing command");
                 require(!root.canUse(source.withPermission(0)), "Unprivileged command access");
                 var dispatcher = server.getCommands().getDispatcher();
                 AnecdoteStore.save(ENTRY_A);
                 AnecdoteStore.save(ENTRY_B);
+                AnecdoteStore.save(ENTRY_C);
                 server.execute(() -> {
                     var player = server.getPlayerList().getPlayer(game.player.getUUID());
+                    server.getPlayerList().op(player.getGameProfile());
                     require(AnecdoteRuntime.discover(player, ENTRY_A.id()), "Graph discover action failed");
                     require(AnecdoteRuntime.completeRecord(player, ENTRY_A.id(), "arrival"),
                             "Record completion action failed");
                     require(AnecdoteRuntime.completeRecord(player, ENTRY_A.id(), "after")
                                     && AnecdoteRuntime.completeRecord(player, ENTRY_A.id(), "farewell"),
                             "The other chronicle records did not complete");
+                    require(AnecdoteRuntime.completeRecord(player, ENTRY_C.id(), "first"),
+                            "Completing a graph record did not unlock its anecdote");
+                    var state = QuestProgressData.get(player.getServer());
+                    require(state.anecdoteDiscovered(player.getUUID(), ENTRY_C.id())
+                                    && state.anecdoteCompleted(player.getUUID(), ENTRY_C.id(), "first"),
+                            "Anecdote node action did not persist discovered/completed state");
                 });
                 require(dispatcher.parse("xero_quest open anecdotes", source).getExceptions().isEmpty(),
                         "Chronicle open command did not parse");
@@ -216,7 +234,7 @@ final class AnecdoteRegression {
                         .map(StyledButton.class::cast)
                         .filter(button -> button.styleId().equals("overview-anecdotes"))
                         .findFirst().orElseThrow();
-                require(field(card, "icon").equals("anecdote_map"),
+                    require(field(card, "icon").equals("category_anecdotes"),
                         "Overview did not use the dedicated pixel map-pin icon for Anecdote Chronicle");
                 require(card.getMessage().equals(Component.translatable(
                                 "screen.xero_quest_journal.overview.category.anecdotes")),
@@ -256,23 +274,65 @@ final class AnecdoteRegression {
                     require(game.screen.getClass().getSimpleName().equals("AnecdoteEntryEditorScreen")
                                     && (boolean) field(game.screen, "creating"),
                             "Anecdote toolbar + did not open the create editor");
+                    button(game.screen, "anecdote-records").onPress();
+                    require(game.screen.getClass().getSimpleName().equals("AnecdoteRecordsEditorScreen"),
+                            "Entry editor did not open its records list");
+                    require(!game.screen.getTitle().getString().contains("screen.xero_quest_journal.")
+                                    && game.screen.getTitle().getString().equals(Component.translatable(
+                                    "screen.xero_quest_journal.anecdote.records_title",
+                                    field(game.screen, "entry") instanceof AnecdoteDefinition entry ? entry.title() : "").getString()),
+                            "Anecdote record list title is missing its Chinese translation");
+                    var recordsClose = button(game.screen, "anecdote-records-close");
+                    require("close".equals(field(recordsClose, "icon")),
+                            "Anecdote record list does not use the shared close icon");
+                    recordsClose.onPress();
+                    require(game.screen.getClass().getSimpleName().equals("AnecdoteEntryEditorScreen"),
+                            "Record-list close button did not return to entry editor");
                     game.screen.onClose();
                     require(game.screen == chronicleScreen && !chronicleScreen.isClosing(),
                             "Closing an unrendered entry editor did not restore its chronicle");
-                    var rewardAdd = field(chronicleScreen, "rewardAddBounds");
-                    int rewardX = (int) call(rewardAdd, "x") + (int) call(rewardAdd, "width") / 2;
-                    int rewardY = (int) call(rewardAdd, "y") + (int) call(rewardAdd, "height") / 2;
-                    chronicleScreen.mouseClicked(rewardX, rewardY, 0);
-                    chronicleScreen.mouseReleased(rewardX, rewardY, 0);
+                    requireNoField(chronicleScreen, "rewardAddBounds");
+                    require(chronicleScreen.children().stream().filter(StyledButton.class::isInstance)
+                                    .map(StyledButton.class::cast)
+                                    .noneMatch(button -> button.styleId().equals("anecdote-reward-add")),
+                            "Chronicle toolbar retained the external reward-add plus button");
+                    var entryEditorType = Class.forName(
+                            "xtdpotato.xero_quest_journal.client.AnecdoteEntryEditorScreen");
+                    var entryEditorConstructor = entryEditorType.getDeclaredConstructor(
+                            Screen.class, AnecdoteDefinition.class, boolean.class);
+                    entryEditorConstructor.setAccessible(true);
+                    Screen entryEditor = (Screen) entryEditorConstructor.newInstance(chronicleScreen, ENTRY_A, false);
+                    game.setScreen(entryEditor);
+                    button(entryEditor, "anecdote-rewards").onPress();
                     require(game.screen.getClass().getSimpleName().equals("QuestRewardsScreen"),
-                            "Anecdote reward add button did not open the reward editor");
+                            "Entry editor did not open its reward editor");
                     game.screen.onClose();
+                    require(game.screen == entryEditor, "Reward editor did not return to anecdote properties");
+                    var detailScreen = new QuestRewardPopupScreen(entryEditor,
+                            ENTRY_A.rewards().getFirst());
+                    game.setScreen(detailScreen);
+                    require(detailScreen.getClass().getSimpleName().equals("QuestRewardPopupScreen"),
+                            "Reward item detail did not open from the anecdote reward item");
+                    detailScreen.onClose();
+                    require(game.screen == entryEditor, "Reward item detail did not return to its owner editor");
+                    entryEditor.onClose();
+                    require(game.screen == chronicleScreen, "Entry reward editor did not return to chronicle");
                     var recordAdd = field(chronicleScreen, "recordAddBounds");
                     int recordX = (int) call(recordAdd, "x") + (int) call(recordAdd, "width") / 2;
                     int recordY = (int) call(recordAdd, "y") + (int) call(recordAdd, "height") / 2;
                     require(chronicleScreen.mouseClicked(recordX, recordY, 0), "Record add toolbar click was not handled");
                     require(game.screen.getClass().getSimpleName().equals("AnecdoteRecordEditorScreen"),
                             "Anecdote record + did not open its editor");
+                    var recordClose = button(game.screen, "anecdote-record-editor-close");
+                    require("close".equals(field(recordClose, "icon")),
+                            "Anecdote record editor does not use the shared close icon");
+                    recordClose.onPress();
+                    require(game.screen == chronicleScreen,
+                            "Record editor close button did not return to its parent");
+                    require(chronicleScreen.mouseClicked(recordX, recordY, 0),
+                            "Record add toolbar did not reopen after closing the editor");
+                    require(game.screen.getClass().getSimpleName().equals("AnecdoteRecordEditorScreen"),
+                            "Record add button did not reopen the record editor");
                     game.screen.onClose();
                     require(chronicleScreen.mouseClicked(recordX, recordY, 0), "Empty-page record add click was not handled");
                     require(game.screen.getClass().getSimpleName().equals("AnecdoteRecordEditorScreen"),
@@ -292,10 +352,35 @@ final class AnecdoteRegression {
                     chronicleScreen.onClose();
                     require(chronicleScreen.isClosing() && (boolean) field(chronicleScreen, "closingBook"),
                             "Chronicle did not use the book-close transition");
+                    chronicleScreen.reopen();
                     var rewards = new AnecdoteRewardsScreen(chronicleScreen);
                     game.setScreen(rewards);
-                    require(rewards.animationPosition() < 1,
-                            "Anecdote reward page skipped the popup-scale entrance animation");
+                    require(rewards.animationPosition() < 1 && (boolean) call(rewards, "isModalScreen"),
+                            "Anecdote rewards did not open as an adaptive floating book popup");
+                    require((int) call(rewards, "popupScrimColor") == 0x33808080,
+                            "Anecdote reward popup must use a 20% gray backdrop");
+                    require((int) field(rewards, "WATERMARK_WIDTH") <= 180
+                                    && (int) field(rewards, "WATERMARK_HEIGHT") <= 115
+                                    && (int) field(rewards, "WATERMARK_X") == 325
+                                    && (int) field(rewards, "WATERMARK_Y") == 368,
+                            "Anecdote notebook watermark must fit the reserved bottom sticker slots");
+                    call(rewards, "layout");
+                    int popupWidth = (int) field(rewards, "widthPage");
+                    int popupHeight = (int) field(rewards, "heightPage");
+                    require(popupWidth < game.screen.width && popupHeight < game.screen.height,
+                            "Anecdote reward popup overflowed its viewport");
+                    var rewardLayout = (xtdpotato.xero_quest_journal.core.model.AnecdoteRewardLayout)
+                            call(rewards, "activeLayout");
+                    int ticketWidth = (int) Math.round(538 * rewardLayout.ticket().scale() * 400.0 / 768.0);
+                    int giftX = (int) rewardLayout.claim().x();
+                    int ticketX = (int) rewardLayout.ticket().x();
+                    require(ticketWidth >= 275 && ticketWidth < 300
+                                    && Math.abs(ticketX + ticketWidth / 2 - 770) <= 1
+                                    && giftX >= ticketX && giftX + 49 <= ticketX + ticketWidth,
+                            "Anecdote claim button escaped its cropped reward ticket");
+                    var detailMethod = AnecdoteRewardsScreen.class.getDeclaredMethod("drawRecordPanel",
+                            GuiGraphics.class, int.class, int.class);
+                    require(detailMethod != null, "Reward panel item hit testing was not wired");
                     rewardsOpenedAt = System.nanoTime();
                     stage++;
                 }
@@ -306,9 +391,120 @@ final class AnecdoteRegression {
                 capture(game, "anecdote-rewards-1920");
                 require(!AnecdoteClientState.snapshot().completed().isEmpty(),
                         "Reward stickers removed the completed record");
+                var rewards = (AnecdoteRewardsScreen) game.screen;
+                var hits = (List<?>) field(rewards, "rewardHits");
+                require(!hits.isEmpty(), "Anecdote reward ticket did not create an item hit target");
+                var item = hits.getFirst();
+                double scale = (double) call(rewards, "scale");
+                int x = (int) Math.round((int) field(rewards, "left")
+                        + ((int) call(item, "x") + (int) call(item, "width") / 2.0) * scale);
+                int y = (int) Math.round((int) field(rewards, "top")
+                        + ((int) call(item, "y") + (int) call(item, "height") / 2.0) * scale);
+                require(rewards.mouseClicked(x, y, 0), "Anecdote reward item press was not handled");
+                rewards.mouseReleased(x, y, 0);
+                require(game.screen instanceof QuestRewardPopupScreen
+                                && !((ItemStack) field(game.screen, "inspectedStack")).isEmpty()
+                                && ((ItemStack) field(game.screen, "inspectedStack")).getCount() == 50,
+                        "Clicking an anecdote reward did not open its item details");
+                game.screen.onClose();
+                require(game.screen == rewards, "Reward item details did not return to the sticker book");
+                double pageScale = (double) call(rewards, "scale");
+                int pageLeft = (int) field(rewards, "left"), pageTop = (int) field(rewards, "top");
+                int editX = (int) Math.round(pageLeft + 914 * pageScale);
+                int editY = (int) Math.round(pageTop + 87 * pageScale);
+                require(rewards.mouseClicked(editX, editY, 0), "Reward layout edit button press was not handled");
+                rewards.mouseReleased(editX, editY, 0);
+                require((boolean) field(rewards, "layoutEditing"),
+                        "Reward layout edit mode did not open from the visible edit control");
+                rewardLayoutEditorOpenedAt = System.nanoTime();
+                stage++;
+                return false;
+            }
+            case 9 -> {
+                if (System.nanoTime() - rewardLayoutEditorOpenedAt < 150_000_000L) return false;
+                capture(game, "anecdote-reward-layout-editor-1920");
+                var rewards = (AnecdoteRewardsScreen) game.screen;
+                double pageScale = (double) call(rewards, "scale");
+                int pageLeft = (int) field(rewards, "left"), pageTop = (int) field(rewards, "top");
+                var layoutOwner = (AnecdoteDefinition) call(rewards, "rewardEntry");
+                require(layoutOwner != null, "Reward layout editor has no active anecdote entry");
+                var originalLayout = layoutOwner.rewardLayout();
+                var persistedLayoutOwner = AnecdoteStore.find(layoutOwner.id());
+                require(persistedLayoutOwner != null, "Active anecdote entry is not persisted");
+                savedRewardLayoutBeforeEdit = persistedLayoutOwner.rewardLayout();
+                var draft = (xtdpotato.xero_quest_journal.core.model.AnecdoteRewardLayout)
+                        field(rewards, "rewardLayoutDraft");
+                require(draft.equals(originalLayout), "Reward layout editor did not load the saved geometry");
+                var xInput = (net.minecraft.client.gui.components.EditBox) field(rewards, "layoutXInput");
+                invoke(rewards, "applyNumericInput", new Class<?>[]{String.class, String.class},
+                        "reward_layout.x", "701.25");
+                require(((xtdpotato.xero_quest_journal.core.model.AnecdoteRewardLayout)
+                                field(rewards, "rewardLayoutDraft")).control("ticket").x() == 701.25,
+                        "Precise reward control X input did not update the live preview");
+                invoke(rewards, "applyNumericInput", new Class<?>[]{String.class, String.class},
+                        "reward_layout.x", Double.toString(originalLayout.ticket().x()));
+                call(rewards, "commitNumericEdit");
+                require((double) invoke(AnecdoteRewardsScreen.class, "snapCoordinate",
+                                new Class<?>[]{double.class, boolean.class}, 13.0, true) == 16.0
+                                && (double) invoke(AnecdoteRewardsScreen.class, "snapCoordinate",
+                                new Class<?>[]{double.class, boolean.class}, 13.0, false) == 13.0,
+                        "Reward control snap or Shift snap bypass is incorrect");
+                int selectClaimX = (int) Math.round(pageLeft + 780 * pageScale);
+                int selectClaimY = (int) Math.round(pageTop + 87 * pageScale);
+                rewards.mouseClicked(selectClaimX, selectClaimY, 0);
+                rewards.mouseReleased(selectClaimX, selectClaimY, 0);
+                double claimCenterX = originalLayout.claim().x() + 24;
+                double claimCenterY = originalLayout.claim().y() + 24;
+                int claimX = (int) Math.round(pageLeft + claimCenterX * pageScale);
+                int claimY = (int) Math.round(pageTop + claimCenterY * pageScale);
+                rewards.mouseClicked(claimX, claimY, 0);
+                rewards.mouseDragged(claimX + (int) Math.round(9 * pageScale), claimY, 0,
+                        9 * pageScale, 0);
+                rewards.mouseReleased(claimX + (int) Math.round(9 * pageScale), claimY, 0);
+                draft = (xtdpotato.xero_quest_journal.core.model.AnecdoteRewardLayout)
+                        field(rewards, "rewardLayoutDraft");
+                require(draft.claim().x() > originalLayout.claim().x(),
+                        "Dragging the claim button did not update its live layout");
+                int undoX = (int) Math.round(pageLeft + 616 * pageScale);
+                int undoY = (int) Math.round(pageTop + 114 * pageScale);
+                rewards.mouseClicked(undoX, undoY, 0);
+                require(((xtdpotato.xero_quest_journal.core.model.AnecdoteRewardLayout)
+                                field(rewards, "rewardLayoutDraft")).claim().x() == originalLayout.claim().x(),
+                        "Reward layout undo did not restore the claim position");
+                int redoX = (int) Math.round(pageLeft + 640 * pageScale);
+                rewards.mouseClicked(redoX, undoY, 0);
+                draft = (xtdpotato.xero_quest_journal.core.model.AnecdoteRewardLayout)
+                        field(rewards, "rewardLayoutDraft");
+                require(draft.claim().x() > originalLayout.claim().x(),
+                        "Reward layout redo did not restore the moved claim button");
+                int saveX = (int) Math.round(pageLeft + 849 * pageScale);
+                int saveY = (int) Math.round(pageTop + 87 * pageScale);
+                rewards.mouseClicked(saveX, saveY, 0);
+                rewards.mouseReleased(saveX, saveY, 0);
+                rewardLayoutSaveStartedAt = System.nanoTime();
+                stage++;
+                return false;
+            }
+            case 10 -> {
+                var activeEntry = (AnecdoteDefinition) call(game.screen, "rewardEntry");
+                require(activeEntry != null, "Reward layout save lost its active anecdote entry");
+                var savedEntry = AnecdoteStore.find(activeEntry.id());
+                if (savedEntry == null || savedEntry.rewardLayout().claim().x()
+                        == savedRewardLayoutBeforeEdit.claim().x()) {
+                    if (AnecdoteClientState.lastResult().equals("invalid")
+                            || AnecdoteClientState.lastResult().equals("permission"))
+                        throw new AssertionError("Reward layout save was rejected: " + AnecdoteClientState.lastResult());
+                    if (System.nanoTime() - rewardLayoutSaveStartedAt > 15_000_000_000L)
+                        throw new AssertionError("Reward layout save timed out, result="
+                                + AnecdoteClientState.lastResult() + ", editing=" + field(game.screen, "layoutEditing"));
+                    return false;
+                }
+                require(!(boolean) field(game.screen, "layoutEditing"),
+                        "Saved reward geometry did not leave edit mode");
                 game.setScreen(null);
                 AnecdoteStore.delete(ENTRY_A.id());
                 AnecdoteStore.delete(ENTRY_B.id());
+                AnecdoteStore.delete(ENTRY_C.id());
                 return true;
             }
             default -> throw new AssertionError("Unexpected stage");
@@ -320,6 +516,10 @@ final class AnecdoteRegression {
         var result = AnecdoteToast.class.getDeclaredField(name);
         result.setAccessible(true);
         return result;
+    }
+    private static StyledButton button(Screen screen, String id) {
+        return screen.children().stream().filter(StyledButton.class::isInstance).map(StyledButton.class::cast)
+                .filter(button -> button.styleId().equals(id)).findFirst().orElseThrow();
     }
 
     private static Field reflected(Object object, String name) throws Exception {
@@ -336,11 +536,30 @@ final class AnecdoteRegression {
     private static Object field(Object object, String name) throws Exception {
         return reflected(object, name).get(object);
     }
+    private static void requireNoField(Object object, String name) {
+        for (Class<?> type = object.getClass(); type != null; type = type.getSuperclass()) {
+            try { type.getDeclaredField(name); }
+            catch (NoSuchFieldException expected) { continue; }
+            throw new AssertionError("Unexpected field remains: " + name);
+        }
+    }
 
     private static Object call(Object object, String name) throws Exception {
         var method = object.getClass().getDeclaredMethod(name);
         method.setAccessible(true);
         return method.invoke(object);
+    }
+    private static Object invoke(Class<?> type, String name, Class<?>[] parameterTypes, Object... args)
+            throws Exception {
+        var method = type.getDeclaredMethod(name, parameterTypes);
+        method.setAccessible(true);
+        return method.invoke(null, args);
+    }
+    private static Object invoke(Object target, String name, Class<?>[] parameterTypes, Object... args)
+            throws Exception {
+        var method = target.getClass().getDeclaredMethod(name, parameterTypes);
+        method.setAccessible(true);
+        return method.invoke(target, args);
     }
 
     private static boolean active() throws Exception { return field("current").get(null) != null; }

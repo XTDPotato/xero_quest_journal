@@ -59,11 +59,15 @@ public final class QuestStatusIcons {
         graphics.fill(x + 1, y + 1, x + edge - 1, y + edge - 1, fill);
         graphics.renderOutline(x, y, edge, edge, frame);
         if (checked) {
-            int markSize = Math.max(7, edge - 5);
-            JournalNavButton.drawIcon(graphics, "mail_check",
-                    x + (edge - markSize) / 2, y + (edge - markSize) / 2,
-                    markSize, applyAlpha(highlighted ? 0xFF9FE27E : 0xFF83CF69, alpha));
+            renderCheckMark(graphics, x, y, edge,
+                    applyAlpha(highlighted ? 0xFF9FE27E : 0xFF83CF69, alpha));
         }
+    }
+
+    public static void renderCheckMark(GuiGraphics graphics, int x, int y, int size, int color) {
+        int markSize = Math.max(7, size - Math.max(3, size / 4));
+        JournalNavButton.drawIcon(graphics, "mail_check",
+                x + (size - markSize) / 2, y + (size - markSize) / 2, markSize, color);
     }
 
     private static int applyAlpha(int color, float alpha) {

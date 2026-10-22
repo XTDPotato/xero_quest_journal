@@ -5,7 +5,7 @@
 A native Minecraft quest journal with visual authoring, chapter timelines, rewards,
 mail, anecdote records, and reusable structure previews.
 
-**Current mod version: 0.2.2.** The Chinese and English documentation
+**Current mod version: 0.2.3.** The Chinese and English documentation
 describe the same shared feature set. Images on this page are actual English client captures
 at **1920×1080**, taken after resource loading and interface transitions settle.
 Off-screen coordinate tracking uses a rotated `<` indicator to point toward the target.
@@ -18,12 +18,16 @@ Choose the JAR that matches both your Minecraft version and loader.
 
 | Minecraft | Loader | Java | Release file |
 | --- | --- | --- | --- |
-| 1.20.1 | Forge | 17 | `xero_quest_journal-forge-1.20.1-0.2.2.jar` |
-| 1.20.1 | Fabric + Fabric API | 17 | `xero_quest_journal-fabric-1.20.1-0.2.2.jar` |
-| 1.21.1 | NeoForge | 21 | `xero_quest_journal-neoforge-1.21.1-0.2.2.jar` |
-| 1.21.1 | Fabric + Fabric API | 21 | `xero_quest_journal-fabric-1.21.1-0.2.2.jar` |
+| 1.20.1 | Forge | 17 | `xero_quest_journal-forge-1.20.1-0.2.3.jar` |
+| 1.20.1 | Fabric + Fabric API | 17 | `xero_quest_journal-fabric-1.20.1-0.2.3.jar` |
+| 1.21.1 | NeoForge | 21 | `xero_quest_journal-neoforge-1.21.1-0.2.3.jar` |
+| 1.21.1 | Fabric + Fabric API | 21 | `xero_quest_journal-fabric-1.21.1-0.2.3.jar` |
 
-[Download 0.2.2](https://github.com/XTDPotato/xero_quest_journal/releases/tag/v0.2.2).
+The 0.2.3 anecdote reward editor adds precise X/Y/scale fields, 8-unit drag snapping
+with Shift bypass, and a 20% gray popup scrim. The map watermark is smaller and stays
+in the reserved bottom area. Current verification: [0.2.3 report](docs/release-verification-0.2.3.md).
+
+[Download 0.2.3](https://github.com/XTDPotato/xero_quest_journal/releases/tag/v0.2.3).
 The release also contains an organized bundle and `SHA256SUMS.txt`.
 Install one matching core JAR per instance. Multiplayer installations need matching client
 and server builds. Complete authoring currently targets a local integrated server.

@@ -100,6 +100,12 @@ final class QuestHudToastQueue {
         pausedAt = 0;
     }
 
+    static void clear(Type type) {
+        queued.removeIf(notice -> notice.type() == type);
+        if (current != null && current.type() == type) current = null;
+        advance();
+    }
+
     private static void advance() {
         if (!hudActive || Minecraft.getInstance().player == null || Minecraft.getInstance().screen != null) return;
         long now = System.nanoTime();

@@ -1,0 +1,49 @@
+{
+  "timestamp": "2026-10-20T21:19:38.890728800+08:00",
+  "gpu": "NVIDIA GeForce RTX 5070 Ti/PCIe/SSE2",
+  "cpu": "AMD64 Family 26 Model 68 Stepping 0, AuthenticAMD",
+  "resolution": [
+    1920,
+    1080
+  ],
+  "gui_scale": 2.0,
+  "vsync": false,
+  "fps_limit": 260,
+  "animations": "Enabled, with one selected animated link",
+  "minecraft": "1.21.1 NeoForge development client",
+  "task_count": 1202,
+  "profiler_enabled": false,
+  "measurement": "RenderFrameEvent.Post intervals, 5s warmup + 10s sample per scene; world rendering included; focus flag active",
+  "results": [
+    {
+      "scene": "stationary",
+      "frames": 5163,
+      "average_fps": 516.1677010565422,
+      "p50_ms": 1.6174,
+      "p95_ms": 3.6663,
+      "p99_ms": 7.7666,
+      "one_percent_low_fps": 110.42154273334938,
+      "meets_120fps_target": true
+    },
+    {
+      "scene": "panning",
+      "frames": 1777,
+      "average_fps": 177.7109132271813,
+      "p50_ms": 5.6591,
+      "p95_ms": 8.8674,
+      "p99_ms": 11.6753,
+      "one_percent_low_fps": 79.98048476171815,
+      "meets_120fps_target": false
+    },
+    {
+      "scene": "zooming",
+      "frames": 1727,
+      "average_fps": 172.7411832254928,
+      "p50_ms": 5.9301,
+      "p95_ms": 8.5373,
+      "p99_ms": 11.7266,
+      "one_percent_low_fps": 69.8395823592975,
+      "meets_120fps_target": false
+    }
+  ]
+}

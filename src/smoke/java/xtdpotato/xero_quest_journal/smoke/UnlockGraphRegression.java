@@ -37,6 +37,7 @@ final class UnlockGraphRegression {
     private static CompletableFuture<String> lockRequest;
     private static int waitTicks;
     private static long transitionStartFrame;
+    private static double drawerCanvasX;
     private static int originalPopupMillis;
 
     static boolean tick(Minecraft game) throws Exception {
@@ -77,6 +78,8 @@ final class UnlockGraphRegression {
                 positions.put(A, new QuestUnlockLayout.Position(30, 30));
                 positions.put(B, new QuestUnlockLayout.Position(240, 30));
                 positions.put(C, new QuestUnlockLayout.Position(450, 30));
+                positions.replaceAll((id, p) -> List.of(A, B, C).contains(id) ? p
+                        : new QuestUnlockLayout.Position(p.x(), p.y() + 1000));
                 method(editor, "rebuildViewportIndexes").invoke(editor);
                 method(editor, "fit").invoke(editor);
                 @SuppressWarnings("unchecked")
@@ -92,6 +95,9 @@ final class UnlockGraphRegression {
                 List<Object> visibleLinks = (List<Object>) method(editor, "visibleLinks").invoke(editor);
                 require(allLinks.size() < 100 || visibleLinks.size() < allLinks.size(),
                         "Unlock graph still prepares every off-screen link for drawing");
+                field(editor, "zoom").setDouble(editor, .55);
+                field(editor, "panX").setDouble(editor, 12);
+                field(editor, "panY").setDouble(editor, 74);
                 checkEditorInteractions(game);
                 double outX = (double) method(editor, "sx", double.class).invoke(editor, 219.);
                 double targetX = (double) method(editor, "sx", double.class).invoke(editor, 260.);
@@ -217,8 +223,9 @@ final class UnlockGraphRegression {
             }
             case 8 -> {
                 if (--waitTicks > 0) return false;
+                if (field(editor, "searchPending").getBoolean(editor)) return false;
                 capture(game, "unlock-graph-drawer");
-                checkDrawerColors(game);
+                checkDrawerRows();
                 button(editor, "unlock-task-list").onPress();
                 waitTicks = 3;
             }
@@ -249,6 +256,7 @@ final class UnlockGraphRegression {
             case 11 -> {
                 if (--waitTicks > 0) return false;
                 ClientPreferences.get().reducedMotion = false;
+                drawerCanvasX = (int) method(editor, "drawerExtent").invoke(editor) + field(editor, "panX").getDouble(editor);
                 button(editor, "unlock-task-list").onPress();
                 require(!field(editor, "taskDrawer").getBoolean(editor), "Drawer target did not close");
                 var motion = (UiMotion) field(editor, "drawerMotion").get(editor);
@@ -259,9 +267,14 @@ final class UnlockGraphRegression {
                 if (--waitTicks > 0) return false;
                 var motion = (UiMotion) field(editor, "drawerMotion").get(editor);
                 require(motion.settled() && motion.position() == 0, "Drawer close animation failed to settle");
+                require(Math.abs((int) method(editor, "drawerExtent").invoke(editor)
+                        + field(editor, "panX").getDouble(editor) - drawerCanvasX) < .01,
+                        "Drawer animation moved the task canvas");
                 xtdpotato.xero_quest_journal.core.QuestConfig.defaults().uiAnimationMillis = 600;
                 originalPopupMillis = ClientPreferences.get().popupAnimationMillis;
                 ClientPreferences.get().popupAnimationMillis = 600;
+                GLFW.glfwSetWindowSize(game.getWindow().getWindow(), 1920, 1080);
+                game.resizeDisplay();
                 field(editor, "propertiesTask").set(editor, A);
                 transitionStartFrame = ClientSmokeTest.renderedFrames;
                 waitTicks = 1;
@@ -279,6 +292,10 @@ final class UnlockGraphRegression {
                 if (--waitTicks > 0) return false;
                 require(editor.menuAnimationPosition("properties") == 1 && !editor.inputBlocked(),
                         "Task properties entry did not settle");
+                int width = (int) method(editor, "propertyWidth").invoke(editor);
+                require(width <= Math.max(180, editor.width - 32) && width <= 505,
+                        "Task properties popup did not adapt to the selected task canvas");
+                capture(game, "unlock-properties-adaptive");
                 editor.keyPressed(GLFW.GLFW_KEY_ESCAPE, 0, 0);
                 require(field(editor, "propertiesTask").get(editor).equals(""), "Escape did not close properties");
                 transitionStartFrame = ClientSmokeTest.renderedFrames;
@@ -371,7 +388,7 @@ final class UnlockGraphRegression {
         clickNode(B);
         clickNode(C);
         require(selection().equals(Set.of(A, B, C)), "Multi-selection replaced previous tasks");
-        editor.mouseClicked(editor.width - 20, editor.height - 80, 0);
+        editor.mouseClicked(14, 72, 0);
         require(selection().equals(Set.of(A, B, C)), "Blank canvas cleared multi-selection");
         editor.setFocused(null);
         editor.keyPressed(GLFW.GLFW_KEY_A, 0, GLFW.GLFW_MOD_CONTROL);
@@ -432,6 +449,22 @@ final class UnlockGraphRegression {
                     "Large default node exceeded the persisted coordinate range: " + entry);
             require(distinct.add(point.x() + "," + point.y()), "Large default nodes overlap");
         }
+        var grouped = type.getDeclaredMethod("grouped", Map.class, Map.class);
+        grouped.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        Map<String, QuestUnlockLayout.Position> wrapped = (Map<String, QuestUnlockLayout.Position>)
+                grouped.invoke(null, Map.of("large_group", ids), parents);
+        require(wrapped.size() == ids.size(), "Grouped layout lost nodes while wrapping");
+        var ordered = ids.stream().sorted().toList();
+        require(wrapped.get(ordered.get(0)).x() > wrapped.get(ordered.get(1)).x(),
+                "Large grouped layout reverted to left-to-right");
+        require(wrapped.get(ordered.get(400)).y() > wrapped.get(ordered.get(0)).y(),
+                "Large group did not wrap to another row");
+        distinct.clear();
+        for (var point : wrapped.values()) {
+            require(point.x() <= 100000 && point.y() <= 100000, "Wrapped node outside coordinate range");
+            require(distinct.add(point.x() + "," + point.y()), "Wrapped grouped nodes overlap");
+        }
     }
     private static void checkLockMessage(String key) throws Exception {
         editor.tick();
@@ -472,16 +505,26 @@ final class UnlockGraphRegression {
             image.writeToFile(output.resolve(name + ".png"));
         }
     }
-    private static void checkDrawerColors(Minecraft game) throws Exception {
-        int w = (int) method(editor, "drawerWidth").invoke(editor);
-        try (var image = Screenshot.takeScreenshot(game.getMainRenderTarget())) {
-            for (int row : List.of(0, 2)) {
-                int abgr = image.getPixelRGBA((w - 20) * image.getWidth() / editor.width,
-                        (70 + row * 28 + 14) * image.getHeight() / editor.height);
-                int rgb = (abgr & 255) << 16 | abgr & 0xFF00 | abgr >>> 16 & 255;
-                require(rgb == (row == 0 ? 0x315A43 : 0x5A3438),
-                        "Drawer unlock/lock status color did not render: " + Integer.toHexString(rgb));
-            }
+    private static void checkDrawerRows() throws Exception {
+        var model = (xtdpotato.xero_quest_journal.client.JournalListModel) method(editor, "drawerRows").invoke(editor);
+        var rows = model.visibleRows(0, model.contentHeight());
+        require(rows.stream().filter(row -> row.quest() != null).count() == 35,
+                "Drawer omitted tasks from the journal model");
+        @SuppressWarnings("unchecked")
+        var buttons = (Map<String, xtdpotato.xero_quest_journal.client.JournalListButton>) field(editor, "drawerButtons").get(editor);
+        for (String id : List.of(A, C)) {
+            var row = rows.stream().filter(value -> value.quest() != null && value.quest().id().equals(id))
+                    .findFirst().orElseThrow(() -> new AssertionError("Missing journal task row " + id));
+            require(row.quest().title().equals(id), "Drawer title differs from the journal task");
+        }
+        require(!buttons.isEmpty(), "Drawer did not render any visible journal rows");
+        for (var row : rows) {
+            var button = buttons.get(row.key());
+            if (row.quest() == null || button == null) continue;
+            require(button.locked() == !ClientQuestProgress.view(row.quest().id()).unlocked(),
+                    "Visible journal row lost task lock status: " + row.quest().id());
+            require(button.getMessage().getString().equals(row.quest().title()),
+                    "Visible drawer title differs from the journal task");
         }
     }
     private static Set<?> links(QuestUnlockGraphScreen graph) throws Exception {

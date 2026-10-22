@@ -59,6 +59,7 @@ public final class ClientSmokeTest {
     @SubscribeEvent
     public static void frame(net.neoforged.neoforge.client.event.RenderFrameEvent.Post event) {
         renderedFrames++;
+        if (Boolean.getBoolean("xero.unlockGraphPerf")) UnlockGraphPerformance.frame();
     }
     private static final Path OUTPUT = Path.of("..", "build", "verification");
     private static final long START = System.nanoTime();
@@ -88,8 +89,12 @@ public final class ClientSmokeTest {
     public static void tick(ClientTickEvent.Post event) {
         if ((!Boolean.getBoolean("xero.smokeTest") && !Boolean.getBoolean("xero.mailboxTest") && !Boolean.getBoolean("xero.mailReferenceTest")
                 && !Boolean.getBoolean("xero.authoringDocsTest")
+                && !Boolean.getBoolean("xero.scriptCompletionTest")
                 && !Boolean.getBoolean("xero.anecdoteTest")
                 && !Boolean.getBoolean("xero.anecdoteUiTest")
+                && !Boolean.getBoolean("xero.anecdoteAuthoringTest")
+                && !Boolean.getBoolean("xero.taskWorkflowTest")
+                && !Boolean.getBoolean("xero.generationTest")
                 && !Boolean.getBoolean("xero.popupAnimationTest")
                 && !Boolean.getBoolean("xero.mailBodyEditorTest")
                 && !Boolean.getBoolean("xero.mailAdminTest")
@@ -126,6 +131,10 @@ public final class ClientSmokeTest {
             return;
         }
         Minecraft game = Minecraft.getInstance();
+        if (!Boolean.getBoolean("xero.generationTest") && game.screen instanceof xtdpotato.xero_quest_journal.client.QuestGenerateScreen) {
+            xtdpotato.xero_quest_journal.client.ClientQuestProgress.chooseGenerationMode("dismiss", "all", false);
+            game.setScreen(null);
+        }
         if (game.getSingleplayerServer() != null && !Boolean.getBoolean("xero.mailAdminTest")
                 && !Boolean.getBoolean("xero.rewardQualityTest")
                 && !Boolean.getBoolean("xero.journalOrderTest") && !Boolean.getBoolean("xero.spotlightUiTest")) {
@@ -275,6 +284,60 @@ public final class ClientSmokeTest {
                         java.nio.file.StandardCopyOption.REPLACE_EXISTING);
                 finished = true;
                 game.stop();
+                return;
+            }
+            if (Boolean.getBoolean("xero.taskWorkflowTest") && stage >= 2) {
+                if (game.player == null || game.level == null) return;
+                if (TaskWorkflowRegression.tick(game)) {
+                    Files.createDirectories(OUTPUT);
+                    Files.writeString(OUTPUT.resolve("task-workflow-result.txt"),
+                            "PASS: task template properties/lines survive edit/save/reopen; one reward surface in author/runtime; "
+                                    + "editor grid toggle/default visibility, preserved template and hover objective white outline; shared template unchanged; grouped right-to-left DAG; "
+                                    + "all/any prerequisites and undo/redo/persistence; spatial culling, minimap aspect and inverse drag mapping; "
+                                    + "combined search/scopes/filters in one scrolling panel, Chinese/English captures and compact bounds.\n");
+                    Files.copy(OUTPUT.resolve("task-workflow-result.txt"), OUTPUT.resolve("result.txt"),
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    finished = true; game.stop();
+                }
+                return;
+            }
+            if (Boolean.getBoolean("xero.generationTest") && stage >= 2) {
+                if (game.player == null || game.level == null) return;
+                if (GenerationRegression.tick(game)) {
+                    Files.copy(OUTPUT.resolve("generation-template-result.txt"), OUTPUT.resolve("result.txt"), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    finished = true; game.stop();
+                }
+                return;
+            }
+            if (Boolean.getBoolean("xero.anecdoteAuthoringTest") && stage >= 2) {
+                if (game.player == null || game.level == null) return;
+                if (AnecdoteEditorRegression.tick(game)) {
+                    Files.createDirectories(OUTPUT);
+                    Files.writeString(OUTPUT.resolve("anecdote-authoring-result.txt"),
+                            "PASS: per-entry layout legacy defaults/JSON/save/network, live numeric and drag move/width/height/scale, "
+                                    + "text font size/background, undo/redo, record list language and close controls, "
+                                    + "four-column sticker pages/clear/replay/empty fixed panel, server claim no duplicate, "
+                                    + "picker smooth intermediate frames/tooltip reuse, native 1080p and compact screenshots.\n");
+                    Files.copy(OUTPUT.resolve("anecdote-authoring-result.txt"), OUTPUT.resolve("result.txt"),
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    finished = true; game.stop();
+                }
+                return;
+            }
+            if (Boolean.getBoolean("xero.scriptCompletionTest") && stage >= 2) {
+                if (game.player == null || game.level == null) return;
+                if (ScriptCompletionRegression.tick(game)) {
+                    Files.createDirectories(OUTPUT);
+                    Files.writeString(OUTPUT.resolve("script-completion-result.txt"),
+                            "PASS: contextual JS/KubeJS fields, locals/object properties, strings/comments, middle-word "
+                                    + "replacement, async stale-result rejection, typing/selection/newlines/arrows, "
+                                    + "click release/cancel, Tab/Alt navigation/Escape/Ctrl+Space, undo/redo, "
+                                    + "length limit, desktop/compact layout and screenshots.\n");
+                    Files.copy(OUTPUT.resolve("script-completion-result.txt"), OUTPUT.resolve("result.txt"),
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    finished = true;
+                    game.stop();
+                }
                 return;
             }
             if (Boolean.getBoolean("xero.authoringDocsTest") && stage >= 2) {
@@ -618,7 +681,7 @@ public final class ClientSmokeTest {
                             "PASS: editor entry, branching/chain links, cycle rejection, task source and layout persistence,\n"
                                     + "unlock runtime, unsaved exit, reversible drawer motion, coordinate validation/undo/redo,\n"
                                     + "persistent multi-selection, Ctrl+A/inversion, batch lock/unlock codec and server execution,\n"
-                                    + "green/red status pixels, drawer scrolling and close animation,\n"
+                                    + "shared journal rows/lock status, asynchronous result application, drawer scrolling and close animation,\n"
                                     + "desktop and compact drawer/canvas screenshots.\n");
                     Files.copy(OUTPUT.resolve("unlock-graph-result.txt"), OUTPUT.resolve("result.txt"),
                             java.nio.file.StandardCopyOption.REPLACE_EXISTING);
@@ -811,7 +874,8 @@ public final class ClientSmokeTest {
                                     ? "anecdote-ui-result.txt" : "anecdote-result.txt"),
                             Boolean.getBoolean("xero.anecdoteUiTest")
                                     ? "PASS: anecdote overview navigation, default map icon, create entry/reward/record editors,"
-                                    + " press/release selection, completed stickers, book-close and reward entrance;"
+                                    + " entry reward editing without toolbar plus, clickable reward item details, adaptive floating book popup,"
+                                    + " completed stickers, book-close and reward entrance;"
                                     + " command/selector parsing, codec and persistence. Toast playback stages skipped.\n"
                                     : "PASS: command/selector parsing and permission checks, queue payload codec,\n"
                                     + "single-shot playback, serial queue including 24 identical requests, full fade-out gate,\n"
@@ -905,9 +969,9 @@ public final class ClientSmokeTest {
                             "Xero-Smoke-" + System.currentTimeMillis(),
                             new LevelSettings("Xero Smoke Test", GameType.CREATIVE, false, Difficulty.PEACEFUL,
                                     true, new GameRules(), WorldDataConfiguration.DEFAULT),
-                            new WorldOptions(42L, Boolean.getBoolean("xero.trackingHudTest"), false),
+                            new WorldOptions(42L, Boolean.getBoolean("xero.trackingHudTest") || Boolean.getBoolean("xero.generationTest"), false),
                             registries -> registries.registryOrThrow(Registries.WORLD_PRESET)
-                                    .getHolderOrThrow(Boolean.getBoolean("xero.trackingHudTest")
+                                    .getHolderOrThrow(Boolean.getBoolean("xero.trackingHudTest") || Boolean.getBoolean("xero.generationTest")
                                             ? WorldPresets.NORMAL : WorldPresets.FLAT)
                                     .value().createWorldDimensions(),
                             new TitleScreen());

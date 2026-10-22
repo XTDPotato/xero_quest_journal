@@ -15,7 +15,7 @@ import java.util.function.BiConsumer;
 import java.util.function.Supplier;
 
 public final class ForgeNetworkBridge {
-    private static final String PROTOCOL = "10";
+    private static final String PROTOCOL = "13";
     private static final ResourceLocation CHANNEL_ID =
             new ResourceLocation("xero_quest_journal", "main");
     private static final Map<ResourceLocation, Registration<?>> SERVERBOUND = new ConcurrentHashMap<>();

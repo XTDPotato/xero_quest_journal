@@ -462,10 +462,10 @@
   {
     "file": "anecdotes-rewards-zh-1920.png",
     "screen": "AnecdoteRewardsScreen",
-    "capturedAt": "2026-10-20T02:38:08.885608Z",
+    "capturedAt": "2026-10-22T09:59:20Z",
     "width": 1920,
     "height": 1080,
-    "sha256": "e5b104b1fb8276c5d8680396f8573926ca86c1ad5a60aa4529171df58a4a5c0c",
+    "sha256": "2b46e8599c6ef494135793bb1607b028c6725abd6425d09be30f2e5d8749ccad",
     "locale": "zh_cn",
     "scene": "anecdotes-rewards"
   },

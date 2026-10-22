@@ -8,6 +8,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.levelgen.Heightmap;
+import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.network.PacketDistributor;
 import xtdpotato.xero_quest_journal.core.model.QuestDefinition;
@@ -67,7 +68,7 @@ public final class QuestTravelActions {
         long now = player.server.getTickCount();
         if (now < NEXT_SEARCH.getOrDefault(player, Long.MIN_VALUE)) return false;
         NEXT_SEARCH.put(player, now + 200);
-        var destinationId = ResourceLocation.tryParse(node.get("target", ""));
+        var destinationId = QuestLocation.targetId(node.get("target", ""));
         if (destinationId == null) return false;
         BlockPos found;
         int radius = Integer.parseInt(node.get("radius", node.type().equals("locate_biome") ? "256" : "16"));
@@ -80,12 +81,26 @@ public final class QuestTravelActions {
             found = result == null ? null : result.getFirst();
         } else {
             if (radius < 1 || radius > 100) return false;
-            var structure = level.registryAccess().registryOrThrow(Registries.STRUCTURE)
-                    .getHolder(ResourceKey.create(Registries.STRUCTURE, destinationId));
-            if (structure.isEmpty()) return false;
+            var registry = level.registryAccess().registryOrThrow(Registries.STRUCTURE);
+            HolderSet<net.minecraft.world.level.levelgen.structure.Structure> structures = node.get("target", "").startsWith("#")
+                    ? registry.getTag(net.minecraft.tags.TagKey.create(Registries.STRUCTURE, destinationId))
+                        .<HolderSet<net.minecraft.world.level.levelgen.structure.Structure>>map(value -> value).orElseGet(HolderSet::direct)
+                    : registry.getHolder(ResourceKey.create(Registries.STRUCTURE, destinationId))
+                        .<HolderSet<net.minecraft.world.level.levelgen.structure.Structure>>map(HolderSet::direct).orElseGet(HolderSet::direct);
+            if (structures.size() == 0) return false;
             var result = level.getChunkSource().getGenerator().findNearestMapStructure(
-                    level, HolderSet.direct(structure.get()), player.blockPosition(), radius, false);
+                    level, structures, player.blockPosition(), radius, false);
             found = result == null ? null : result.getFirst();
+            if (found != null) {
+                var chunk = level.getChunkSource().getChunk(found.getX() >> 4, found.getZ() >> 4,
+                        ChunkStatus.STRUCTURE_STARTS, true);
+                var start = chunk == null ? null : chunk.getStartForStructure(result.getSecond().value());
+                if (start != null && start.isValid() && !start.getPieces().isEmpty()) {
+                    var entrance = start.getPieces().getFirst().getBoundingBox();
+                    found = new BlockPos((entrance.minX() + entrance.maxX()) / 2,
+                            Math.min(entrance.maxY(), entrance.minY() + 1), (entrance.minZ() + entrance.maxZ()) / 2);
+                }
+            }
             if (found != null && found.getY() <= level.getMinBuildHeight())
                 found = level.getHeightmapPos(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, found);
         }
@@ -121,6 +136,7 @@ public final class QuestTravelActions {
         }
         PacketDistributor.sendToPlayer(player,
                 new QuestNetwork.LocatedQuestPayload(quest.id(), location.encode()));
+        if (node.type().equals("locate_structure")) QuestStructureGuidance.located(player, quest, node.get("target", ""), location);
         return true;
     }
 

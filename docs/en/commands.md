@@ -136,6 +136,14 @@ there is no `daily set_count` command.
 
 ## Generate And Delete Generated Tasks
 
+`/xero_quest start_generate_gui` opens the generation chooser at permission 0. Generating requires OP 2 or the
+singleplayer owner. The first world entry offers a choice; choosing or cancelling persists per player.
+Choose advancement chains, structure exploration, both, or the legacy catalog, with a namespace and related-recipe switch.
+See [generation and template library](generation-and-template-library.md). Existing `generate` syntax keeps its catalog behavior.
+
+`/xero_quest locate <id>` requests a destination for your eligible tracked structure task at permission 0.
+The server validates eligibility, caches the destination for the team and allows retries; this does not bypass task locks.
+
 ```text
 /xero_quest generate [target] [rewards] [multiplier]
 /xero_quest delete_generated
@@ -301,6 +309,8 @@ Optional arguments appear as separate executable leaf paths. Forge 1.20.1 adds
 | `/xero_quest generate <target>` | 2 |
 | `/xero_quest generate <target> <rewards>` | 2 |
 | `/xero_quest generate <target> <rewards> <multiplier>` | 2 |
+| `/xero_quest start_generate_gui` | 0 |
+| `/xero_quest locate <id>` | 0 |
 | `/xero_quest list` | 2 |
 | `/xero_quest mail claim <targets> <id>` | 2 |
 | `/xero_quest mail claim_all <targets>` | 2 |

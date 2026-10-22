@@ -42,14 +42,16 @@ public final class QuestNetwork {
     }
 
     public static void register(RegisterPayloadHandlersEvent event) {
-        // 10: unread task state and reward quality/background fields.
-        var registrar = event.registrar("10");
+        // 13: task-linked acquisition/submission notices; generation and shared template library actions.
+        var registrar = event.registrar("13");
         AnecdoteNetwork.register(registrar);
         QuestControlNetwork.register(registrar);
         QuestUiThemeNetwork.register(registrar);
         QuestDailyNetwork.register(registrar);
         QuestJourneyNetwork.register(registrar);
         QuestJournalOrderNetwork.register(registrar);
+        TemplateLibraryNetwork.register(registrar);
+        QuestGenerationNetwork.register(registrar);
         QuestStructureNetwork.register(registrar);
         registrar.playToServer(ProgressRequestPayload.TYPE, ProgressRequestPayload.STREAM_CODEC,
                 QuestNetwork::handleProgressRequest);
@@ -59,6 +61,18 @@ public final class QuestNetwork {
         registrar.playToServer(ClaimChoicePayload.TYPE, ClaimChoicePayload.STREAM_CODEC,
                 QuestNetwork::handleClaimChoice);
         registrar.playToServer(ConfigPayload.TYPE, ConfigPayload.STREAM_CODEC, QuestNetwork::handleConfig);
+        registrar.playToServer(PageSizePayload.TYPE, PageSizePayload.STREAM_CODEC, (payload, context) -> {
+            if (!(context.player() instanceof ServerPlayer player) || !player.hasPermissions(2)) {
+                context.reply(new ActionResultPayload(payload.requestId(), "permission"));
+                return;
+            }
+            int previous = QuestConfig.defaults().tasksPerPage;
+            QuestConfig.defaults().tasksPerPage = payload.value();
+            boolean saved = QuestConfig.save();
+            if (!saved) QuestConfig.defaults().tasksPerPage = previous;
+            replySnapshot(player, context);
+            context.reply(new ActionResultPayload(payload.requestId(), saved ? "config_saved" : "config_save_failed"));
+        });
         registrar.playToServer(HotEventCanvasPayload.TYPE, HotEventCanvasPayload.STREAM_CODEC,
                 QuestNetwork::handleHotEventCanvas);
         registrar.playToClient(ProgressSnapshotPayload.TYPE, ProgressSnapshotPayload.STREAM_CODEC,
@@ -125,6 +139,7 @@ public final class QuestNetwork {
                 }
             }
             replySnapshot(player, context);
+            QuestGenerationNetwork.offerFirst(player);
         }
     }
 
@@ -292,6 +307,7 @@ public final class QuestNetwork {
             QuestControlNetwork.sendVariables(player);
             QuestUiThemeNetwork.send(player);
             QuestDailyNetwork.send(player);
+            xtdpotato.xero_quest_journal.core.runtime.QuestStructureGuidance.sync(player);
         } catch (IllegalArgumentException tooLarge) {
             context.reply(new ActionResultPayload(0, "progress_unavailable"));
         }
@@ -441,7 +457,7 @@ public final class QuestNetwork {
         List<String> tracked = QuestRuntime.tracked(player);
         for (int index = 0; index < chunks.size(); index++) {
             context.reply(new ProgressSnapshotPayload(index, chunks.size(), QuestConfig.defaults().taskPagination,
-                    chunks.get(index), tracked, QuestFocus.group(player)));
+                    chunks.get(index), tracked, QuestFocus.group(player), QuestConfig.defaults().tasksPerPage));
         }
     }
 
@@ -662,6 +678,23 @@ public final class QuestNetwork {
         public Type<ClaimChoicePayload> type() {
             return TYPE;
         }
+    }
+
+    public record PageSizePayload(long requestId, int value) implements CustomPacketPayload {
+        public static final Type<PageSizePayload> TYPE = new Type<>(
+                ResourceLocation.fromNamespaceAndPath(XeroQuestJournal.MOD_ID, "task_page_size"));
+        public static final StreamCodec<RegistryFriendlyByteBuf, PageSizePayload> STREAM_CODEC = new StreamCodec<>() {
+            @Override public PageSizePayload decode(RegistryFriendlyByteBuf buffer) {
+                return new PageSizePayload(buffer.readVarLong(), buffer.readVarInt());
+            }
+            @Override public void encode(RegistryFriendlyByteBuf buffer, PageSizePayload payload) {
+                buffer.writeVarLong(payload.requestId()); buffer.writeVarInt(payload.value());
+            }
+        };
+        public PageSizePayload {
+            if (value < 10 || value > 1000) throw new IllegalArgumentException("Invalid task page size");
+        }
+        @Override public Type<PageSizePayload> type() { return TYPE; }
     }
 
     public record ConfigPayload(long requestId, String key, boolean value) implements CustomPacketPayload {
@@ -1045,27 +1078,33 @@ public final class QuestNetwork {
     }
 
     public record ItemPickupNoticePayload(net.minecraft.world.item.ItemStack stack, int pickedCount,
-                                          int current, int required) implements CustomPacketPayload {
+                                          int current, int required, String questId, String action) implements CustomPacketPayload {
+        public ItemPickupNoticePayload(net.minecraft.world.item.ItemStack stack, int pickedCount, int current, int required) {
+            this(stack, pickedCount, current, required, "", "acquire");
+        }
         public static final Type<ItemPickupNoticePayload> TYPE = new Type<>(
                 ResourceLocation.fromNamespaceAndPath(XeroQuestJournal.MOD_ID, "item_pickup_notice"));
         public static final StreamCodec<RegistryFriendlyByteBuf, ItemPickupNoticePayload> STREAM_CODEC =
                 new StreamCodec<>() {
                     @Override public ItemPickupNoticePayload decode(RegistryFriendlyByteBuf buffer) {
                         return new ItemPickupNoticePayload(net.minecraft.world.item.ItemStack.STREAM_CODEC.decode(buffer),
-                                buffer.readVarInt(), buffer.readVarInt(), buffer.readVarInt());
+                                buffer.readVarInt(), buffer.readVarInt(), buffer.readVarInt(), buffer.readUtf(128), buffer.readUtf(8));
                     }
                     @Override public void encode(RegistryFriendlyByteBuf buffer, ItemPickupNoticePayload value) {
                         net.minecraft.world.item.ItemStack.STREAM_CODEC.encode(buffer, value.stack());
                         buffer.writeVarInt(value.pickedCount());
                         buffer.writeVarInt(value.current());
                         buffer.writeVarInt(value.required());
+                        buffer.writeUtf(value.questId(), 128);
+                        buffer.writeUtf(value.action(), 8);
                     }
                 };
 
         public ItemPickupNoticePayload {
             stack = stack == null ? net.minecraft.world.item.ItemStack.EMPTY : stack.copy();
             if (stack.isEmpty() || pickedCount < 1 || pickedCount > 1_000_000
-                    || current < 0 || current > 1_000_000 || required < 1 || required > 1_000_000)
+                    || current < 0 || current > 1_000_000 || required < 1 || required > 1_000_000
+                    || questId == null || questId.length() > 128 || !List.of("acquire", "submit").contains(action))
                 throw new IllegalArgumentException("Invalid tracked item pickup notice");
         }
 
@@ -1467,7 +1506,7 @@ public final class QuestNetwork {
 
     public record ProgressSnapshotPayload(int chunkIndex, int chunkCount, boolean taskPagination,
                                           Map<String, QuestRuntime.View> views,
-                                          List<String> tracked, String focusGroup) implements CustomPacketPayload {
+                                          List<String> tracked, String focusGroup, int tasksPerPage) implements CustomPacketPayload {
         public static final Type<ProgressSnapshotPayload> TYPE = new Type<>(
                 ResourceLocation.fromNamespaceAndPath(XeroQuestJournal.MOD_ID, "progress_snapshot"));
         public static final StreamCodec<RegistryFriendlyByteBuf, ProgressSnapshotPayload> STREAM_CODEC =
@@ -1477,6 +1516,7 @@ public final class QuestNetwork {
                         int chunkIndex = buffer.readVarInt();
                         int chunkCount = checkedSize(buffer.readVarInt(), MAX_PROGRESS_CHUNKS, "progress chunk");
                         boolean taskPagination = buffer.readBoolean();
+                        int tasksPerPage = buffer.readVarInt();
                         String focusGroup = buffer.readUtf(256);
                         int size = checkedSize(buffer.readVarInt(), MAX_QUESTS, "quest");
                         Map<String, QuestRuntime.View> views = new LinkedHashMap<>();
@@ -1503,7 +1543,7 @@ public final class QuestNetwork {
                             tracked.add(buffer.readUtf(256));
                         }
                         return new ProgressSnapshotPayload(chunkIndex, chunkCount, taskPagination, views, tracked,
-                                focusGroup);
+                                focusGroup, tasksPerPage);
                     }
 
                     @Override
@@ -1511,6 +1551,7 @@ public final class QuestNetwork {
                         buffer.writeVarInt(payload.chunkIndex());
                         buffer.writeVarInt(payload.chunkCount());
                         buffer.writeBoolean(payload.taskPagination());
+                        buffer.writeVarInt(payload.tasksPerPage());
                         buffer.writeUtf(payload.focusGroup(), 256);
                         buffer.writeVarInt(payload.views().size());
                         payload.views().forEach((id, view) -> {
@@ -1536,6 +1577,11 @@ public final class QuestNetwork {
             this(0, 1, false, views, tracked, "");
         }
 
+        public ProgressSnapshotPayload(int chunkIndex, int chunkCount, boolean taskPagination,
+                                       Map<String, QuestRuntime.View> views, List<String> tracked, String focusGroup) {
+            this(chunkIndex, chunkCount, taskPagination, views, tracked, focusGroup, 50);
+        }
+
         public ProgressSnapshotPayload(boolean taskPagination, Map<String, QuestRuntime.View> views,
                                        List<String> tracked) {
             this(0, 1, taskPagination, views, tracked, "");
@@ -1557,7 +1603,7 @@ public final class QuestNetwork {
             focusGroup = focusGroup == null ? "" : focusGroup;
             if (chunkIndex < 0 || chunkCount < 1 || chunkIndex >= chunkCount
                     || chunkCount > MAX_PROGRESS_CHUNKS || views.size() > MAX_QUESTS || tracked.size() > 3
-                    || focusGroup.length() > 256) {
+                    || focusGroup.length() > 256 || tasksPerPage < 10 || tasksPerPage > 1000) {
                 throw new IllegalArgumentException("Quest snapshot exceeds protocol limits");
             }
             for (var entry : views.entrySet()) {

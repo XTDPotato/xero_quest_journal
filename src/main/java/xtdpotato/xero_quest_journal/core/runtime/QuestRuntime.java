@@ -54,6 +54,7 @@ public final class QuestRuntime {
     }
     @SubscribeEvent
     public static void tick(ServerTickEvent.Post event) {
+        QuestStructureGuidance.tick(event.getServer());
         if (event.getServer().getTickCount() % 20 == 0)
             xtdpotato.xero_quest_journal.core.QuestTemplateStore.refresh();
         if (event.getServer().getTickCount() % 10 != 0) return;
@@ -152,9 +153,12 @@ public final class QuestRuntime {
                 || hidden(data, player, quest))) return "locked";
         if (!tracked && tracked(player).size() >= QuestConfig.defaults().maxTrackedQuests) {
             data.trackOnly(player.getUUID(), id);
+            QuestStructureGuidance.request(player, id);
             return "tracked";
         }
-        return data.toggleTracked(player.getUUID(), id, QuestConfig.defaults().maxTrackedQuests) ? "tracked" : "untracked";
+        boolean enabled = data.toggleTracked(player.getUUID(), id, QuestConfig.defaults().maxTrackedQuests);
+        if (enabled) QuestStructureGuidance.request(player, id);
+        return enabled ? "tracked" : "untracked";
     }
     public static String activate(ServerPlayer player, String id) {
         requireServer(player);
@@ -178,11 +182,12 @@ public final class QuestRuntime {
             try { rewards = QuestRewards.freeze(player, quest.rewards()); }
             catch (Exception invalid) { return "unavailable"; }
         }
+        var submitted = QuestConditionEvents.consumedItems(player, plan.inventory());
         for (int slot = 0; slot < plan.inventory().size(); slot++)
             player.getInventory().setItem(slot, plan.inventory().get(slot));
         player.getInventory().setChanged();
         player.containerMenu.broadcastChanges();
-        advanceOrComplete(data, player, quest, rewards);
+        if (advanceOrComplete(data, player, quest, rewards)) QuestConditionEvents.notifySubmission(player, active, submitted);
         evaluate(player);
         return finalStep ? "completed" : "step_completed";
     }
@@ -375,15 +380,20 @@ public final class QuestRuntime {
                         && unlocked(QuestProgressData.get(player.getServer()), player, quest)
                         && !hidden(QuestProgressData.get(player.getServer()), player, quest))
                 .findFirst().orElse(null);
-        if (next != null) QuestProgressData.get(player.getServer()).trackOnly(player.getUUID(), next.id());
+        if (next != null) {
+            QuestProgressData.get(player.getServer()).trackOnly(player.getUUID(), next.id());
+            QuestStructureGuidance.request(player, next.id());
+        }
     }
 
     private static void autoTrackIfRelated(ServerPlayer player, QuestDefinition unlocked) {
         var data = QuestProgressData.get(player.getServer());
         if (data.tracked(player.getUUID()).stream().anyMatch(unlocked.parents()::contains)
                 && unlocked.trackable() && !completed(player, unlocked)
-                && unlocked(data, player, unlocked) && !hidden(data, player, unlocked))
+                && unlocked(data, player, unlocked) && !hidden(data, player, unlocked)) {
             data.trackOnly(player.getUUID(), unlocked.id());
+            QuestStructureGuidance.request(player, unlocked.id());
+        }
     }
     private static void applyCompletionActions(ServerPlayer player, List<QuestDefinition.Trigger> triggers) {
         for (var trigger : triggers) {
@@ -413,10 +423,13 @@ public final class QuestRuntime {
         if (data.explicitlyLocked(id, quest.progressKey())) return false;
         if (data.unlocked(id, quest)) return true;
         if (!quest.defaultUnlocked() && quest.parents().isEmpty()) return false;
-        return quest.parents().stream().allMatch(parentId -> {
+        java.util.function.Predicate<String> completedParent = parentId -> {
             var parent = QuestRepository.find(parentId);
             return parent != null && data.entry(id, parent) != null;
-        });
+        };
+        if (quest.parents().isEmpty()) return true;
+        return quest.completionPolicy().prerequisiteMode().equals("any")
+                ? quest.parents().stream().anyMatch(completedParent) : quest.parents().stream().allMatch(completedParent);
     }
     public static boolean triggersEnabled(QuestProgressData data, ServerPlayer player, QuestDefinition quest) {
         return data.taskProperty(player.getUUID(), quest, "triggersEnabled", quest.triggersEnabled());

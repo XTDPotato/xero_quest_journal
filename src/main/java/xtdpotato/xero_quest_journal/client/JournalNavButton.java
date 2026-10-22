@@ -35,8 +35,13 @@ public class JournalNavButton extends StyledButton {
     private long selectionAnimationStart;
     private boolean compactContent;
     private boolean limitedRewardBadge;
+    private float toolIconScale = 1F;
 
     public JournalNavButton compactContent() { compactContent = true; return this; }
+    public JournalNavButton toolIconScale(float value) {
+        toolIconScale = Math.clamp(value, .5F, 1F);
+        return this;
+    }
 
     public JournalNavButton setLimitedRewardBadge(boolean value) {
         limitedRewardBadge = value;
@@ -168,7 +173,8 @@ public class JournalNavButton extends StyledButton {
     @Override
     protected void renderContent(GuiGraphics g, ButtonStyle style, int text) {
         if (kind == Kind.ICON) {
-            ToolIconRenderer.icon(g, glyph, getX(), getY(), getWidth(), getHeight(), style.opacity() * alpha);
+            ToolIconRenderer.icon(g, glyph, getX(), getY(), getWidth(), getHeight(),
+                    style.opacity() * alpha, toolIconScale);
             return;
         }
         if (kind == Kind.KEY) {
@@ -239,18 +245,6 @@ public class JournalNavButton extends StyledButton {
 
     public static void drawIcon(GuiGraphics g, String name, int x, int y, int size, int color) {
         if (name == null || name.isBlank()) name = "other";
-        if (name.equals("refresh")) {
-            drawRefresh(g, x, y, size, color);
-            return;
-        }
-        if (name.equals("fullscreen")) {
-            drawFullscreen(g, x, y, size, color);
-            return;
-        }
-        if (name.equals("sort_up") || name.equals("sort_down")) {
-            drawSort(g, x, y, size, color, name.equals("sort_down"));
-            return;
-        }
         if (name.equals("forward") || name.equals("next")) {
             g.pose().pushPose();
             g.pose().translate(x + size, y, 0);

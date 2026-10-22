@@ -331,7 +331,8 @@ public final class QuestRepository {
                         Boolean.parseBoolean(quest.attr("completed-export-items")),
                         Boolean.parseBoolean(quest.attr("structure-progress")),
                         !quest.hasAttr("automatic-reward-popup")
-                                || Boolean.parseBoolean(quest.attr("automatic-reward-popup"))),
+                                || Boolean.parseBoolean(quest.attr("automatic-reward-popup")),
+                        quest.attr("prerequisite-mode")),
                 !quest.hasAttr("unlocked") && !quest.hasAttr("default-unlocked")
                         || !quest.hasAttr("unlocked") && Boolean.parseBoolean(quest.attr("default-unlocked"))
                         || quest.hasAttr("unlocked") && Boolean.parseBoolean(quest.attr("unlocked")),

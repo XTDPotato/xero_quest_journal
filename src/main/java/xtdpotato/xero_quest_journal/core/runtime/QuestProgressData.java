@@ -17,6 +17,9 @@ public final class QuestProgressData extends SavedData {
     private final Map<UUID, List<String>> tracked = new HashMap<>();
     private final Map<UUID, String> focused = new HashMap<>();
     private final Map<UUID, String> focusGroups = new HashMap<>();
+    private final Set<UUID> generationOffered = new HashSet<>();
+    public boolean generationOffered(UUID player) { return generationOffered.contains(player); }
+    public void markGenerationOffered(UUID player) { if (generationOffered.add(player)) setDirty(); }
 
     public String focused(UUID player) { return focused.getOrDefault(player, ""); }
     public String focusGroup(UUID player) { return focusGroups.getOrDefault(player, ""); }
@@ -165,7 +168,8 @@ public final class QuestProgressData extends SavedData {
         String key = anecdoteKey(entryId, recordId);
         var completed = completedAnecdotes.computeIfAbsent(player, ignored -> new HashMap<>());
         if (completed.containsKey(key)) return false;
-        completed.put(key, System.currentTimeMillis());
+        long previousTime = completed.values().stream().mapToLong(Long::longValue).max().orElse(0);
+        completed.put(key, Math.max(System.currentTimeMillis(), previousTime + 1));
         newAnecdoteCompletions.computeIfAbsent(player, ignored -> new HashSet<>()).add(key);
         setDirty();
         return true;
@@ -434,6 +438,7 @@ public final class QuestProgressData extends SavedData {
         for (int i = 0; i < people.size(); i++) {
             CompoundTag person = people.getCompound(i);
             UUID player = person.getUUID("id");
+            if (person.getBoolean("generationOffered")) result.generationOffered.add(player);
             if (!person.getString("focused").isBlank())
                 result.focused.put(player, person.getString("focused"));
             if (!person.getString("focusGroup").isBlank())
@@ -537,6 +542,7 @@ public final class QuestProgressData extends SavedData {
     public CompoundTag save(CompoundTag root, HolderLookup.Provider registries) {
         ListTag people = new ListTag();
         Set<UUID> allPlayers = new HashSet<>(players.keySet());
+        allPlayers.addAll(generationOffered);
         allPlayers.addAll(tracked.keySet());
         allPlayers.addAll(focused.keySet());
         allPlayers.addAll(focusGroups.keySet());
@@ -557,6 +563,7 @@ public final class QuestProgressData extends SavedData {
             Map<String, Entry> records = players.getOrDefault(id, Map.of());
             CompoundTag person = new CompoundTag();
             person.putUUID("id", id);
+            person.putBoolean("generationOffered", generationOffered.contains(id));
             person.putString("focused", focused(id));
             person.putString("focusGroup", focusGroup(id));
             ListTag known = new ListTag();

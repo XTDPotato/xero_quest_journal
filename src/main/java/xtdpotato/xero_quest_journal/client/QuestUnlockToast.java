@@ -10,7 +10,6 @@ import xtdpotato.xero_quest_journal.core.model.QuestListAccent;
 /** Top-left, type-accented banner for a newly unlocked task. */
 public final class QuestUnlockToast {
     private static final long DURATION_NANOS = 5_000_000_000L;
-    private static double[] renderedCloseBounds;
     private QuestUnlockToast() {}
 
     public static void enqueue(String questId) {
@@ -29,8 +28,19 @@ public final class QuestUnlockToast {
         QuestHudToastQueue.clear();
     }
 
+    public static void clearUnlockNotices() { QuestHudToastQueue.clear(QuestHudToastQueue.Type.UNLOCK); }
+
     public static void dismissCurrent() {
         QuestHudToastQueue.dismiss(QuestHudToastQueue.Type.UNLOCK);
+    }
+
+    public static boolean openCurrent() {
+        String id = currentQuestId();
+        if (id.isBlank() || QuestScreen.questById(id) == null) return false;
+        Minecraft game = Minecraft.getInstance();
+        QuestHudToastQueue.dismiss(QuestHudToastQueue.Type.UNLOCK, id);
+        game.setScreen(QuestScreen.task(game.screen, id));
+        return true;
     }
 
     public static boolean hasTask(String questId) {
@@ -39,34 +49,6 @@ public final class QuestUnlockToast {
 
     public static boolean dismissTask(String questId) {
         return QuestHudToastQueue.dismiss(QuestHudToastQueue.Type.UNLOCK, questId);
-    }
-
-    /** Dismisses only the displayed unlock notice; queued notices remain intact. */
-    public static boolean dismissAt(double mouseX, double mouseY) {
-        String current = currentQuestId();
-        if (current.isBlank()) return false;
-        var bounds = closeBounds();
-        if (mouseX < bounds[0] || mouseX >= bounds[2] || mouseY < bounds[1] || mouseY >= bounds[3])
-            return false;
-        QuestHudToastQueue.dismiss(QuestHudToastQueue.Type.UNLOCK, current);
-        return true;
-    }
-
-    private static double[] closeBounds() {
-        if (renderedCloseBounds != null) return renderedCloseBounds;
-        Minecraft game = Minecraft.getInstance();
-        int sw = game.getWindow().getGuiScaledWidth(), sh = game.getWindow().getGuiScaledHeight();
-        float scale = ClientPreferences.get().taskToastScalePercent / 100F;
-        int width = Math.min(sw - 16, 430);
-        int height = Math.round(90 * scale);
-        int left = Math.round(8 + Math.max(0, sw - width * scale - 16)
-                * ClientPreferences.get().taskToastXPercent / 100F);
-        int top = Math.round(Math.max(8, sh - height - 16)
-                * ClientPreferences.get().taskToastYPercent / 100F + 8);
-        double centerX = Math.min(sw - 12, left + width * scale - 12 * scale);
-        double centerY = top + 9 * scale;
-        return new double[]{centerX - 9 * scale, centerY - 9 * scale,
-                centerX + 9 * scale, centerY + 9 * scale};
     }
 
     public static float opacity(long elapsedNanos) {
@@ -88,26 +70,7 @@ public final class QuestUnlockToast {
     }
 
     public static void trackCurrent() {
-        String id = currentQuestId();
-        if (id.isBlank()) {
-            QuestHudRenderer.replayTrackedCoordinateAnimation();
-            return;
-        }
-        QuestDefinition quest = ClientQuestDefinitions.find(id);
-        if (quest == null) {
-            dismissCurrent();
-            return;
-        }
-        if (quest.trackable() && QuestHudRenderer.location(quest) != null) {
-            ClientQuestProgress.toggleTracking(id).thenAccept(result -> {
-                if (result.equals("tracked")) QuestHudRenderer.playCoordinateTrackAnimation(id);
-            });
-            dismissCurrent();
-        } else {
-            Minecraft game = Minecraft.getInstance();
-            dismissCurrent();
-            game.setScreen(QuestScreen.task(game.screen, id));
-        }
+        QuestHudRenderer.replayTrackedCoordinateAnimation();
     }
 
     private static float smooth(float value) {
@@ -144,11 +107,12 @@ public final class QuestUnlockToast {
         int y = 20;
         int accent = accent(quest);
         float pulse = reduced ? 0 : (float) ((Math.sin(elapsed / 60_000_000.0) + 1) * .5);
-        float toastScale = Math.min(preferences.taskToastScalePercent / 100F,
-                Math.max(.1F, (screenWidth - 16) / 430F));
+        var geometry = NoticeGeometry.task(screenWidth, preferences.taskToastScalePercent,
+                preferences.taskToastTextScalePercent, preferences.taskToastIconScalePercent);
+        float toastScale = geometry.scale();
         float iconScale = preferences.taskToastIconScalePercent / 100F;
-        int panelWidth = Math.min(screenWidth - 16, 430);
-        int panelHeight = Math.round(90 * toastScale);
+        int panelWidth = geometry.width();
+        int panelHeight = Math.round(geometry.height() * toastScale);
         int desiredLeft = Math.round(8 + Math.max(0, screenWidth - panelWidth * toastScale - 16)
                 * preferences.taskToastXPercent / 100F);
         int desiredTop = Math.round(8 + Math.max(0, screenHeight - panelHeight - 16)
@@ -164,17 +128,6 @@ public final class QuestUnlockToast {
         int offsetY = panel.y() - initialTop;
         double panelCenterX = panel.x() + panel.width() / 2.0;
         double panelCenterY = panel.y() + panel.height() / 2.0;
-        double closeX = panel.right() - 9 * toastScale;
-        double closeY = panel.y() + 9 * toastScale;
-        double angle = Math.toRadians(animation.rotation());
-        double closeDx = (closeX - panelCenterX) * animation.scale();
-        double closeDy = (closeY - panelCenterY) * animation.scale();
-        closeX = panelCenterX + animation.x() + closeDx * Math.cos(angle) - closeDy * Math.sin(angle);
-        closeY = panelCenterY + animation.y() + closeDx * Math.sin(angle) + closeDy * Math.cos(angle);
-        double closeHalfSize = 9 * toastScale * animation.scale();
-        double closeExtent = closeHalfSize * (Math.abs(Math.cos(angle)) + Math.abs(Math.sin(angle)));
-        renderedCloseBounds = new double[]{closeX - closeExtent, closeY - closeExtent,
-                closeX + closeExtent, closeY + closeExtent};
 
         graphics.pose().pushPose();
         graphics.pose().translate(0, 0, 1010);
@@ -189,7 +142,7 @@ public final class QuestUnlockToast {
         graphics.pose().translate(-x, -y, 0);
         alpha *= (float) animation.opacity();
         if (preferences.taskToastBackgroundEnabled)
-            backing(graphics, 0, y - 12, Math.min(screenWidth, 430), y + 78,
+            backing(graphics, 0, y - 12, panelWidth, y - 12 + geometry.height(),
                     alpha * preferences.taskToastBackgroundOpacityPercent / 100F);
 
         int centerX = x + 24;
@@ -226,9 +179,11 @@ public final class QuestUnlockToast {
         }
         graphics.pose().popPose();
 
-        int iconSlot = Math.max(42, Math.round(42 * iconScale / toastScale));
-        int textX = x + 16 + iconSlot;
-        int maxTextWidth = Math.max(1, Math.min(330, screenWidth - textX - 16));
+        float textScale = geometry.textScale();
+        int iconRight = Math.round(centerX + 58 * iconScale / toastScale);
+        int textX = Math.max(x + geometry.textX(), iconRight + 14);
+        int maxTextWidth = Math.max(1, Math.min(330,
+                Math.round((panelWidth - textX - 16) / textScale)));
         int trailY = y + 40;
         int trailEnd = Math.min(screenWidth - 14, textX + maxTextWidth);
         float grow = reduced ? 1 : easeOutCubic(segment(enter, .2F, .75F)) * (1 - exit * .6F);
@@ -253,49 +208,39 @@ public final class QuestUnlockToast {
         Component title = QuestText.title(quest);
         String labelText = game.font.plainSubstrByWidth(label.getString(), maxTextWidth);
         String titleText = game.font.plainSubstrByWidth(title.getString(), maxTextWidth);
+        int titleY = y + geometry.titleY();
+        int hintY = y + geometry.hintY();
         float labelIn = reduced ? 1 : easeOutCubic(segment(enter, .14F, .4F));
         float titleIn = reduced ? 1 : easeOutCubic(segment(enter, .24F, .42F));
         float hintIn = reduced ? 1 : easeOutCubic(segment(enter, .36F, .42F));
-        if (labelIn > 0) graphics.drawString(game.font, labelText, textX - Math.round((1 - labelIn) * 18), y + 4,
-                fade(accent, alpha * labelIn), false);
+        if (labelIn > 0) {
+            graphics.pose().pushPose();
+            graphics.pose().translate(textX - Math.round((1 - labelIn) * 18), y + 4, 0);
+            graphics.pose().scale(textScale, textScale, 1);
+            graphics.drawString(game.font, labelText, 0, 0, fade(accent, alpha * labelIn), false);
+            graphics.pose().popPose();
+        }
         if (titleIn > 0) {
             // The title reads larger, as the quest name does in the reference notice.
             graphics.pose().pushPose();
-            graphics.pose().translate(textX - (1 - titleIn) * 24, y + 24, 0);
-            float titleScale = Math.min(1.35F, maxTextWidth / (float) Math.max(1, game.font.width(titleText)));
-            graphics.pose().scale(Math.max(1, titleScale), Math.max(1, titleScale), 1);
+            graphics.pose().translate(textX - (1 - titleIn) * 24, titleY, 0);
+            graphics.pose().scale(textScale, textScale, 1);
             graphics.drawString(game.font, titleText, 0, 0, fade(0xFFF7F8FC, alpha * titleIn), true);
             graphics.pose().popPose();
         }
-        String key = QuestKeyMappings.TRACK_TASK.getTranslatedKeyMessage().getString();
-        Component hint = Component.translatable(quest.trackable() && QuestHudRenderer.location(quest) != null
-                ? "screen.xero_quest_journal.unlock_toast.track_hint"
-                : "screen.xero_quest_journal.unlock_toast.open_hint", key);
-        if (hintIn > 0) graphics.drawString(game.font, game.font.plainSubstrByWidth(hint.getString(), maxTextWidth),
-                textX - Math.round((1 - hintIn) * 18), y + 53, fade(accent, alpha * .92F * hintIn), false);
-        int screenMouseX = (int) Math.round(game.mouseHandler.xpos() * screenWidth
-                / (double) Math.max(1, game.getWindow().getScreenWidth()));
-        int screenMouseY = (int) Math.round(game.mouseHandler.ypos() * screenHeight
-                / (double) Math.max(1, game.getWindow().getScreenHeight()));
-        double[] close = renderedCloseBounds;
-        boolean hoveredClose = close != null && screenMouseX >= close[0] && screenMouseX < close[2]
-                && screenMouseY >= close[1] && screenMouseY < close[3];
-        double actualCloseX = (close[0] + close[2]) / 2.0;
-        double actualCloseY = (close[1] + close[3]) / 2.0;
-        double inverseDx = (actualCloseX - panelCenterX - animation.x()) / animation.scale();
-        double inverseDy = (actualCloseY - panelCenterY - animation.y()) / animation.scale();
-        double baseCloseX = panelCenterX + inverseDx * Math.cos(angle) + inverseDy * Math.sin(angle);
-        double baseCloseY = panelCenterY - inverseDx * Math.sin(angle) + inverseDy * Math.cos(angle);
-        double closeLocalX = x + (baseCloseX - offsetX - x) / toastScale;
-        double closeLocalY = y + (baseCloseY - offsetY - y) / toastScale;
-        int closeCenterX = (int) Math.round(closeLocalX), closeCenterY = (int) Math.round(closeLocalY);
-        MailDecor.circle(graphics, closeCenterX - 9, closeCenterY - 9, 18,
-                fade(hoveredClose ? 0xFF4E5662 : 0xFF29313B, alpha * .9F));
-        JournalNavButton.drawIcon(graphics, "close", closeCenterX - 6, closeCenterY - 6, 12,
-                fade(0xFFF5F1E9, alpha));
-        if (hoveredClose) graphics.renderTooltip(game.font,
-                Component.translatable("screen.xero_quest_journal.unlock_toast.dismiss"),
-                screenMouseX, screenMouseY);
+        String key = QuestKeyMappings.OPEN.getTranslatedKeyMessage().getString();
+        String dismissKey = QuestKeyMappings.DISMISS_NEW_TASK.matches(org.lwjgl.glfw.GLFW.GLFW_KEY_GRAVE_ACCENT, 0)
+                ? "~" : QuestKeyMappings.DISMISS_NEW_TASK.getTranslatedKeyMessage().getString();
+        Component hint = Component.translatable("screen.xero_quest_journal.unlock_toast.open_hint", key).append("  ")
+                .append(Component.translatable("screen.xero_quest_journal.unlock_toast.dismiss_hint", dismissKey));
+        if (hintIn > 0) {
+            graphics.pose().pushPose();
+            graphics.pose().translate(textX - Math.round((1 - hintIn) * 18), hintY, 0);
+            graphics.pose().scale(textScale, textScale, 1);
+            graphics.drawString(game.font, game.font.plainSubstrByWidth(hint.getString(), maxTextWidth),
+                    0, 0, fade(accent, alpha * .92F * hintIn), false);
+            graphics.pose().popPose();
+        }
         graphics.pose().popPose();
     }
 

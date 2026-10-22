@@ -185,6 +185,7 @@ tasks.register("prepareForgeSources") {
             }
             if (relative.endsWith("QuestTravelActions.java")) {
                 text = text.replace("result.get(0)", "result.getFirst()")
+                        .replace("net.minecraft.world.level.chunk.status.ChunkStatus", "net.minecraft.world.level.chunk.ChunkStatus")
             }
             if (relative.endsWith("MailboxData.java")) {
                 text = text.replace("new Factory<>(MailboxData::new, MailboxData::load)",
@@ -312,6 +313,7 @@ tasks.register("prepareForgeSources") {
                         .replace("holder.id(), unsupported", "holder.getResultItem().getItem(), unsupported")
                         .replace("ResourceLocation.withDefaultNamespace(", "new ResourceLocation(\"minecraft\", ");
                 text = text.replace('"loot_table"', '"loot_tables"')
+                        .replace('"advancement/"', '"advancements/"')
                         .replace('"loot_table/"', '"loot_tables/"')
             }
             if (relative.endsWith("QuestStructureEvents.java")) {
@@ -325,7 +327,9 @@ tasks.register("prepareForgeSources") {
                         .replace("e.setCanPickup(net.minecraftforge.common.util.TriState.FALSE);",
                                 "e.setCanceled(true);");
             }
-            if (includeSharedClient && relative.startsWith("xtdpotato/xero_quest_journal/client/")) {
+            // The completion analyzer uses Rhino AST getRight(), not Minecraft widget geometry.
+            if (includeSharedClient && relative.startsWith("xtdpotato/xero_quest_journal/client/")
+                    && !relative.endsWith("ScriptCompletions.java")) {
                 text = text.replace("net.neoforged.neoforge.client.event", "net.minecraftforge.client.event")
                         .replace("net.neoforged.api.distmarker", "net.minecraftforge.api.distmarker")
                         .replace("net.neoforged.bus.api", "net.minecraftforge.eventbus.api")

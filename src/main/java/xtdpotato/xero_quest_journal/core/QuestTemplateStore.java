@@ -34,26 +34,32 @@ public final class QuestTemplateStore {
         Files.createDirectories(ROOT);
         Path marker = QuestConfig.root().resolve("runtime/template_catalog_v2");
         String catalogVersion = Files.exists(marker) ? Files.readString(marker).strip() : "";
-        if (catalogVersion.equals("6")) return;
+        if (catalogVersion.equals("7")) return;
+        for (String type : List.of("main", "legendary", "commission", "world"))
+            writeIfMissing(defaultTemplate(type, "acquire"));
+        if (catalogVersion.equals("6")) {
+            AtomicFiles.write(marker, "7\n", true);
+            return;
+        }
         if (catalogVersion.equals("5")) {
             writeTeachingTemplates();
-            AtomicFiles.write(marker, "6\n", true);
+            AtomicFiles.write(marker, "7\n", true);
             return;
         }
         if (catalogVersion.equals("4")) {
             writeTeachingTemplates();
-            AtomicFiles.write(marker, "6\n", true);
+            AtomicFiles.write(marker, "7\n", true);
             return;
         }
         if (catalogVersion.equals("3")) {
             writeTeachingTemplates();
-            AtomicFiles.write(marker, "6\n", true);
+            AtomicFiles.write(marker, "7\n", true);
             return;
         }
         if (catalogVersion.equals("2")) {
             migrateDefaultRewardLayouts();
             writeTeachingTemplates();
-            AtomicFiles.write(marker, "6\n", true);
+            AtomicFiles.write(marker, "7\n", true);
             return;
         }
         var legacy = List.of(
@@ -72,12 +78,12 @@ public final class QuestTemplateStore {
                     && original.equals(read(file))) AtomicFiles.write(file, GSON.toJson(original.archive()), true);
         }
         for (String type : List.of("main", "legendary", "commission", "world"))
-            for (String mode : List.of("view", "travel", "submit", "structure", "event"))
+            for (String mode : List.of("view", "travel", "acquire", "submit", "structure", "event"))
                 writeIfMissing(defaultTemplate(type, mode));
         QuestTemplateSceneDefaults.ensure();
         writeTeachingTemplates();
         Files.createDirectories(marker.getParent());
-        AtomicFiles.write(marker, "6\n", false);
+        AtomicFiles.write(marker, "7\n", false);
     }
 
     private static void writeTeachingTemplates() throws IOException {
@@ -150,7 +156,7 @@ public final class QuestTemplateStore {
 
     private static void migrateDefaultRewardLayouts() throws IOException {
         for (String type : List.of("main", "legendary", "commission", "world")) {
-            for (String mode : List.of("view", "travel", "submit", "structure", "event")) {
+            for (String mode : List.of("view", "travel", "acquire", "submit", "structure", "event")) {
                 QuestTemplate updated = defaultTemplate(type, mode);
                 Path file = ROOT.resolve(updated.id() + ".json");
                 if (!Files.exists(file)) {
@@ -231,19 +237,20 @@ public final class QuestTemplateStore {
             case "main" -> "主线"; case "legendary" -> "传说"; case "commission" -> "委托"; default -> "世界";
         };
         String suffix = switch (mode) {
-            case "view" -> "查看任务"; case "travel" -> "追踪任务"; case "submit" -> "提交任务";
+            case "view" -> "查看任务"; case "travel" -> "追踪任务"; case "acquire" -> "获取任务"; case "submit" -> "提交任务";
             case "structure" -> "完成结构任务"; default -> "事件任务";
         };
         String description = switch (mode) {
             case "view" -> "阅读任务内容后，点击「我已查看」完成任务。";
             case "travel" -> "前往任意村庄，到达村庄范围后完成任务。";
+            case "acquire" -> "获取 16 个橡木原木，不需要提交或消耗物品。";
             case "submit" -> "提交 16 个橡木原木。";
             case "structure" -> "进入任务结构，在中央指定位置放置金块完成挑战。";
             default -> "通过节点图完成任务。默认事件：玩家跳跃一次。";
         };
         String icon = switch (mode) {
             case "view" -> "minecraft:book"; case "travel" -> "minecraft:compass";
-            case "submit" -> "minecraft:chest"; case "structure" -> "minecraft:structure_block";
+            case "acquire" -> "minecraft:oak_log"; case "submit" -> "minecraft:chest"; case "structure" -> "minecraft:structure_block";
             default -> "minecraft:redstone";
         };
         List<QuestTemplate.Element> elements = new java.util.ArrayList<>(
@@ -251,6 +258,7 @@ public final class QuestTemplateStore {
         var conditions = switch (mode) {
             case "view" -> List.of(new QuestDefinition.Trigger("confirm", "", 1));
             case "travel" -> List.of(new QuestDefinition.Trigger("location", "structure||#minecraft:village", 1));
+            case "acquire" -> List.of(new QuestDefinition.Trigger("item_hold", "minecraft:oak_log", 16));
             case "submit" -> List.of(new QuestDefinition.Trigger("item_submit", "minecraft:oak_log", 16));
             default -> List.of(new QuestDefinition.Trigger("event", mode.equals("event") ? "template_graph_only" : "template_scene_only", 1));
         };
@@ -275,7 +283,7 @@ public final class QuestTemplateStore {
                     Map.of("visibility", "gone", "eventGraph", GSON.toJson(graph("jump", "complete"))), ""));
         }
         return new QuestTemplate(type + "_" + mode, prefix + suffix, description, type, icon,
-                "minecraft:oak_log", mode.equals("submit") ? 16 : 1, "", 1, "manual", "",
+                "minecraft:oak_log", List.of("submit", "acquire").contains(mode) ? 16 : 1, "", 1, "manual", "",
                 elements, conditions, List.of(), type, false);
     }
 
@@ -320,6 +328,7 @@ public final class QuestTemplateStore {
     /** Called on the server once per second; invalid edits retain the last valid catalog. */
     public static void refresh() {
         synchronized (QuestRepository.class) {
+            TemplateLibraryStore.refresh();
             List<QuestTemplate> next = readAll();
             if (next != null && !next.equals(snapshot)) {
                 snapshot = next;

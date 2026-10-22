@@ -7,7 +7,7 @@ $documents = @("README.md", "docs/guide.md", "docs/commands.md", "docs/javascrip
     "docs/background-and-journey-editor.md", "docs/release-verification-2026-10-16.md",
     "docs/task-edit-undo.md", "docs/candidate-selectors-and-jigsaw.md",
     "docs/release-verification-2026-10-18.md", "README.en.md", "docs/README.md", "docs/anecdotes.md",
-    "docs/release-verification-0.2.1.md")
+    "docs/release-verification-0.2.1.md", "docs/task-search-and-unlock-graph.md", "docs/generation-and-template-library.md")
 $documents += @(Get-ChildItem -LiteralPath (Join-Path $repoRoot "docs/en") -Filter "*.md" |
     ForEach-Object { "docs/en/" + $_.Name })
 foreach ($relative in $documents) {
@@ -70,6 +70,7 @@ foreach ($photo in $photos) {
     } finally { $image.Dispose() }
 }
 $captures = Get-Content -LiteralPath (Join-Path $repoRoot "docs/reference/interface-captures.json") -Raw | ConvertFrom-Json
+$captures += @(Get-Content -LiteralPath (Join-Path $repoRoot "docs/reference/task-workflow-captures.json") -Raw | ConvertFrom-Json)
 foreach ($capture in $captures) {
     $path = Join-Path $repoRoot ("docs/images/" + $capture.file)
     if ($capture.width -ne 1920 -or $capture.height -ne 1080 -or $capture.locale -notin @("zh_cn", "en_us") -or

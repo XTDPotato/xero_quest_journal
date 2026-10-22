@@ -52,6 +52,7 @@ public final class QuestTemplateEditorScreen extends AnimatedQuestScreen {
     static Component text(String key) {
         return Component.translatable("screen.xero_quest_journal.template." + key);
     }
+    QuestTemplateEditorScreen inGroup(String group) { if (original == null) values.put("group", group); return this; }
 
     private int left() { return (width - formWidth()) / 2; }
     private int formWidth() { return Math.min(480, width - 32); }

@@ -127,8 +127,8 @@ def clientRegression = [
         'unlockGraphTest', 'journeyTest', 'overviewTest', 'journalFocusTest', 'mailReferenceTest',
         'lootTableTest', 'trackingHudTest', 'mailBodyEditorTest', 'mailAdminTest', 'journeyEditingTest', 'journalOrderTest',
         'overviewAuthoringTest', 'generateTasksTest', 'tacticalCompatibilityTest', 'generatedDeletionTest',
-        'claimReceiptTest', 'spotlightUiTest', 'rewardQualityTest', 'authoringDocsTest', 'candidatePickerTest',
-        'interfaceDocsTest', 'rewardInspectionTest', 'carriedInventoryTest'
+        'claimReceiptTest', 'spotlightUiTest', 'rewardQualityTest', 'authoringDocsTest', 'scriptCompletionTest', 'candidatePickerTest',
+        'interfaceDocsTest', 'rewardInspectionTest', 'carriedInventoryTest', 'anecdoteAuthoringTest', 'taskWorkflowTest', 'generationTest'
 ].any { project.hasProperty(it) }
 
 neoForge {
@@ -137,6 +137,10 @@ neoForge {
     runs {
         client {
             client()
+            if (project.hasProperty('generationTest')) {
+                systemProperty 'xero.generationTest', 'true'
+                gameDirectory = file('run-generation-' + System.currentTimeMillis())
+            }
             if (project.hasProperty('carriedInventoryTest')) {
                 systemProperty 'xero.carriedInventoryTest', 'true'
                 if (project.hasProperty('backpackIntegrationTest')) systemProperty 'xero.backpackIntegrationTest', 'true'
@@ -151,9 +155,23 @@ neoForge {
                 systemProperty 'xero.anecdoteUiTest', 'true'
                 gameDirectory = file('run-anecdote-ui')
             }
+            if (project.hasProperty('anecdoteAuthoringTest')) {
+                systemProperty 'xero.anecdoteAuthoringTest', 'true'
+                gameDirectory = file('run-anecdote-authoring')
+            }
+            if (project.hasProperty('taskWorkflowTest')) {
+                systemProperty 'xero.taskWorkflowTest', 'true'
+                systemProperty 'xero.unlockGraphPerf', project.hasProperty('unlockGraphPerf').toString()
+                systemProperty 'xero.unlockGraphProfile', project.hasProperty('unlockGraphProfile').toString()
+                gameDirectory = file('run-task-workflow-' + System.currentTimeMillis())
+            }
             if (project.hasProperty('authoringDocsTest')) {
                 systemProperty 'xero.authoringDocsTest', 'true'
                 gameDirectory = file('run-authoring-docs')
+            }
+            if (project.hasProperty('scriptCompletionTest')) {
+                systemProperty 'xero.scriptCompletionTest', 'true'
+                gameDirectory = file('run-script-completion')
             }
             if (project.hasProperty('interfaceDocsTest')) {
                 def language = project.findProperty('docsLanguage') ?: 'zh_cn'

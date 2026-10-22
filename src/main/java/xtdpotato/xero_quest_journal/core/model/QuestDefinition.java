@@ -46,7 +46,7 @@ public record QuestDefinition(
 
     /** Stable ID families reserved by the automatic advancement, item and combat generator. */
     public boolean automaticallyGenerated() {
-        return id.startsWith("auto_adv_") || id.startsWith("auto_item_") || id.startsWith("auto_kill_");
+        return id.startsWith("auto_adv_") || id.startsWith("auto_item_") || id.startsWith("auto_kill_") || id.startsWith("auto_story_");
     }
 
     /** Pre-step schema; keeps older authoring code and fixtures source compatible. */

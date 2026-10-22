@@ -98,13 +98,23 @@ public final class HudOverlayLayout {
     }
 
     public static void reserveMinimapArea(int width, int height, Corner corner) {
-        int mapWidth = Math.min(Math.max(112, width / 4), Math.max(1, width / 2));
-        int mapHeight = Math.min(Math.max(84, height / 4), Math.max(1, height / 2));
+        ClientPreferences preferences = ClientPreferences.get();
+        RESERVED.add(minimapArea(width, height, corner, preferences.minimapAvoidWidthPercent,
+                preferences.minimapAvoidHeightPercent, preferences.minimapAvoidXPercent, preferences.minimapAvoidYPercent));
+    }
+    public static Rect minimapArea(int width, int height, Corner corner, int widthPercent, int heightPercent,
+                                  int xPercent, int yPercent) {
+        int mapWidth = Math.min(Math.max(32, Math.round(width * widthPercent / 100F)),
+                Math.max(1, width / 2));
+        int mapHeight = Math.min(Math.max(32, Math.round(height * heightPercent / 100F)),
+                Math.max(1, height / 2));
         int margin = 6;
         int x = corner == Corner.TOP_RIGHT || corner == Corner.BOTTOM_RIGHT
                 ? width - mapWidth - margin : margin;
         int y = corner == Corner.BOTTOM_LEFT || corner == Corner.BOTTOM_RIGHT
                 ? height - mapHeight - margin : margin;
-        RESERVED.add(new Rect(Math.max(0, x), Math.max(0, y), mapWidth, mapHeight));
+        if (xPercent >= 0) x = margin + Math.round(Math.max(0, width-mapWidth-margin*2)*xPercent/100F);
+        if (yPercent >= 0) y = margin + Math.round(Math.max(0, height-mapHeight-margin*2)*yPercent/100F);
+        return new Rect(Math.max(0, x), Math.max(0, y), mapWidth, mapHeight);
     }
 }

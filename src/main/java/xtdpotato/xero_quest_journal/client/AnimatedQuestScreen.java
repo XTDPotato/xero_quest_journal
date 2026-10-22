@@ -46,6 +46,7 @@ public abstract class AnimatedQuestScreen extends Screen {
     }
 
     public final boolean isClosing() { return closing; }
+    protected final boolean isClosingBook() { return closingBook; }
     public final boolean inputBlocked() {
         return closing || !entered && screenAnimationMillis() > 0 || entered && !motion.settled()
                 || !popupMotion.settled() && (popupMotion.visible() || blocksInputWhilePopupClosing())
@@ -62,6 +63,12 @@ public abstract class AnimatedQuestScreen extends Screen {
     protected final void renderAnimatedMenu(GuiGraphics graphics, String slot, Object key,
                                             Viewport bounds, Runnable draw) {
         renderAnimatedMenu(graphics, slot, key, bounds, 0, draw);
+    }
+
+    protected final void closeAnimatedMenu(String slot) {
+        MenuTransition transition = menuTransitions.get(slot);
+        if (transition != null) transition.close();
+        renderedMenuSlots.remove(slot);
     }
 
     protected final void renderAnimatedMenu(GuiGraphics graphics, String slot, Object key,
@@ -126,7 +133,7 @@ public abstract class AnimatedQuestScreen extends Screen {
     protected int animationFooterTop() { return Math.max(animationHeaderBottom(), height - 68); }
     protected Object popupKey() { return null; }
     protected boolean blocksInputWhilePopupClosing() { return true; }
-    protected int popupScrimColor() { return popupBackdrop; }
+    protected int popupScrimColor() { return 0xB8181B23; }
     protected boolean isolatePopupSurface(Object key) { return false; }
     protected void renderPopupBase(GuiGraphics graphics, int x, int y, float delta) {}
     protected void renderPopupSurface(GuiGraphics graphics, int x, int y, float delta) {
@@ -224,8 +231,9 @@ public abstract class AnimatedQuestScreen extends Screen {
         graphics.pose().pushPose();
         graphics.pose().translate(0, 0, 1000);
         Viewport scrim = modalScrimBounds();
+        int scrimColor = popupScrimColor();
         graphics.fill(scrim.left(), scrim.top(), scrim.right(), scrim.bottom(),
-                Math.round(0xB8 * alpha) << 24 | 0x181B23);
+                Math.round((scrimColor >>> 24) * alpha) << 24 | scrimColor & 0x00FFFFFF);
         graphics.flush();
         graphics.pose().popPose();
         capturing = true;
@@ -234,6 +242,10 @@ public abstract class AnimatedQuestScreen extends Screen {
                     inputBlocked() ? -10000 : x, inputBlocked() ? -10000 : y, delta));
         } finally {
             capturing = false;
+        }
+        if (closingBook) {
+            compositor.bookClose(graphics, width, height, 1 - alpha);
+            return;
         }
         Viewport bounds = popupBounds();
         compositor.centered(graphics, width, height, bounds.left(), bounds.top(),

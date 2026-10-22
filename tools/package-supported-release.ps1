@@ -29,6 +29,7 @@ foreach ($target in $targets) {
     $jar = [IO.Compression.ZipFile]::OpenRead($source)
     try {
         if ($jar.Entries.FullName -match '(^|/)(smoke|productioncheck)/') { throw "Test classes leaked into $source" }
+        if ($jar.Entries.FullName -match '^data/story_fixture/') { throw "Generation test fixtures leaked into $source" }
         $metadata = if ($target.Loader -eq "fabric") { "fabric.mod.json" }
             elseif ($target.Loader -eq "forge") { "META-INF/mods.toml" } else { "META-INF/neoforge.mods.toml" }
         if (!$jar.GetEntry($metadata)) { throw "Wrong loader metadata: $source" }
@@ -45,9 +46,13 @@ foreach ($target in $targets) {
                 "core/runtime/QuestVariableMath", "client/AnecdoteScreen", "client/AnecdoteRewardsScreen",
                 "client/ItemPickupToast", "client/HudOverlayLayout",
                 "core/runtime/AnecdoteRuntime", "core/model/AnecdoteDefinition",
+                "core/model/AnecdoteRewardLayout",
                 "core/io/QuestAuthoringHistory", "core/model/LootDefinition",
                 "core/model/QuestTitleText", "core/model/QuestJigsawInfo",
-                "client/QuestStructurePreviewScreen")) {
+                "client/QuestStructurePreviewScreen", "client/QuestUnlockGraphScreen", "client/AsyncQuestSearch",
+                "client/QuestGenerateScreen", "client/TemplateGroupScreen", "client/NoticeGeometry",
+                "core/TemplateLibraryStore", "core/network/QuestGenerationNetwork", "core/network/TemplateLibraryNetwork",
+                "core/runtime/QuestStructureGuidance")) {
             if (!$jar.GetEntry("xtdpotato/xero_quest_journal/$class.class")) {
                 throw "Authoring changes are absent from $source"
             }
@@ -55,6 +60,11 @@ foreach ($target in $targets) {
         foreach ($icon in @("edit_exit", "select_tasks")) {
             if (!$jar.GetEntry("assets/xero_quest_journal/textures/gui/navigation/$icon.png")) {
                 throw "Journey toolbar icon is absent from $source"
+            }
+        }
+        foreach ($asset in @("notebook_imprint", "reward_book_spread", "reward_ticket")) {
+            if (!$jar.GetEntry("assets/xero_quest_journal/textures/gui/anecdote/$asset.png")) {
+                throw "Anecdote reward asset is absent from $source"
             }
         }
     } finally { $jar.Dispose() }

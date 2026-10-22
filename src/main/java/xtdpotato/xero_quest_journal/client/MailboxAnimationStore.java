@@ -218,6 +218,7 @@ public final class MailboxAnimationStore {
         result.paletteVersion = source.paletteVersion;
         result.noticeVersion = source.noticeVersion;
         result.favoriteAnimationVersion = source.favoriteAnimationVersion;
+        result.rowAnimationVersion = source.rowAnimationVersion;
         source.events.forEach((key, value) -> result.events.put(key, new Animation(value.html, value.css, value.js)));
         return result;
     }
@@ -243,6 +244,7 @@ public final class MailboxAnimationStore {
         result.paletteVersion = 1;
         result.noticeVersion = 4;
         result.favoriteAnimationVersion = 1;
+        result.rowAnimationVersion = 1;
         for (String event : EVENTS) result.events.put(event, defaultAnimation(event));
         return result;
     }
@@ -296,7 +298,11 @@ public final class MailboxAnimationStore {
             case "row_selected" -> "function onRowSelected(event) { row.fade(1); }";
             default -> "";
         };
-        if (event.endsWith("_hover") || event.endsWith("_click")) {
+        if (event.equals("row_hover")) {
+            html = "<button class=\"mail-row\"></button>";
+            css = ".mail-row:hover { border-color:#ffffff; background-color:#394656; }\n"
+                    + ".mail-row { --row-scale:1.05; }";
+        } else if (event.endsWith("_hover") || event.endsWith("_click")) {
             String key = event.substring(0, event.lastIndexOf('_'));
             String id = key.equals("edit") ? "mail-edit-animations" : "mail-" + key;
             html = "<button id=\"" + id + "\"></button>";
@@ -307,10 +313,6 @@ public final class MailboxAnimationStore {
                 css = "button#" + id + ":active { --ripple-color:#f3cc59; --ripple-scale:1.8; --duration:320ms; }";
                 js = "function onClick(event) { ripple(1.8); duration(320); }";
             }
-        } else if (event.equals("row_hover")) {
-            html = "<button class=\"mail-row\"></button>";
-            css = ".mail-row:hover { border-color:#ffffff; background-color:#394656; }\n"
-                    + ".mail-row { --row-scale:1.05; }";
         } else if (event.equals("row_selected")) {
             html = "<button class=\"mail-row\" data-selected=\"true\"></button>";
             css = ".mail-row:selected { background-color:#e7e5df; border-color:#ffffff; color:#50545d; }";
@@ -330,6 +332,7 @@ public final class MailboxAnimationStore {
         public int paletteVersion;
         public int noticeVersion;
         public int favoriteAnimationVersion;
+        public int rowAnimationVersion;
         public Map<String, Animation> events = new LinkedHashMap<>();
 
         private void normalize() {
@@ -399,6 +402,14 @@ public final class MailboxAnimationStore {
                 migrateFavoriteDefault("favorite", LEGACY_FAVORITE_JS);
                 migrateFavoriteDefault("unfavorite", LEGACY_UNFAVORITE_JS);
                 favoriteAnimationVersion = 1;
+            }
+            if (rowAnimationVersion < 1) {
+                Animation rowHover = events.get("row_hover");
+                if (rowHover.html.strip().equals("<button id=\"mail-row\"></button>")
+                        && rowHover.css.strip().equals("button#mail-row:hover { --hover-scale:1.05; }")
+                        && rowHover.js.strip().equals("function onHover(event) { button.scale(1.05); }"))
+                    events.put("row_hover", MailboxAnimationStore.defaultAnimation("row_hover"));
+                rowAnimationVersion = 1;
             }
             if (paletteVersion < 1) {
                 // Upgrade only shipped colors; keep authored animation and custom palettes intact.

@@ -87,4 +87,10 @@ public final class AnecdoteClientState {
         if (snapshot.newCompletions().isEmpty()) return;
         PacketDistributor.sendToServer(new AnecdoteNetwork.MarkRewardsRead());
     }
+    public static void claimReward(String batch) {
+        PacketDistributor.sendToServer(new AnecdoteNetwork.ClaimReward(batch));
+    }
+    public static void markRewardRecordsRead(java.util.List<String> keys) {
+        if (!keys.isEmpty()) PacketDistributor.sendToServer(new AnecdoteNetwork.MarkRecordsRead(keys));
+    }
 }

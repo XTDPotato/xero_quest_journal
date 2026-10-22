@@ -1,4 +1,6 @@
 {
+  "/xero_quest start_generate_gui": 0,
+  "/xero_quest locate <id>": 0,
   "/xero_quest config set animation_ms <value>": 2,
   "/xero_quest config set default_item_count <value>": 2,
   "/xero_quest config set manual_rewards <value>": 2,

@@ -25,6 +25,7 @@ public final class ClientPreferences {
     public int popupAnimationMillis = DEFAULT_POPUP_ANIMATION_MILLIS;
     public int taskToastScalePercent = 33;
     public int taskToastIconScalePercent = 33;
+    public int taskToastTextScalePercent = 100;
     public int taskToastXPercent;
     public int taskToastYPercent = 20;
     public boolean taskToastBackgroundEnabled;
@@ -33,6 +34,10 @@ public final class ClientPreferences {
     public int itemPickupToastXPercent;
     public int itemPickupToastYPercent = 40;
     public int itemPickupToastScalePercent = 100;
+    public int itemPickupToastTextScalePercent = 100;
+    public int minimapAvoidWidthPercent = 25;
+    public int minimapAvoidHeightPercent = 25;
+    public int minimapAvoidXPercent = -1, minimapAvoidYPercent = -1;
     public boolean hudAutoAvoidMinimap = true;
     public String minimapCorner = "top_right";
     public PopupAnimationProfile popupAnimation = PopupAnimationProfile.defaults();
@@ -124,6 +129,8 @@ public final class ClientPreferences {
         taskToastScalePercent = Math.clamp(taskToastScalePercent <= 0 ? 33 : taskToastScalePercent, 10, 200);
         taskToastIconScalePercent = Math.clamp(
                 taskToastIconScalePercent <= 0 ? 33 : taskToastIconScalePercent, 10, 200);
+        taskToastTextScalePercent = Math.clamp(
+                taskToastTextScalePercent <= 0 ? 100 : taskToastTextScalePercent, 50, 200);
         taskToastXPercent = Math.clamp(taskToastXPercent, 0, 100);
         taskToastYPercent = Math.clamp(taskToastYPercent < 0 ? 20 : taskToastYPercent, 0, 100);
         taskToastBackgroundOpacityPercent = Math.clamp(
@@ -132,6 +139,14 @@ public final class ClientPreferences {
         itemPickupToastYPercent = Math.clamp(itemPickupToastYPercent < 0 ? 40 : itemPickupToastYPercent, 0, 100);
         itemPickupToastScalePercent = Math.clamp(
                 itemPickupToastScalePercent <= 0 ? 100 : itemPickupToastScalePercent, 50, 200);
+        itemPickupToastTextScalePercent = Math.clamp(
+                itemPickupToastTextScalePercent <= 0 ? 100 : itemPickupToastTextScalePercent, 50, 200);
+        minimapAvoidWidthPercent = Math.clamp(
+                minimapAvoidWidthPercent <= 0 ? 25 : minimapAvoidWidthPercent, 5, 50);
+        minimapAvoidHeightPercent = Math.clamp(
+                minimapAvoidHeightPercent <= 0 ? 25 : minimapAvoidHeightPercent, 5, 50);
+        minimapAvoidXPercent = Math.clamp(minimapAvoidXPercent, -1, 100);
+        minimapAvoidYPercent = Math.clamp(minimapAvoidYPercent, -1, 100);
         if (minimapCorner == null || !Set.of("top_left", "top_right", "bottom_left", "bottom_right")
                 .contains(minimapCorner)) minimapCorner = "top_right";
         trackingMarkerScalePercent = Math.clamp(

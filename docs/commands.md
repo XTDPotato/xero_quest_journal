@@ -175,6 +175,14 @@
 
 ## 自动生成和删除
 
+`/xero_quest start_generate_gui` 打开生成方式选择界面。查看界面无需管理员权限；
+实际生成需要 OP 2 或单人世界所有者身份。首次进入世界时提供选择，选择或取消后按玩家保存。
+可选模组进度链、结构探索、两者结合或传统目录模式，支持命名空间和关联配方开关。
+详见[生成与模板库](generation-and-template-library.md)。原有 `generate` 命令保留传统目录行为。
+
+`/xero_quest locate <id>` 为自己的可追踪结构任务请求坐标，权限等级 0；服务端检查任务资格。
+坐标缓存共享给队伍，失败后可重试；不会给予管理权限或绕过锁定条件。
+
 ```text
 /xero_quest generate [target] [rewards] [multiplier]
 /xero_quest delete_generated
@@ -329,7 +337,7 @@
 
 ## 可执行命令树
 
-下面的 71 条共享叶子路径由 NeoForge/Fabric 实际游戏内 Brigadier 命令树导出，
+下面列出 73 条共享叶子路径：原有运行时导出加上本次生成选择和定位入口，
 包含可选参数对应的各个实际分支。Forge 1.20.1 另有专用 `/xero_quest status`。
 这份树与上面的用途、权限和例子配合使用。
 
@@ -357,6 +365,8 @@
 | `/xero_quest generate <target>` | 2 |
 | `/xero_quest generate <target> <rewards>` | 2 |
 | `/xero_quest generate <target> <rewards> <multiplier>` | 2 |
+| `/xero_quest start_generate_gui` | 0 |
+| `/xero_quest locate <id>` | 0 |
 | `/xero_quest list` | 2 |
 | `/xero_quest mail claim <targets> <id>` | 2 |
 | `/xero_quest mail claim_all <targets>` | 2 |

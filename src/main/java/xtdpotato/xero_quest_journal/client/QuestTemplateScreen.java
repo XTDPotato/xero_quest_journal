@@ -30,6 +30,11 @@ public final class QuestTemplateScreen extends AnimatedQuestScreen {
     private final SmoothScroll rowMotion = new SmoothScroll(), previewMotion = new SmoothScroll();
     private int dragPane = -1;
     private boolean dragMoved, draggingScroll, draggingPreview;
+    private Entry dragEntry, dropEntry;
+    private boolean reordering, dropAfter;
+    private double pointerX, pointerY;
+    private CompletableFuture<String> pendingOrder;
+    private long dragTemplateStartedAt;
     private double dragX, dragY, dragStart;
     private StyledButton use, delete;
     private CompletableFuture<String> pendingDelete;
@@ -55,6 +60,7 @@ public final class QuestTemplateScreen extends AnimatedQuestScreen {
     @Override protected void init() {
         if (!ClientEditMode.enabled()) { onClose(); return; }
         clearWidgets();
+        dragEntry = dropEntry = null; dragPane = -1; reordering = dragMoved = draggingScroll = draggingPreview = false;
         rows.clear(); menu.clear();
         templates = ClientQuestDefinitions.templates().stream().filter(t -> !t.archived()).toList();
         String query = search == null ? "" : search.getValue();
@@ -64,10 +70,15 @@ public final class QuestTemplateScreen extends AnimatedQuestScreen {
         search.setHint(QuestTemplateEditorScreen.text("search"));
         search.setResponder(value -> { rowMotion.jump(0); scroll = 0; rebuild(); });
         addRenderableWidget(search);
-        addRenderableWidget(new JournalNavButton(18, height - 32, Math.max(72, divider() - 60), 24,
+        addRenderableWidget(new JournalNavButton(18, height - 32, 28, 24,
+                QuestTemplateEditorScreen.text("add_group"),
+                ignored -> minecraft.setScreen(new TemplateGroupScreen(this)), styles, "template-add-group", JournalNavButton.Kind.ICON, "add"))
+                .setTooltip(Tooltip.create(QuestTemplateEditorScreen.text("add_group")));
+        addRenderableWidget(new JournalNavButton(52, height - 32, Math.max(24, divider() - 94), 24,
                 QuestTemplateEditorScreen.text("add"),
-                ignored -> minecraft.setScreen(new QuestTemplateEditorScreen(this, null)),
-                styles, "template-add", JournalNavButton.Kind.ACTION, "add"));
+                ignored -> minecraft.setScreen(new QuestTemplateEditorScreen(this, null).inGroup(activeGroup())),
+                styles, "template-add", divider() < 220 ? JournalNavButton.Kind.ICON : JournalNavButton.Kind.ACTION, "add"))
+                .setTooltip(Tooltip.create(QuestTemplateEditorScreen.text("add")));
         delete = addRenderableWidget(new JournalNavButton(divider() - 36, height - 32, 24, 24,
                 QuestTemplateEditorScreen.text("delete"),
                 ignored -> confirmDelete(new ArrayList<>(selected)), styles,
@@ -104,16 +115,20 @@ public final class QuestTemplateScreen extends AnimatedQuestScreen {
         String query = search.getValue().strip().toLowerCase(Locale.ROOT);
         filtered = templates.stream().filter(template -> query.isBlank()
                 || (template.id() + "\n" + template.name() + "\n" + template.description()
-                + "\n" + groupLabel(template.group())).toLowerCase(Locale.ROOT).contains(query)).toList();
+                + "\n" + groupLabel(ClientQuestDefinitions.templateLibrary().group(template))).toLowerCase(Locale.ROOT).contains(query)).toList();
         rows.forEach(this::removeWidget); rows.clear(); entries.clear();
         if (filtered.stream().noneMatch(t -> t.id().equals(activeId))) {
             activeId = filtered.isEmpty() ? "" : filtered.getFirst().id();
             previewScroll = 0;
         }
+        var library = ClientQuestDefinitions.templateLibrary();
         var groups = new LinkedHashMap<String, List<QuestTemplate>>();
-        filtered.stream().sorted(Comparator.comparingInt((QuestTemplate t) -> groupOrder(t.group()))
-                        .thenComparing(QuestTemplate::group))
-                .forEach(t -> groups.computeIfAbsent(t.group(), ignored -> new ArrayList<>()).add(t));
+        if (query.isBlank()) library.groups().forEach(group -> groups.put(group, new ArrayList<>()));
+        var byId = new LinkedHashMap<String, QuestTemplate>();
+        filtered.stream().sorted(Comparator.comparingInt((QuestTemplate t) -> groupOrder(library.group(t)))
+                .thenComparing(t -> library.group(t))).forEach(t -> byId.put(t.id(), t));
+        xtdpotato.xero_quest_journal.core.model.QuestJournalOrder.apply(new ArrayList<>(byId.keySet()), library.order())
+                .stream().map(byId::get).forEach(t -> groups.computeIfAbsent(library.group(t), ignored -> new ArrayList<>()).add(t));
         groups.forEach((group, values) -> {
             entries.add(new Entry(group, null));
             if (!collapsed.contains(group) || !query.isBlank())
@@ -132,6 +147,7 @@ public final class QuestTemplateScreen extends AnimatedQuestScreen {
             JournalListButton row = new JournalListButton(x, 58 + i * 26 - rowMotion.pixels(), w, 24,
                     Component.literal(header ? groupLabel(entry.group()) : template.name()), ignored -> {
                 if (header) {
+                    activeGroup = entry.group();
                     if (!collapsed.add(entry.group())) collapsed.remove(entry.group());
                     rebuild();
                 } else choose(template);
@@ -152,6 +168,11 @@ public final class QuestTemplateScreen extends AnimatedQuestScreen {
         int order = List.of("main", "legendary", "commission", "world").indexOf(group);
         return order < 0 ? 4 : order;
     }
+    private String activeGroup = "";
+    private String activeGroup() {
+        return activeGroup.isBlank() ? templates.stream().filter(t -> t.id().equals(activeId))
+                .map(t -> ClientQuestDefinitions.templateLibrary().group(t)).findFirst().orElse("commission") : activeGroup;
+    }
 
     private static String groupLabel(String group) {
         return ClientQuestDefinitions.types().stream().filter(type -> type.id().equals(group))
@@ -167,6 +188,7 @@ public final class QuestTemplateScreen extends AnimatedQuestScreen {
     }
 
     private void choose(QuestTemplate template) {
+        activeGroup = ClientQuestDefinitions.templateLibrary().group(template);
         if (hasControlDown()) {
             if (!selected.add(template.id())) selected.remove(template.id());
         } else {
@@ -211,6 +233,11 @@ public final class QuestTemplateScreen extends AnimatedQuestScreen {
         if (button == 0 && (x >= 18 && x < divider() - 18 && y >= 58 && y < height - 44
                 || previewViewport().contains(x, y))) {
             dragPane = x < divider() ? 0 : 1; dragMoved = false; dragX = x; dragY = y;
+            dragEntry = null; dropEntry = null; reordering = false; pointerX = x; pointerY = y;
+            if (dragPane == 0 && ClientEditMode.enabled() && parent.canAuthor() && pendingOrder == null)
+                for (int i = 0; i < rows.size(); i++) if (rows.get(i).visible && rows.get(i).isMouseOver(x, y)) {
+                    dragEntry = entries.get(i); dragTemplateStartedAt = System.nanoTime(); break;
+                }
             var motion = dragPane == 0 ? rowMotion : previewMotion;
             dragStart = motion.position(); motion.freeze(); return true;
         }
@@ -249,6 +276,13 @@ public final class QuestTemplateScreen extends AnimatedQuestScreen {
     }
 
     @Override public void tick() {
+        if (pendingOrder != null && pendingOrder.isDone()) {
+            String result;
+            try { result = pendingOrder.join(); } catch (Exception failure) { result = "save"; }
+            pendingOrder = null;
+            if (!result.isEmpty()) XeroTips.show(QuestTemplateEditorScreen.text("error." + result));
+            init();
+        }
         if (pendingDelete == null || !pendingDelete.isDone()) return;
         String result;
         try { result = pendingDelete.join(); } catch (RuntimeException failure) { result = "delete"; }
@@ -267,9 +301,20 @@ public final class QuestTemplateScreen extends AnimatedQuestScreen {
     }
 
     @Override protected void renderContents(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
+        if (dragEntry != null && !dragMoved && System.nanoTime() - dragTemplateStartedAt >= 350_000_000L)
+            reordering = true;
+        if (reordering) {
+            if (pointerY < 72) rowMotion.jump(rowMotion.position() - 3);
+            if (pointerY > height - 60) rowMotion.jump(rowMotion.position() + 3);
+        }
         if (!menu.isEmpty()) { rowMotion.freeze(); previewMotion.freeze(); }
         rowMotion.advance(); previewMotion.advance(); moveRows();
-        super.renderContents(g, mouseX, mouseY, partialTick);
+        super.renderContents(g, reordering ? -10000 : mouseX, reordering ? -10000 : mouseY, partialTick);
+        if (reordering && dropEntry != null) {
+            int i = entries.indexOf(dropEntry);
+            if (i >= 0) { var row = rows.get(i); int line = dropAfter ? row.getBottom() : row.getY();
+                g.fill(row.getX(), line, row.getRight(), line + 2, 0xFFF2CF83); }
+        }
         JournalNavButton.drawIcon(g, "other", 18, 7, 18, 0xFFF2D29A);
         g.drawString(font, title, 44, 12, 0xFFF2D29A);
         if (filtered.isEmpty()) g.drawString(font, QuestTemplateEditorScreen.text("empty"), 24, 70, 0xFFB8C7D9);
@@ -333,6 +378,18 @@ public final class QuestTemplateScreen extends AnimatedQuestScreen {
         }
     }
     @Override public boolean mouseDragged(double x, double y, int button, double dx, double dy) {
+        pointerX = x; pointerY = y;
+        if (button == 0 && dragEntry != null && !dragMoved && System.nanoTime() - dragTemplateStartedAt >= 350_000_000L) reordering = true;
+        if (button == 0 && reordering) {
+            dropEntry = null;
+            for (int i = 0; i < rows.size(); i++) if (rows.get(i).visible && rows.get(i).isMouseOver(x, y)) {
+                if (!entries.get(i).equals(dragEntry) && (dragEntry.template() != null || entries.get(i).template() == null)) {
+                    dropEntry = entries.get(i); dropAfter = y >= rows.get(i).getY() + 12;
+                }
+                break;
+            }
+            return true;
+        }
         if (button == 0 && dragPane >= 0) {
             dragMoved |= Math.abs(y - dragY) >= 4;
             if (dragMoved) { (dragPane == 0 ? rowMotion : previewMotion).jump(dragStart + dragY - y); moveRows(); }
@@ -343,6 +400,17 @@ public final class QuestTemplateScreen extends AnimatedQuestScreen {
         return super.mouseDragged(x, y, button, dx, dy);
     }
     @Override public boolean mouseReleased(double x, double y, int button) {
+        if (button == 0 && reordering) {
+            if (dropEntry != null && pendingOrder == null) {
+                String kind = dragEntry.template() == null ? "group" : dropEntry.template() == null ? "into_group" : "template";
+                pendingOrder = ClientQuestProgress.changeTemplateLibrary(kind,
+                        dragEntry.template() == null ? dragEntry.group() : dragEntry.template().id(),
+                        dropEntry.template() == null ? dropEntry.group() : dropEntry.template().id(), dropAfter);
+            }
+            reordering = false; dragEntry = dropEntry = null; dragPane = -1; setDragging(false);
+            return true;
+        }
+        if (button == 0) dragEntry = null;
         if (button == 0 && dragPane >= 0) {
             int pane = dragPane; dragPane = -1;
             if (pane == 0 && !dragMoved && Math.abs(x - dragX) < 4 && y >= 58 && y < height - 44) {
@@ -364,6 +432,9 @@ public final class QuestTemplateScreen extends AnimatedQuestScreen {
     }
     @Override public boolean keyPressed(int key, int scan, int modifiers) {
         if (inputBlocked()) return true;
+        if (key == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE && dragEntry != null) {
+            dragEntry = dropEntry = null; reordering = false; dragPane = -1; return true;
+        }
         if (key == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE && !menu.isEmpty()) {
             menu.clear();
             return true;

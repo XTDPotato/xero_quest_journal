@@ -24,6 +24,7 @@ public final class XeroQuestClientModBus {
         event.register(QuestKeyMappings.OPEN_MAILBOX);
         event.register(QuestKeyMappings.OPEN_NEW_MAIL);
         event.register(QuestKeyMappings.TRACK_TASK);
+        event.register(QuestKeyMappings.DISMISS_NEW_TASK);
     }
 
     @SubscribeEvent

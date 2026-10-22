@@ -27,7 +27,8 @@ public record QuestCatalog(List<QuestDefinition> quests, List<Group> groups, Lis
                            QuestUnlockLayout unlockLayout,
                            xtdpotato.xero_quest_journal.core.model.QuestJournalOrder journalOrder,
                            Map<String, String> lootDisplayIcons,
-                           Map<String, xtdpotato.xero_quest_journal.core.model.LootDefinition.Display> lootTables) {
+                           Map<String, xtdpotato.xero_quest_journal.core.model.LootDefinition.Display> lootTables,
+                           xtdpotato.xero_quest_journal.core.TemplateLibraryStore.Library templateLibrary) {
     private static final Gson GSON = new Gson();
     /** Maximum size of one network chunk. The complete catalog is assembled client-side. */
     public static final int MAX_CHARACTERS = 262144;
@@ -114,6 +115,16 @@ public record QuestCatalog(List<QuestDefinition> quests, List<Group> groups, Lis
                 ? xtdpotato.xero_quest_journal.core.model.QuestJournalOrder.empty() : journalOrder;
         lootDisplayIcons = lootDisplayIcons == null ? Map.of() : Map.copyOf(lootDisplayIcons);
         lootTables = lootTables == null ? Map.of() : Map.copyOf(lootTables);
+        templateLibrary = templateLibrary == null ? xtdpotato.xero_quest_journal.core.TemplateLibraryStore.Library.empty() : templateLibrary;
+    }
+    public QuestCatalog(List<QuestDefinition> quests, List<Group> groups, List<Chapter> chapters,
+                        Map<String, String> membership, List<QuestTemplate> templates, List<QuestType> types,
+                        HotEventCanvas hotEventCanvas, List<QuestVariable> variables, QuestUnlockLayout unlockLayout,
+                        xtdpotato.xero_quest_journal.core.model.QuestJournalOrder journalOrder,
+                        Map<String, String> lootDisplayIcons,
+                        Map<String, xtdpotato.xero_quest_journal.core.model.LootDefinition.Display> lootTables) {
+        this(quests, groups, chapters, membership, templates, types, hotEventCanvas, variables, unlockLayout,
+                journalOrder, lootDisplayIcons, lootTables, null);
     }
     public QuestCatalog(List<QuestDefinition> quests, List<Group> groups, List<Chapter> chapters,
                         Map<String, String> membership, List<QuestTemplate> templates,
@@ -195,7 +206,8 @@ public record QuestCatalog(List<QuestDefinition> quests, List<Group> groups, Lis
                                         xtdpotato.xero_quest_journal.core.model.LootDefinition::displayIcon)),
                         xtdpotato.xero_quest_journal.core.io.QuestLootStore.all().stream().collect(
                                 Collectors.toMap(xtdpotato.xero_quest_journal.core.model.LootDefinition::id,
-                                        xtdpotato.xero_quest_journal.core.model.LootDefinition::display)));
+                                        xtdpotato.xero_quest_journal.core.model.LootDefinition::display)),
+                        xtdpotato.xero_quest_journal.core.TemplateLibraryStore.get());
                 String json = GSON.toJson(data);
                 if (json.length() > MAX_CATALOG_CHARACTERS) throw new IllegalArgumentException("Catalog too large");
                 cachedJson = json;

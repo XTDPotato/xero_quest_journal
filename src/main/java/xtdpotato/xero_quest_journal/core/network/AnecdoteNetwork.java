@@ -27,6 +27,16 @@ public final class AnecdoteNetwork {
         registrar.playToServer(Delete.TYPE, Delete.CODEC, AnecdoteNetwork::delete);
         registrar.playToServer(MarkRead.TYPE, MarkRead.CODEC, AnecdoteNetwork::markRead);
         registrar.playToServer(MarkRewardsRead.TYPE, MarkRewardsRead.CODEC, AnecdoteNetwork::markRewardsRead);
+        registrar.playToServer(ClaimReward.TYPE, ClaimReward.CODEC, (payload, context) -> {
+            if (context.player() instanceof ServerPlayer player)
+                context.reply(new Result(AnecdoteRuntime.claimReward(player, payload.batch())));
+        });
+        registrar.playToServer(MarkRecordsRead.TYPE, MarkRecordsRead.CODEC, (payload, context) -> {
+            if (context.player() instanceof ServerPlayer player) {
+                QuestProgressData.get(player.getServer()).markAnecdoteCompletionsRead(player.getUUID(), payload.keys());
+                sendSnapshot(player);
+            }
+        });
         registrar.playToClient(Snapshot.TYPE, Snapshot.CODEC,
                 (payload, context) -> QuestClientInbox.accept(payload));
         registrar.playToClient(Result.TYPE, Result.CODEC,
@@ -95,6 +105,41 @@ public final class AnecdoteNetwork {
         public static final Type<Request> TYPE = AnecdoteNetwork.payloadType("anecdote_request");
         public static final StreamCodec<RegistryFriendlyByteBuf, Request> CODEC = unit(Request::new);
         @Override public Type<Request> type() { return TYPE; }
+    }
+
+    public record ClaimReward(String batch) implements CustomPacketPayload {
+        public static final Type<ClaimReward> TYPE = AnecdoteNetwork.payloadType("anecdote_claim_reward");
+        public static final StreamCodec<RegistryFriendlyByteBuf, ClaimReward> CODEC = new StreamCodec<>() {
+            @Override public ClaimReward decode(RegistryFriendlyByteBuf buffer) { return new ClaimReward(buffer.readUtf(80)); }
+            @Override public void encode(RegistryFriendlyByteBuf buffer, ClaimReward value) { buffer.writeUtf(value.batch(), 80); }
+        };
+        public ClaimReward {
+            if (batch == null || !batch.matches("__xero_anecdote_[0-9a-f-]{36}"))
+                throw new IllegalArgumentException("Invalid anecdote reward batch");
+        }
+        @Override public Type<ClaimReward> type() { return TYPE; }
+    }
+    public record MarkRecordsRead(java.util.List<String> keys) implements CustomPacketPayload {
+        public static final Type<MarkRecordsRead> TYPE = AnecdoteNetwork.payloadType("anecdote_records_read");
+        public static final StreamCodec<RegistryFriendlyByteBuf, MarkRecordsRead> CODEC = new StreamCodec<>() {
+            @Override public MarkRecordsRead decode(RegistryFriendlyByteBuf buffer) {
+                int count = buffer.readVarInt();
+                if (count < 0 || count > 2048) throw new IllegalArgumentException("Too many read records");
+                var keys = new java.util.ArrayList<String>();
+                for (int i = 0; i < count; i++) keys.add(buffer.readUtf(129));
+                return new MarkRecordsRead(keys);
+            }
+            @Override public void encode(RegistryFriendlyByteBuf buffer, MarkRecordsRead value) {
+                buffer.writeVarInt(value.keys().size());
+                for (String key : value.keys()) buffer.writeUtf(key, 129);
+            }
+        };
+        public MarkRecordsRead {
+            keys = java.util.List.copyOf(keys);
+            if (keys.size() > 2048 || keys.stream().anyMatch(key -> !key.matches("[a-z0-9_.-]{1,64}/[a-z0-9_.-]{1,64}")))
+                throw new IllegalArgumentException("Invalid read records");
+        }
+        @Override public Type<MarkRecordsRead> type() { return TYPE; }
     }
 
     public record Save(String json) implements CustomPacketPayload {

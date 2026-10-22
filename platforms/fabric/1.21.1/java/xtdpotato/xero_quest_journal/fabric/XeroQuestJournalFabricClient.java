@@ -17,6 +17,7 @@ public final class XeroQuestJournalFabricClient implements ClientModInitializer 
         KeyBindingHelper.registerKeyBinding(QuestKeyMappings.OPEN_MAILBOX);
         KeyBindingHelper.registerKeyBinding(QuestKeyMappings.OPEN_NEW_MAIL);
         KeyBindingHelper.registerKeyBinding(QuestKeyMappings.TRACK_TASK);
+        KeyBindingHelper.registerKeyBinding(QuestKeyMappings.DISMISS_NEW_TASK);
         ClientTickEvents.END_CLIENT_TICK.register(game -> {
             XeroQuestClient.clientTick(new FabricEvents.ClientTickEvent.Post());
             FabricSmokeHooks.tick();

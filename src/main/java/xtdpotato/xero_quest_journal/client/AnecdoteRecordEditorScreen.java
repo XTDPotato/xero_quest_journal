@@ -24,7 +24,7 @@ final class AnecdoteRecordEditorScreen extends AnimatedQuestScreen {
 
     AnecdoteRecordEditorScreen(Screen parent, AnecdoteDefinition entry, AnecdoteDefinition.Record initial,
                                boolean creating, Consumer<AnecdoteDefinition> save) {
-        super(Component.translatable("screen.xero_quest_journal.anecdote.edit_record"));
+        super(Component.translatable("screen.xero_quest_journal.anecdote." + (creating ? "record_create" : "record_edit")));
         this.parent = parent;
         this.entry = entry;
         this.initial = initial;
@@ -35,16 +35,19 @@ final class AnecdoteRecordEditorScreen extends AnimatedQuestScreen {
     private Component text(String key) { return Component.translatable("screen.xero_quest_journal.anecdote." + key); }
 
     @Override protected void init() {
+        String currentTitle = title == null ? initial.title() : title.getValue();
+        String currentIcon = completedIcon == null ? initial.completedIcon() : completedIcon.getValue();
+        String currentBody = body == null ? initial.body() : body.getValue();
         clearWidgets();
         styles = ButtonStyleSheet.load();
         int width = Math.min(this.width - 32, 820), left = (this.width - width) / 2;
         title = new EditBox(font, left + 18, 72, width - 36, 22, text("record_title"));
         title.setMaxLength(256);
-        title.setValue(initial.title());
+        title.setValue(currentTitle);
         addRenderableWidget(title);
-        completedIcon = new EditBox(font, left + 18, 104, width - 36, 20, text("completed_icon"));
+        completedIcon = new EditBox(font, left + 18, 104, width - 66, 20, text("completed_icon"));
         completedIcon.setMaxLength(2048);
-        completedIcon.setValue(initial.completedIcon());
+        completedIcon.setValue(currentIcon);
         addRenderableWidget(completedIcon);
         addRenderableWidget(new StyledButton(left + width - 42, 104, 24, 20, Component.literal("..."),
                 ignored -> minecraft.setScreen(QuestScreen.pickResource(this, completedIcon.getValue(), false,
@@ -52,12 +55,17 @@ final class AnecdoteRecordEditorScreen extends AnimatedQuestScreen {
         body = new SmoothTextBox(font, left + 18, 136, width - 36, Math.max(70, height - 200),
                 text("record_body"), text("record_body_hint"));
         body.setCharacterLimit(8192);
-        body.setValue(initial.body());
+        body.setValue(currentBody);
         addRenderableWidget(body);
         addRenderableWidget(new StyledButton(left + width - 158, height - 42, 66, 24,
                 text("save"), ignored -> commit(), styles, "anecdote-record-save", "toolbar-button"));
         addRenderableWidget(new StyledButton(left + width - 82, height - 42, 64, 24,
                 text("cancel"), ignored -> onClose(), styles, "anecdote-record-cancel", "toolbar-button"));
+        var close = new EditorIconButton(left + width - 34, 40,
+                Component.translatable("screen.xero_quest_journal.close"),
+                this::onClose, styles, "anecdote-record-editor-close", "close");
+        close.setTooltip(net.minecraft.client.gui.components.Tooltip.create(close.getMessage()));
+        addRenderableWidget(close);
     }
 
     private void commit() {
@@ -75,8 +83,7 @@ final class AnecdoteRecordEditorScreen extends AnimatedQuestScreen {
             if (index >= 0) records.set(index, result);
             else records.add(result);
         }
-        save.accept(new AnecdoteDefinition(entry.id(), entry.title(), entry.cardText(), entry.icon(), entry.heading(),
-                records, entry.defaultDiscovered(), entry.hideWhenLocked(), entry.order()));
+        save.accept(entry.withRecords(records));
         minecraft.setScreen(parent);
     }
 

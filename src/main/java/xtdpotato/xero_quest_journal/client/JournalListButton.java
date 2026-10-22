@@ -289,9 +289,11 @@ public final class JournalListButton extends StyledButton {
             return;
         }
         if (claimable && !group) {
-            int size = 20;
-            claimIconX = getRight() - inset - size + trailingIcon.offsetX();
-            claimIconY = getY() + (getHeight() - size) / 2 + trailingIcon.offsetY();
+            int size = 16;
+            int slotX = getRight() - inset - trailingIcon.width() + trailingIcon.offsetX();
+            int slotY = getY() + (getHeight() - trailingIcon.height()) / 2 + trailingIcon.offsetY();
+            claimIconX = slotX + (trailingIcon.width() - size) / 2;
+            claimIconY = slotY + (trailingIcon.height() - size) / 2;
             claimIconSize = size;
             boolean pressed = claimPressed && isHovered();
             int outer = pressed ? 0xFFFFC1A8 : 0xFF783D39;
@@ -300,7 +302,7 @@ public final class JournalListButton extends StyledButton {
                     applyAlpha(outer, trailingIcon.alpha() * alpha));
             MailDecor.circle(graphics, claimIconX, claimIconY, size,
                     applyAlpha(background, trailingIcon.alpha() * alpha));
-            JournalNavButton.drawIcon(graphics, "gift", claimIconX + 3, claimIconY + 3, size - 6,
+            JournalNavButton.drawIcon(graphics, "gift", claimIconX + 2, claimIconY + 2, size - 4,
                     applyAlpha(0xFFFFF8ED, trailingIcon.alpha() * alpha));
             return;
         }

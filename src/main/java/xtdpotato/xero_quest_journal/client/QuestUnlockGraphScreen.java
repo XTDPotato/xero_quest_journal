@@ -17,11 +17,10 @@ import java.util.concurrent.CompletableFuture;
 public final class QuestUnlockGraphScreen extends AnimatedQuestScreen {
     private static final int CARD_W = 190, CARD_H = 92;
     private record Link(String from, String to) {}
-    private record Draft(Map<String, QuestUnlockLayout.Position> positions, Set<Link> links) {}
+    private record Draft(Map<String, QuestUnlockLayout.Position> positions, Set<Link> links, Map<String, String> modes) {}
 
     private final Screen parent;
-    private final List<QuestDefinition> tasks = ClientQuestDefinitions.all().stream()
-            .sorted(Comparator.comparing(QuestDefinition::id)).toList();
+    private final List<QuestDefinition> tasks = ClientQuestDefinitions.all();
     private final Map<String, QuestDefinition> byId = new LinkedHashMap<>();
     private final Map<String, QuestUnlockLayout.Position> positions = new LinkedHashMap<>();
     private final Map<String, QuestUnlockLayout.Position> defaultPositions;
@@ -29,10 +28,19 @@ public final class QuestUnlockGraphScreen extends AnimatedQuestScreen {
     private ViewportIndex<QuestDefinition> nodeIndex = new ViewportIndex<>(List.of());
     private ViewportIndex<Link> linkIndex = new ViewportIndex<>(List.of());
     private Map<String, List<Link>> incidentLinks = Map.of();
-    private String drawerTaskQuery;
     private List<QuestDefinition> drawerTaskCache = List.of();
-    private long unlockCountRevision = Long.MIN_VALUE;
-    private int cachedUnlockedCount;
+    private final AsyncQuestSearch searchWorker = new AsyncQuestSearch();
+    private List<AsyncQuestSearch.Document> searchDocuments;
+    private String submittedSearch;
+    private long searchChangedAt;
+    private boolean searchPending;
+    private String searchWorkerThread = "";
+    private final List<xtdpotato.xero_quest_journal.core.network.QuestCatalog.Group> drawerGroups = ClientQuestDefinitions.groups();
+    private final Map<String, xtdpotato.xero_quest_journal.core.network.QuestCatalog.Group> drawerGroupIndex = new HashMap<>();
+    private final Map<String, String> taskMembership = new HashMap<>();
+    private JournalListModel drawerModel;
+    private List<String> drawerCollapsedSource;
+    private final Map<String, JournalListButton> drawerButtons = new HashMap<>();
     private final Map<String, String> expectedHashes = new HashMap<>();
     private final Deque<Draft> undo = new ArrayDeque<>(), redo = new ArrayDeque<>();
     private final ButtonStyleSheet styles = ButtonStyleSheet.load();
@@ -42,6 +50,7 @@ public final class QuestUnlockGraphScreen extends AnimatedQuestScreen {
     private String error = "", searchText = "", selected = "", wireFrom = "";
     private final String focusTask;
     private boolean focusApplied;
+    private boolean viewInitialized;
     private long focusUntilNanos;
     private Link selectedLink;
     private EditBox search;
@@ -49,6 +58,10 @@ public final class QuestUnlockGraphScreen extends AnimatedQuestScreen {
     private String draggingNode = "";
     private String hoveredNode = "";
     private String contextTask = "", propertiesTask = "";
+    private QuestScreen propertyPreview;
+    private String propertyPreviewId = "", lastReleasedNode = "";
+    private long lastNodeRelease;
+    private final SmoothScroll propertyScroll = new SmoothScroll();
     private int contextX, contextY;
     private int pressedContextAction = -1, pressedPropertiesCopy = -1, pressedExitAction = -1;
     private boolean movingCanvas, dragRemembered, confirmExit, wireDragged;
@@ -62,6 +75,39 @@ public final class QuestUnlockGraphScreen extends AnimatedQuestScreen {
     private String lockResult = "";
     private final Set<String> selectedTasks = new LinkedHashSet<>();
     private EditBox coordinateX, coordinateY;
+    private final Map<String, String> modes = new LinkedHashMap<>(), groupLabels = new HashMap<>(),
+            chapterLabels = new HashMap<>(), taskTitles = new HashMap<>();
+    private Set<String> matchingTasks = Set.of();
+    private boolean minimapDragging;
+    private boolean minimapOverview;
+    private EditorIconButton minimapOverviewButton;
+    private record MapProjection(double scale, double originX, double originY) {
+        double x(double world) { return originX + world * scale; }
+        double y(double world) { return originY + world * scale; }
+    }
+    private MapProjection minimapDragProjection;
+    private MapProjection minimapNavigationProjection;
+    private int navigationWidth, navigationHeight;
+    private int navigationCanvasLeft;
+    private double navigationZoom, minimapPointerX, minimapPointerY;
+    private long minimapFrame;
+    private boolean minimapTooltipVisible;
+    private double minWorldX, minWorldY, maxWorldX, maxWorldY;
+    private enum TaskState {
+        AVAILABLE(0xFF7DD9A4, 0xFF62C48C, 1), COMPLETE(0xFFF2C75C, 0xFFE0AF42, 2), LOCKED(0xFFF27F6E, 0xFFDE6553, 4);
+        final int color, bottom, mask;
+        TaskState(int color, int bottom, int mask) { this.color = color; this.bottom = bottom; this.mask = mask; }
+    }
+    private record MinimapDot(String id, int x, int y, TaskState state) {}
+    private List<MinimapDot> minimapDots = List.of();
+    private long minimapRevision = Long.MIN_VALUE;
+    private final int[] minimapCounts = new int[3];
+    private MapProjection minimapRasterProjection;
+    private int minimapRasterWidth, minimapRasterHeight;
+    private int[] minimapRasterMasks = new int[0];
+    private final int[] minimapOffscreen = new int[4];
+    private final int[] minimapOffscreenStates = new int[4];
+    private List<int[]> minimapRuns = List.of();
 
     public QuestUnlockGraphScreen(Screen parent) {
         this(parent, "");
@@ -71,7 +117,21 @@ public final class QuestUnlockGraphScreen extends AnimatedQuestScreen {
     public QuestUnlockGraphScreen(Screen parent, String focusTask) {
         super(text("title"));
         this.parent = parent;
-        tasks.forEach(task -> byId.put(task.id(), task));
+        drawerGroups.forEach(group -> drawerGroupIndex.put(group.id(), group));
+        for (var chapter : ClientQuestDefinitions.chapters()) for (String id : chapter.quests()) chapterLabels.putIfAbsent(id, chapter.name());
+        tasks.forEach(task -> {
+            byId.put(task.id(), task);
+            modes.put(task.id(), task.completionPolicy().prerequisiteMode());
+            taskTitles.put(task.id(), QuestText.title(task).getString());
+            String group = ClientQuestDefinitions.groupOf(task.id()); taskMembership.put(task.id(), group);
+            groupLabels.put(task.id(), drawerGroupIndex.containsKey(group) ? drawerGroupIndex.get(group).name() : group.isBlank() ? "-" : group);
+            chapterLabels.putIfAbsent(task.id(), "-");
+        });
+        var documents = new ArrayList<AsyncQuestSearch.Document>();
+        tasks.forEach(task -> documents.add(new AsyncQuestSearch.Document("task:" + task.id(), List.of(task.id(), taskTitles.get(task.id()),
+                task.description(), groupLabels.get(task.id()), chapterLabels.get(task.id())))));
+        drawerGroups.forEach(group -> documents.add(new AsyncQuestSearch.Document("group:" + group.id(), List.of(group.id(), group.name(), group.description()))));
+        searchDocuments = List.copyOf(documents); drawerTaskCache = tasks;
         this.focusTask = byId.containsKey(focusTask) ? focusTask : "";
         defaultPositions = QuestUnlockGraphLayout.initial(tasks);
         positions.putAll(defaultPositions);
@@ -91,7 +151,7 @@ public final class QuestUnlockGraphScreen extends AnimatedQuestScreen {
     private static Component text(String key, Object... args) {
         return Component.translatable("screen.xero_quest_journal.unlock_graph." + key, args);
     }
-    private Draft snapshot() { return new Draft(Map.copyOf(positions), Set.copyOf(links)); }
+    private Draft snapshot() { return new Draft(Map.copyOf(positions), Set.copyOf(links), Map.copyOf(modes)); }
     private void remember() {
         undo.push(snapshot());
         if (undo.size() > 64) undo.removeLast();
@@ -103,13 +163,14 @@ public final class QuestUnlockGraphScreen extends AnimatedQuestScreen {
         Draft state = source.pop();
         positions.clear(); positions.putAll(state.positions());
         links.clear(); links.addAll(state.links());
+        modes.clear(); modes.putAll(state.modes());
         rebuildViewportIndexes();
         selectedLink = null; wireFrom = "";
         init();
     }
     private boolean dirty() { return !snapshot().equals(initial); }
     private int top() { return 70; }
-    private int bottom() { return height - 70; }
+    private int bottom() { return height - 48; }
     private int drawerWidth() { return Math.min(224, Math.max(100, width / 3)); }
     private int drawerExtent() { return (int) Math.round(drawerWidth() * drawerProgress); }
     private int canvasLeft() { return Math.max(12, drawerExtent() + 12); }
@@ -119,6 +180,7 @@ public final class QuestUnlockGraphScreen extends AnimatedQuestScreen {
     private double wy(double y) { return (y - panY) / zoom; }
 
     private void fit() {
+        minimapNavigationProjection = null;
         if (positions.isEmpty()) { zoom = 1; panX = width / 2.; panY = height / 2.; return; }
         int minX = positions.values().stream().mapToInt(QuestUnlockLayout.Position::x).min().orElse(0);
         int minY = positions.values().stream().mapToInt(QuestUnlockLayout.Position::y).min().orElse(0);
@@ -128,7 +190,7 @@ public final class QuestUnlockGraphScreen extends AnimatedQuestScreen {
         double needed = Math.min((availableWidth - 56.) / Math.max(1, maxX - minX),
                 (bottom() - top() - 24.) / Math.max(1, maxY - minY));
         zoom = Math.clamp(needed, .45, 1.6);
-        panX = needed < .45 ? 24 - minX * zoom : availableWidth / 2. - (minX + maxX) * zoom / 2.;
+        panX = needed < .45 ? availableWidth - 24 - maxX * zoom : availableWidth / 2. - (minX + maxX) * zoom / 2.;
         panY = needed < .45 ? top() + 18 - minY * zoom
                 : (top() + bottom()) / 2. - (minY + maxY) * zoom / 2.;
     }
@@ -151,7 +213,10 @@ public final class QuestUnlockGraphScreen extends AnimatedQuestScreen {
 
     @Override protected void init() {
         clearWidgets();
-        if (panX == 0 && panY == 0) fit();
+        if (!viewInitialized) {
+            if (panX == 0 && panY == 0) fit();
+            viewInitialized = true;
+        }
         applyFocusTarget();
         addRenderableWidget(new EditorIconButton(12, 8, text("fit"), this::fit, styles,
                 "unlock-fit", "fit"));
@@ -164,17 +229,37 @@ public final class QuestUnlockGraphScreen extends AnimatedQuestScreen {
         search = new EditBox(font, 106, 10, Math.max(40, width - 190), 20, text("search"));
         search.setHint(text("search"));
         search.setValue(searchText);
-        search.setResponder(value -> { searchText = value; drawerScroll.jump(0); });
+        search.setResponder(this::searchChanged);
         addRenderableWidget(search);
         drawerButton = addRenderableWidget(new EditorIconButton(12, 42, text("task_list"),
-                this::toggleDrawer, styles, "unlock-task-list", "all"));
+                this::toggleDrawer, styles, "unlock-task-list", "overview"));
         drawerButton.setSelectionHighlighted(taskDrawer);
         multipleButton = addRenderableWidget(new EditorIconButton(42, 42, text("multi_select"),
-                this::toggleMultiple, styles, "unlock-multi-select", multiSelect ? "choose" : "all"));
+                this::toggleMultiple, styles, "unlock-multi-select", "select_tasks"));
         multipleButton.setSelectionHighlighted(multiSelect);
+        var arrange = new EditorIconButton(72, 42, text("arrange_groups"), () -> {
+            remember(); positions.clear(); positions.putAll(defaultPositions); rebuildViewportIndexes(); fit(); init();
+        }, styles, "unlock-arrange", "layers");
+        addRenderableWidget(arrange);
+        if (!selected.isBlank()) {
+            addRenderableWidget(new StyledChoiceButton<>(106, 42, Math.min(230, Math.max(100, width - 180)), 22,
+                    text("prerequisite_mode"), List.of("all", "any"), modes.getOrDefault(selected, "all"),
+                    value -> text("prerequisite_" + value), value -> {
+                        remember();
+                        if (multiSelect && !selectedTasks.isEmpty()) selectedTasks.forEach(id -> modes.put(id, value));
+                        else modes.put(selected, value);
+                    }, styles, "unlock-prerequisite-mode"));
+        }
         drawerRail = addRenderableWidget(new ScrollRail(drawerExtent() - 10, top(),
                 Math.max(8, bottom() - top()), drawerScroll));
         drawerRail.visible = drawerMotion.visible() && drawerMotion.settled();
+        minimapOverviewButton = addRenderableWidget(new EditorIconButton(mapX() + mapWidth() - 24, mapY() - 26,
+                text("minimap_overview"), () -> {
+                    minimapOverview = !minimapOverview;
+                    minimapNavigationProjection = null;
+                    minimapOverviewButton.setSelectionHighlighted(minimapOverview);
+                }, styles, "unlock-minimap-overview", "fit").dark());
+        minimapOverviewButton.setSelectionHighlighted(minimapOverview);
         coordinateX = coordinateY = null;
         if (!selected.isBlank()) {
             var position = positions.get(selected);
@@ -206,6 +291,7 @@ public final class QuestUnlockGraphScreen extends AnimatedQuestScreen {
     }
 
     @Override public void tick() {
+        advanceSearch();
         boolean editable = pending == null && lockPending == null && ClientEditMode.enabled();
         children().forEach(child -> {
             if (child instanceof net.minecraft.client.gui.components.AbstractWidget widget)
@@ -244,62 +330,68 @@ public final class QuestUnlockGraphScreen extends AnimatedQuestScreen {
     }
 
     @Override protected void renderContents(GuiGraphics g, int mx, int my, float delta) {
+        advanceSearch();
+        if (minimapDragging) advanceMinimapDrag();
+        int previousDrawerExtent = drawerExtent();
         drawerMotion.advance(System.nanoTime(), popupAnimationMillis());
         drawerProgress = drawerMotion.eased();
-        List<QuestDefinition> drawerTasks = drawerTasks();
-        drawerScroll.limit(drawerTasks.size() * 28 - Math.max(1, bottom() - top()));
+        int drawerDelta = drawerExtent() - previousDrawerExtent;
+        panX -= drawerDelta;
+        if (movingCanvas) originX -= drawerDelta;
+        var drawerList = drawerRows();
+        drawerScroll.limit(drawerList.contentHeight() - Math.max(1, bottom() - top()));
         drawerScroll.advance();
         drawerRail.setX(drawerExtent() - 10);
+        minimapOverviewButton.setX(mapX() + mapWidth() - 24);
+        minimapOverviewButton.setY(mapY() - 26);
         drawerRail.visible = drawerMotion.visible() && drawerMotion.settled()
                 && drawerScroll.maximum() > 0;
         backdrop(g, 0xF01E1E22);
         g.fill(0, 0, width, 38, 0xFF19191D);
         g.fill(0, 38, width, 39, TriggerNodeStyle.PANEL_BORDER);
-        g.fill(0, height - 64, width, height, 0xFF19191D);
-        g.fill(0, height - 65, width, height - 64, TriggerNodeStyle.PANEL_BORDER);
-        g.drawString(font, font.plainSubstrByWidth(title.getString(), Math.max(1, width - 90)),
-                78, 46, 0xFFF1D8A3, false);
-        int unlocked = unlockedCount();
-        int barLeft = Math.max(12, width / 2 - 130), barRight = Math.min(width - 12, width / 2 + 130);
-        g.fill(barLeft, height - 43, barRight, height - 39, 0xFF414B53);
-        g.fill(barLeft, height - 43, barLeft + (barRight - barLeft) * unlocked / Math.max(1, tasks.size()),
-                height - 39, 0xFF79C994);
-        g.drawCenteredString(font, text("progress", unlocked, tasks.size()), width / 2,
-                height - 59, 0xFFE0E7E3);
+        g.fill(0, height - 44, width, height, 0xFF19191D);
+        g.fill(0, height - 45, width, height - 44, TriggerNodeStyle.PANEL_BORDER);
+        if (selected.isBlank()) g.drawString(font, title, 106, 47, 0xFFF1D8A3, false);
+        if (!selected.isBlank()) g.drawString(font, font.plainSubstrByWidth(text("selection_info",
+                taskTitles.getOrDefault(selected, selected), groupLabels.getOrDefault(selected,"-"), chapterLabels.getOrDefault(selected,"-")).getString(), width-24),
+                12, height-39, 0xFFE0E7E3, false);
         if (coordinateX != null) {
             g.drawString(font, text("x"), 12, height - 22, 0xFFE0E7E3);
             g.drawString(font, text("y"), 104, height - 22, 0xFFE0E7E3);
         }
         String footer = !error.isBlank() ? error : !lockResult.isBlank() ? lockResult
-                : multiSelect ? text("selected_count", selectedTasks.size()).getString() : selected;
+                : multiSelect ? text("selected_count", selectedTasks.size()).getString() : searchPending ? text("searching").getString() : "";
         g.drawString(font, font.plainSubstrByWidth(footer, Math.max(1, width - 204)),
                 196, height - 22, !error.isBlank() ? 0xFFFF9797 : 0xFFE0E7E3, false);
         g.enableScissor(canvasLeft(), top(), width - 12, bottom());
-        renderGrid(g);
+        g.drawManaged(() -> renderGrid(g));
         Set<Link> movingLinks = draggingNode.isBlank() ? Set.of()
                 : new HashSet<>(incidentLinks.getOrDefault(draggingNode, List.of()));
-        for (Link link : visibleLinks()) {
-            if (!movingLinks.contains(link)) renderLink(g, link, selectedLink != null && selectedLink.equals(link));
-        }
-        for (Link link : movingLinks)
-            renderLink(g, link, selectedLink != null && selectedLink.equals(link));
+        g.drawManaged(() -> {
+            for (Link link : visibleLinks()) {
+                if (!movingLinks.contains(link)) renderLink(g, link, selectedLink != null && selectedLink.equals(link));
+            }
+            for (Link link : movingLinks)
+                renderLink(g, link, selectedLink != null && selectedLink.equals(link));
+        });
         if (!wireFrom.isBlank()) {
             var source = positions.get(wireFrom);
             if (source != null) {
-                double x = sx(source.x() + CARD_W), y = sy(source.y() + CARD_H / 2.0);
+                double x = sx(source.x()), y = sy(source.y() + CARD_H / 2.0);
                 TriggerNodeStyle.wire(g, x, y, mx, my, 0xFFE9C576, 2, true, canvasLeft(), top(), width - 12, bottom());
             }
         }
         hoveredNode = nodeAt(mx, my);
         for (QuestDefinition task : visibleTasks()) renderTask(g, task, mx, my);
         g.disableScissor();
+        renderMinimap(g);
         renderTaskDrawer(g, mx, my);
         var exitButtons = children().stream().filter(child -> child instanceof StyledButton button
                 && (button.styleId().equals("unlock-discard") || button.styleId().equals("unlock-continue")))
                 .map(child -> (StyledButton) child).toList();
         exitButtons.forEach(button -> button.visible = false);
         try {
-            super.renderContents(g, mx, my, delta);
+            super.renderContents(g, minimapDragging ? -10000 : mx, minimapDragging ? -10000 : my, delta);
         } finally {
             exitButtons.forEach(button -> button.visible = true);
         }
@@ -312,10 +404,8 @@ public final class QuestUnlockGraphScreen extends AnimatedQuestScreen {
             g.drawCenteredString(font, text("unsaved"), width / 2, y + 16, 0xFFE8EDEB);
             exitButtons.forEach(button -> button.render(g, mx, my, delta));
         });
-        int propertyWidth = Math.min(380, width - 32), propertyX = (width - propertyWidth) / 2;
-        int propertyY = Math.max(40, (height - 172) / 2);
         renderAnimatedMenu(g, "properties", !confirmExit && !propertiesTask.isBlank() ? propertiesTask : null,
-                viewport(propertyX, propertyY, propertyX + propertyWidth, propertyY + 172),
+                viewport(propertyX(), propertyY(), propertyX() + propertyWidth(), propertyY() + propertyHeight()),
                 0xB8000000, () -> renderProperties(g));
         renderAnimatedMenu(g, "context", contextTask.isBlank() ? null : contextTask,
                 viewport(contextX, contextY, contextX + contextWidth(),
@@ -345,6 +435,16 @@ public final class QuestUnlockGraphScreen extends AnimatedQuestScreen {
             g.flush();
             g.pose().popPose();
         });
+        minimapTooltipVisible = false;
+        if (!minimapDragging && !movingCanvas && draggingNode.isBlank() && !confirmExit && contextTask.isBlank() && propertiesTask.isBlank()
+                && mx >= mapX() && mx < mapX() + mapWidth() && my >= mapY() && my < mapY() + mapHeight()) {
+            minimapTooltipVisible = true;
+            g.renderComponentTooltip(font, List.of(text("minimap_tasks", minimapDots.size()),
+                    text("available").copy().append(": " + minimapCounts[0]).withStyle(net.minecraft.ChatFormatting.GREEN),
+                    text("complete").copy().append(": " + minimapCounts[1]).withStyle(net.minecraft.ChatFormatting.GOLD),
+                    text("locked").copy().append(": " + minimapCounts[2]).withStyle(net.minecraft.ChatFormatting.RED),
+                    text("minimap_outside", minimapOffscreen[0], minimapOffscreen[1], minimapOffscreen[2], minimapOffscreen[3])), mx, my);
+        }
     }
     private void renderTaskDrawer(GuiGraphics g, int mx, int my) {
         if (drawerExtent() <= 0) return;
@@ -352,26 +452,44 @@ public final class QuestUnlockGraphScreen extends AnimatedQuestScreen {
         g.enableScissor(0, top(), drawerExtent(), bottom());
         g.fill(x, top(), x + w, bottom(), 0xFF2A323B);
         g.fill(x + w - 2, top(), x + w, bottom(), 0xFF9CB0BD);
-        var filtered = drawerTasks();
-        int scroll = drawerScroll.pixels();
-        int first = Math.max(0, (scroll - 26) / 28);
-        int end = Math.min(filtered.size(), (scroll + bottom() - top() + 27) / 28 + 1);
-        for (int index = first; index < end; index++) {
-            int y = top() + index * 28 - scroll;
-            QuestDefinition task = filtered.get(index);
-            boolean unlocked = isUnlocked(task);
-            boolean chosen = selectedTasks.contains(task.id()) || !multiSelect && task.id().equals(selected);
-            g.fill(x + 6, y + 1, x + w - 12, y + 26, unlocked ? 0xFF315A43 : 0xFF5A3438);
-            if (chosen) g.renderOutline(x + 6, y + 1, w - 18, 25, 0xFFF0CF91);
-            drawLockStatus(g, unlocked, x + 10, y + 5, 16);
-            g.drawString(font, font.plainSubstrByWidth(QuestText.title(task).getString(), w - 54),
-                    x + 30, y + 9, 0xFFE8EDEB, false);
+        var rows = drawerRows().visibleRows(drawerScroll.position()-56,drawerScroll.position()+bottom()-top()+56);
+        var visible = new HashSet<String>();
+        for (var row : rows) {
+            int y = top()+row.offset()-drawerScroll.pixels();
+            if (row.section()) {
+                var type=ClientQuestDefinitions.types().stream().filter(t->t.id().equals(row.category())).findFirst().orElse(null);
+                if(type!=null) { QuestIcons.render(g,type.icon(),x+10,y+6,12,12,1);g.drawString(font,type.name(),x+28,y+8,0xFFE0D5B5,false); }
+                continue;
+            }
+            visible.add(row.key());
+            var button=drawerButtons.get(row.key());
+            boolean group=row.group()!=null;
+            if(button==null) {
+                var task=row.quest(); var heading=row.group();
+                button=new JournalListButton(x+6+row.indent(),y,w-18-row.indent(),row.height(),
+                        Component.literal(group?heading.name():taskTitles.get(task.id())),ignored->{},styles,"unlock-drawer-"+row.key(),
+                        group?heading.leadingIcon():task.leadingIcon(),group?heading.trailingIcon():task.trailingIcon(),
+                        group?heading.description():"",group,group&&!ClientPreferences.get().collapsedJournalGroups.contains(heading.id()),
+                        false,false,"",null);
+                if(!group) button.extraCss(task.buttonCss());
+                drawerButtons.put(row.key(),button);
+            }
+            button.setPosition(x+6+row.indent(),y); button.setWidth(w-18-row.indent());
+            button.setSelectionHighlighted(!group && (selectedTasks.contains(row.quest().id()) || row.quest().id().equals(selected)));
+            if(!group) button.locked(!isUnlocked(row.quest()));
+            button.clipTo(0,top(),drawerExtent()-8,bottom());button.render(g,mx,my,0);
         }
+        drawerButtons.keySet().retainAll(visible);
         g.disableScissor();
     }
     private boolean isUnlocked(QuestDefinition task) {
         var progress = ClientQuestProgress.view(task.id());
         return progress == null ? task.defaultUnlocked() : progress.unlocked();
+    }
+    private TaskState taskState(QuestDefinition task) {
+        var progress = ClientQuestProgress.view(task.id());
+        return progress != null && progress.completed() ? TaskState.COMPLETE
+                : isUnlocked(task) ? TaskState.AVAILABLE : TaskState.LOCKED;
     }
     private static void drawLockStatus(GuiGraphics g, boolean unlocked, int x, int y, int size) {
         drawLockStatus(g, unlocked, x, y, size, 0);
@@ -395,11 +513,42 @@ public final class QuestUnlockGraphScreen extends AnimatedQuestScreen {
         g.pose().popPose();
     }
     private List<QuestDefinition> drawerTasks() {
-        if (Objects.equals(drawerTaskQuery, searchText)) return drawerTaskCache;
-        drawerTaskQuery = searchText;
-        drawerTaskCache = searchText.isBlank() ? tasks : tasks.stream().filter(task ->
-                QuestIcons.matchesSearch(searchText, task.id(), QuestText.title(task).getString())).toList();
         return drawerTaskCache;
+    }
+    private void searchChanged(String value) {
+        searchText=value; searchChangedAt=System.nanoTime();submittedSearch=null;searchWorker.cancel();drawerScroll.jump(0);
+        searchPending=!value.isBlank();
+        if(value.isBlank()) { drawerTaskCache=tasks;matchingTasks=Set.of();drawerModel=null;drawerButtons.clear(); }
+    }
+    private void advanceSearch() {
+        String query=AsyncQuestSearch.normalize(searchText);
+        if(query.isBlank())return;
+        if(!query.equals(submittedSearch) && System.nanoTime()-searchChangedAt>=120_000_000L) {
+            submittedSearch=query;searchWorker.request(query,searchDocuments);
+        }
+        var result=searchWorker.takeResult();
+        if(result==null || !result.query().equals(query))return;
+        searchWorkerThread=result.workerThread();
+        drawerTaskCache=tasks.stream().filter(task->result.ids().contains("task:"+task.id())
+                || result.ids().contains("group:"+taskMembership.get(task.id()))).toList();
+        matchingTasks=Set.copyOf(drawerTaskCache.stream().map(QuestDefinition::id).toList());
+        searchPending=false;drawerModel=null;drawerButtons.clear();
+    }
+    private JournalListModel drawerRows() {
+        var collapsed=ClientPreferences.get().collapsedJournalGroups;
+        if(drawerModel==null || drawerCollapsedSource!=collapsed) {
+            drawerCollapsedSource=collapsed; drawerButtons.clear();
+            drawerModel=JournalListModel.categorized(drawerTasks(),drawerGroups,
+                    id->taskMembership.getOrDefault(id,""),searchText.isBlank()?new HashSet<>(collapsed):Set.of(),
+                    searchText.isBlank(),ClientQuestDefinitions.types().stream().map(t->t.id()).toList());
+        }
+        return drawerModel;
+    }
+    private void toggleDrawerGroup(String id) {
+        var collapsed=new LinkedHashSet<>(ClientPreferences.get().collapsedJournalGroups);
+        if(!collapsed.remove(id))collapsed.add(id);
+        ClientPreferences.get().collapsedJournalGroups=List.copyOf(collapsed);ClientPreferences.get().save();
+        drawerModel=null;drawerButtons.clear();
     }
     private void toggleDrawer() {
         taskDrawer = !taskDrawer;
@@ -446,7 +595,14 @@ public final class QuestUnlockGraphScreen extends AnimatedQuestScreen {
     }
     private String[] contextItems() {
         return new String[]{"properties", "copy_properties", "select_all", "invert_selection",
-                "lock_selected", "unlock_selected", "disconnect"};
+                "lock_selected", "unlock_selected", "disconnect", "open_task"};
+    }
+
+    private void openTask(String id) {
+        if (!byId.containsKey(id)) return;
+        wireFrom = draggingNode = ""; movingCanvas = minimapDragging = false;
+        lastReleasedNode = "";
+        minecraft.setScreen(QuestScreen.graphTask(this, id));
     }
 
     /** Tasks the context menu acts on: the multi-selection, otherwise the clicked task. */
@@ -518,17 +674,6 @@ public final class QuestUnlockGraphScreen extends AnimatedQuestScreen {
         return ClientQuestDefinitions.chapters().stream().filter(chapter -> chapter.quests().contains(task.id()))
                 .map(chapter -> chapter.name()).findFirst().orElse("-");
     }
-    private int unlockedCount() {
-        long revision = ClientQuestProgress.revision();
-        if (revision != unlockCountRevision) {
-            cachedUnlockedCount = (int) tasks.stream().filter(task -> {
-                var progress = ClientQuestProgress.view(task.id());
-                return progress != null && progress.unlocked();
-            }).count();
-            unlockCountRevision = revision;
-        }
-        return cachedUnlockedCount;
-    }
     private void rebuildViewportIndexes() {
         var nodes = new ArrayList<ViewportIndex.Entry<QuestDefinition>>(tasks.size());
         for (int index = 0; index < tasks.size(); index++) {
@@ -547,7 +692,8 @@ public final class QuestUnlockGraphScreen extends AnimatedQuestScreen {
             var from = positions.get(link.from());
             var to = positions.get(link.to());
             if (from != null && to != null) {
-                double x1 = from.x() + CARD_W + 4, x2 = to.x() - 4;
+                double x1 = from.x() > to.x() ? from.x() - 4 : from.x() + CARD_W + 4;
+                double x2 = from.x() > to.x() ? to.x() + CARD_W + 4 : to.x() - 4;
                 double y1 = from.y() + CARD_H / 2.0, y2 = to.y() + CARD_H / 2.0;
                 edges.add(new ViewportIndex.Entry<>(link, Math.min(x1, x2) - 24,
                         Math.min(y1, y2) - 3, Math.max(x1, x2) + 24, Math.max(y1, y2) + 3, order++));
@@ -558,6 +704,7 @@ public final class QuestUnlockGraphScreen extends AnimatedQuestScreen {
         linkIndex = new ViewportIndex<>(edges);
         adjacent.replaceAll((id, value) -> List.copyOf(value));
         incidentLinks = Map.copyOf(adjacent);
+        rebuildMinimap();
     }
     private List<QuestDefinition> visibleTasks() {
         double left = wx(canvasLeft() - 8), right = wx(width - 4);
@@ -577,22 +724,55 @@ public final class QuestUnlockGraphScreen extends AnimatedQuestScreen {
         return linkIndex.query(wx(canvasLeft() - padding), wy(top() - padding),
                 wx(width - 12 + padding), wy(bottom() + padding));
     }
+    private int propertyCanvasWidth() {
+        return propertyPreview == null ? LayoutEditorState.DEFAULT_TASK_WIDTH : propertyPreview.previewCanvasWidth();
+    }
+    private int propertyCanvasHeight() {
+        return propertyPreview == null ? LayoutEditorState.DEFAULT_TASK_HEIGHT : propertyPreview.previewCanvasHeight();
+    }
+    private int propertyWidth() {
+        int available = Math.max(180, width - 32);
+        int preferred = Math.max(360, propertyCanvasWidth() + 110);
+        return Math.min(available, Math.min(preferred, Math.max(360, width * 84 / 100)));
+    }
+    private int propertyHeight() {
+        int available = Math.max(140, height - 32);
+        int preferred = Math.max(280, propertyCanvasHeight() + 130);
+        return Math.min(available, Math.min(preferred, Math.max(280, height * 84 / 100)));
+    }
+    private int propertyX() { return (width - propertyWidth()) / 2; }
+    private int propertyY() { return (height - propertyHeight()) / 2; }
+    private Viewport propertyViewport() {
+        return viewport(propertyX() + 10, propertyY() + 30,
+                propertyX() + propertyWidth() - 14, propertyY() + propertyHeight() - 36);
+    }
     private void renderProperties(GuiGraphics g) {
         QuestDefinition task = byId.get(propertiesTask);
         if (task == null) return;
-        int w = Math.min(380, width - 32), x = (width - w) / 2, y = Math.max(40, (height - 172) / 2);
-        g.fill(x, y, x + w, y + 172, 0xFF29323C);
-        g.renderOutline(x, y, w, 172, 0xFF9CB0BD);
-        String[] rows = {text("properties").getString(), text("property_id", task.id()).getString(),
-                text("property_title", QuestText.title(task).getString()).getString(),
-                text("property_group", groupName(task)).getString(),
-                text("property_chapter", chapterName(task)).getString(),
-                text("property_type", task.type()).getString(),
-                text("property_parents", String.join(", ", task.parents())).getString()};
-        for (int i = 0; i < rows.length; i++)
-            g.drawString(font, font.plainSubstrByWidth(rows[i], w - 20), x + 10, y + 9 + i * 19,
-                    i == 0 ? 0xFFF0D59B : 0xFFE4EAEF, false);
-        g.drawCenteredString(font, text("copy_properties"), x + w / 2, y + 148, 0xFFF0D59B);
+        int w = propertyWidth(), h = propertyHeight(), x = propertyX(), y = propertyY();
+        g.fill(x, y, x + w, y + h, 0xFF29323C); g.renderOutline(x, y, w, h, 0xFF9CB0BD);
+        g.drawString(font, font.plainSubstrByWidth(text("property_id", task.id()).getString(), w - 44), x + 10, y + 10, 0xFFF0D59B, false);
+        JournalNavButton.drawIcon(g, "close", x + w - 23, y + 7, 16, 0xFFE4EAEF);
+        if (propertyPreview == null || !propertyPreviewId.equals(task.id())) {
+            propertyPreviewId = task.id(); propertyScroll.jump(0);
+            propertyPreview = QuestScreen.taskControlPreview(task);
+            propertyPreview.init(minecraft, width, height);
+        }
+        var view = propertyViewport();
+        boolean footer = propertyPreview.previewControls().stream().noneMatch(control -> control.kind().equals("quest_rewards"))
+                && !task.rewards().isEmpty();
+        var body = footer ? viewport(view.left(), view.top(), view.right(), Math.max(view.top() + 24, view.bottom() - 64)) : view;
+        propertyScroll.limit(propertyPreview.templatePreviewMaxScroll(body)); propertyScroll.advance();
+        propertyPreview.renderTemplatePreview(g, body, propertyScroll.position(), -1000, -1000, "");
+        if (footer) JournalDetailRenderer.renderFooter(g, font, task, task.rewards(), view.left(), body.bottom(), view.right(), -1000, -1000, false, false);
+        if (propertyScroll.maximum() > 0) {
+            g.fill(x + w - 9, view.top(), x + w - 6, view.bottom(), 0xFF465460);
+            int thumb = Math.max(12, (int) ((view.bottom() - view.top()) / (1 + propertyScroll.maximum() / (view.bottom() - view.top()))));
+            int top = view.top() + (int) ((view.bottom() - view.top() - thumb) * propertyScroll.position() / propertyScroll.maximum());
+            g.fill(x + w - 9, top, x + w - 6, top + thumb, 0xFFB7C6CF);
+        }
+        g.drawString(font, text("copy_properties"), x + 12, y + h - 23, 0xFFF0D59B, false);
+        g.drawString(font, text("open_task"), x + w - font.width(text("open_task")) - 12, y + h - 23, 0xFFF0D59B, false);
     }
     private void copyProperties(String id) {
         QuestDefinition task = byId.get(id);
@@ -622,62 +802,84 @@ public final class QuestUnlockGraphScreen extends AnimatedQuestScreen {
         if (p == null) return;
         int x = (int) sx(p.x()), y = (int) sy(p.y()), w = (int) (CARD_W * zoom), h = (int) (CARD_H * zoom);
         if (x + w < 12 || x > width - 12 || y + h < top() || y > bottom()) return;
-        var progress = ClientQuestProgress.view(task.id());
-        boolean complete = progress != null && progress.completed();
-        boolean locked = !isUnlocked(task);
-        boolean highlighted = !searchText.isBlank() && QuestIcons.matchesSearch(searchText,
-                task.id(), QuestText.title(task).getString());
+        var state = taskState(task);
+        boolean complete = state == TaskState.COMPLETE;
+        boolean locked = state == TaskState.LOCKED;
+        boolean highlighted = !searchText.isBlank() && matchingTasks.contains(task.id());
         boolean chosen = task.id().equals(selected) || selectedTasks.contains(task.id());
         boolean focusHighlighted = task.id().equals(focusTask)
                 && System.nanoTime() < focusUntilNanos;
         // Bright state band (complete gold, locked coral, available green) with a dark title.
-        int top = complete ? 0xFFF2C75C : locked ? 0xFFF27F6E : 0xFF7DD9A4;
-        int bottom = complete ? 0xFFE0AF42 : locked ? 0xFFDE6553 : 0xFF62C48C;
-        int header = Math.max(2, (int) Math.round(18 * zoom));
-        g.fill(x + 2, y + 4, x + w + 3, y + h + 5, 0x38000000);
-        g.fill(x + 1, y + 2, x + w + 2, y + h + 3, 0x30000000);
-        if (chosen || highlighted) {
-            ControlAppearance.draw(g, x - 3, y - 3, w + 6, h + 6, "rounded", 8, 0, 0x38FFD27A, 1);
-            ControlAppearance.draw(g, x - 2, y - 2, w + 4, h + 4, "rounded", 7, 0, 0xA0FFD27A, 1);
+        int top = state.color;
+        int bottom = state.bottom;
+        int header = Math.max(font.lineHeight + 5, (int) Math.round(18 * zoom));
+        // Keep scanline-shaped highlights in one GUI batch, before text and item rendering.
+        g.drawManaged(() -> {
+            g.fill(x + 2, y + 4, x + w + 3, y + h + 5, 0x38000000);
+            g.fill(x + 1, y + 2, x + w + 2, y + h + 3, 0x30000000);
+            if (chosen || highlighted) {
+                ControlAppearance.draw(g, x - 3, y - 3, w + 6, h + 6, "rounded", 8, 0, 0x38FFD27A, 1);
+                ControlAppearance.draw(g, x - 2, y - 2, w + 4, h + 4, "rounded", 7, 0, 0xA0FFD27A, 1);
+            }
+            if (focusHighlighted) {
+                float pulse = ClientPreferences.get().reducedMotion ? 1F
+                        : (float) ((Math.sin(System.nanoTime() / 90_000_000.0) + 1) * .5);
+                int alpha = 0x70 + Math.round(pulse * 0x70);
+                ControlAppearance.draw(g, x - 7, y - 7, w + 14, h + 14, "rounded", 10,
+                        0, (alpha << 24) | 0x00F4D37B, 2);
+                ControlAppearance.draw(g, x - 4, y - 4, w + 8, h + 8, "rounded", 8,
+                        0, (0xB0 << 24) | 0x00FFF1B0, 1);
+            }
+            int border = focusHighlighted ? 0xFFFFE08A
+                    : chosen || highlighted ? TriggerNodeStyle.GOLD : hoveredNode.equals(task.id()) ? 0xFF5C5C66
+                    : TriggerNodeStyle.BODY_BORDER;
+            g.fill(x, y, x + w, y + h, TriggerNodeStyle.BODY);
+            g.renderOutline(x, y, w, h, border);
+            g.fillGradient(x + 1, y + 2, x + w - 1, y + header, top, bottom);
+            g.fill(x + 4, y + 1, x + w - 4, y + 2, top);
+            g.fill(x + 5, y + 1, x + w - 5, y + 2, 0x50FFFFFF);
+            g.fill(x + 1, y + header, x + w - 1, y + header + 1, 0x60000000);
+        });
+        if (zoom < .65) {
+            int clippedWidth = Math.max(1, w - 22);
+            g.drawManaged(() -> {
+                g.drawString(font, font.plainSubstrByWidth(taskTitles.get(task.id()), clippedWidth),
+                        x + 5, y + 3, 0xFF17171B, false);
+                if (h > 26) g.drawString(font, font.plainSubstrByWidth(groupLabels.get(task.id()), clippedWidth),
+                        x + 5, y + 17, 0xFFB5C8CF, false);
+                drawLockStatus(g, !locked, x + w - 14, y + 2, 10, 0xFF17171B);
+            });
+            renderTaskPorts(g, task, x, y, w, h, mx, my);
+            return;
         }
-        if (focusHighlighted) {
-            float pulse = ClientPreferences.get().reducedMotion ? 1F
-                    : (float) ((Math.sin(System.nanoTime() / 90_000_000.0) + 1) * .5);
-            int alpha = 0x70 + Math.round(pulse * 0x70);
-            ControlAppearance.draw(g, x - 7, y - 7, w + 14, h + 14, "rounded", 10,
-                    0, (alpha << 24) | 0x00F4D37B, 2);
-            ControlAppearance.draw(g, x - 4, y - 4, w + 8, h + 8, "rounded", 8,
-                    0, (0xB0 << 24) | 0x00FFF1B0, 1);
-        }
-        int border = focusHighlighted ? 0xFFFFE08A
-                : chosen || highlighted ? TriggerNodeStyle.GOLD : hoveredNode.equals(task.id()) ? 0xFF5C5C66
-                : TriggerNodeStyle.BODY_BORDER;
-        ControlAppearance.draw(g, x, y, w, h, "rounded", 5, TriggerNodeStyle.BODY, border, 1);
-        g.fillGradient(x + 1, y + 2, x + w - 1, y + header, top, bottom);
-        g.fill(x + 4, y + 1, x + w - 4, y + 2, top);
-        g.fill(x + 5, y + 1, x + w - 5, y + 2, 0x50FFFFFF);
-        g.fill(x + 1, y + header, x + w - 1, y + header + 1, 0x60000000);
         g.pose().pushPose();
         g.pose().translate(x, y, 0);
         g.pose().scale((float) zoom, (float) zoom, 1);
-        String title = QuestText.title(task).getString();
-        g.drawString(font, font.plainSubstrByWidth(title, CARD_W - 34), 8, 5, 0xFF17171B, false);
-        drawLockStatus(g, !locked, CARD_W - 20, 2, 13, 0xFF17171B);
         QuestIcons.render(g, task.icon().isBlank() ? "minecraft:book" : task.icon(), 8, 24, 22);
-        g.drawString(font, font.plainSubstrByWidth(task.id(), CARD_W - 44), 36, 25,
-                0xFFAFC2C5, false);
-        g.drawString(font, font.plainSubstrByWidth(text("property_group", groupName(task)).getString(), CARD_W - 44),
-                36, 37, 0xFFB5C8CF, false);
-        g.drawString(font, font.plainSubstrByWidth(text("property_chapter", chapterName(task)).getString(), CARD_W - 16),
-                8, 54, 0xFFB5C8CF, false);
-        int statusColor = complete ? 0xFFF2CF83 : locked ? 0xFFFF9A9A : 0xFF9BE0B0;
-        MailDecor.diamond(g, 11, 76, 2, statusColor);
-        g.drawString(font, text(complete ? "complete" : locked ? "locked" : "available"),
-                17, 72, statusColor, false);
+        g.drawManaged(() -> drawLockStatus(g, !locked, CARD_W - 20, 2, 13, 0xFF17171B));
+        g.drawManaged(() -> {
+            String title = taskTitles.get(task.id());
+            g.drawString(font, font.plainSubstrByWidth(title, CARD_W - 34), 8, 5, 0xFF17171B, false);
+            g.drawString(font, font.plainSubstrByWidth(task.id(), CARD_W - 44), 36, 25,
+                    0xFFAFC2C5, false);
+            g.drawString(font, font.plainSubstrByWidth(text("property_group", groupLabels.get(task.id())).getString(), CARD_W - 44),
+                    36, 37, 0xFFB5C8CF, false);
+            g.drawString(font, font.plainSubstrByWidth(text("property_chapter", chapterLabels.get(task.id())).getString(), CARD_W - 16),
+                    8, 54, 0xFFB5C8CF, false);
+            int statusColor = complete ? 0xFFF2CF83 : locked ? 0xFFFF9A9A : 0xFF9BE0B0;
+            MailDecor.diamond(g, 11, 76, 2, statusColor);
+            g.drawString(font, text(complete ? "complete" : locked ? "locked" : "available"),
+                    17, 72, statusColor, false);
+        });
         g.pose().popPose();
-        TriggerNodeStyle.port(g, x + w, y + h / 2.0, TriggerNodeStyle.PORT_NEXT, hasOutgoing(task.id()),
-                Math.abs(mx - x - w) < 8 && Math.abs(my - y - h / 2.0) < 8);
-        TriggerNodeStyle.port(g, x, y + h / 2.0, TriggerNodeStyle.PORT_INPUT, hasIncoming(task.id()), false);
+        renderTaskPorts(g, task, x, y, w, h, mx, my);
+    }
+    private void renderTaskPorts(GuiGraphics g, QuestDefinition task, int x, int y, int w, int h, int mx, int my) {
+        g.drawManaged(() -> {
+            TriggerNodeStyle.port(g, x, y + h / 2.0, TriggerNodeStyle.PORT_NEXT, hasOutgoing(task.id()),
+                    Math.abs(mx - x) < 8 && Math.abs(my - y - h / 2.0) < 8);
+            TriggerNodeStyle.port(g, x + w, y + h / 2.0, TriggerNodeStyle.PORT_INPUT, hasIncoming(task.id()), false);
+        });
     }
     private boolean hasOutgoing(String id) {
         return incidentLinks.getOrDefault(id, List.of()).stream().anyMatch(link -> link.from().equals(id));
@@ -689,13 +891,28 @@ public final class QuestUnlockGraphScreen extends AnimatedQuestScreen {
         var from = positions.get(link.from());
         var to = positions.get(link.to());
         if (from == null || to == null) return;
-        double x1 = sx(from.x() + CARD_W) + 4, y1 = sy(from.y() + CARD_H / 2.0);
-        double x2 = sx(to.x()) - 4, y2 = sy(to.y() + CARD_H / 2.0);
+        boolean reversed = from.x() > to.x();
+        double x1 = sx(reversed ? from.x() : from.x() + CARD_W) + (reversed ? -4 : 4), y1 = sy(from.y() + CARD_H / 2.0);
+        double x2 = sx(reversed ? to.x() + CARD_W : to.x()) + (reversed ? 4 : -4), y2 = sy(to.y() + CARD_H / 2.0);
         int color = selectedEdge ? TriggerNodeStyle.GOLD : completed(link.from()) ? TriggerNodeStyle.PORT_TRUE : 0xFFD9D9DE;
-        TriggerNodeStyle.wire(g, x1, y1, x2, y2, color, selectedEdge ? 3 : 2, false,
-                canvasLeft(), top(), width - 12, bottom());
-        if (!ClientPreferences.get().reducedMotion && (selectedEdge || completed(link.from())))
-            TriggerNodeStyle.flow(g, x1, y1, x2, y2, color, System.nanoTime());
+        // Three orthogonal spans replace dozens of transformed curve segments per edge.
+        double middle = (x1 + x2) / 2;
+        clippedLine(g, x1, y1, middle, y1, color, selectedEdge ? 3 : 1);
+        clippedLine(g, middle, y1, middle, y2, color, selectedEdge ? 3 : 1);
+        clippedLine(g, middle, y2, x2, y2, color, selectedEdge ? 3 : 1);
+        if (!ClientPreferences.get().reducedMotion && selectedEdge) {
+            double t = (System.nanoTime() / 1_400_000_000.) % 1;
+            double px = t < .33 ? x1 + (middle - x1) * t * 3 : t < .66 ? middle : middle + (x2 - middle) * (t - .66) * 3;
+            double py = t < .33 ? y1 : t < .66 ? y1 + (y2 - y1) * (t - .33) * 3 : y2;
+            MailDecor.diamond(g, (int) px, (int) py, 3, TriggerNodeStyle.GOLD);
+        }
+    }
+    private void clippedLine(GuiGraphics g, double x1, double y1, double x2, double y2, int color, int thickness) {
+        double[] line = ViewportIndex.clipSegment(x1, y1, x2, y2, canvasLeft(), top(), width - 12, bottom());
+        if (line == null) return;
+        g.fill((int) Math.floor(Math.min(line[0], line[2])), (int) Math.floor(Math.min(line[1], line[3])),
+                (int) Math.ceil(Math.max(line[0], line[2])) + thickness,
+                (int) Math.ceil(Math.max(line[1], line[3])) + thickness, color);
     }
     private boolean completed(String id) {
         var progress = ClientQuestProgress.view(id);
@@ -727,9 +944,12 @@ public final class QuestUnlockGraphScreen extends AnimatedQuestScreen {
             var a = positions.get(link.from());
             var b = positions.get(link.to());
             if (a == null || b == null) continue;
-            double x1 = sx(a.x() + CARD_W) + 4, y1 = sy(a.y() + CARD_H / 2.0);
-            double x2 = sx(b.x()) - 4, y2 = sy(b.y() + CARD_H / 2.0);
-            if (TriggerNodeStyle.distance(x1, y1, x2, y2, x, y) <= 6) return link;
+            boolean reversed = a.x() > b.x();
+            double x1 = sx(reversed ? a.x() : a.x() + CARD_W) + (reversed ? -4 : 4), y1 = sy(a.y() + CARD_H / 2.0);
+            double x2 = sx(reversed ? b.x() + CARD_W : b.x()) + (reversed ? 4 : -4), y2 = sy(b.y() + CARD_H / 2.0);
+            double middle = (x1 + x2) / 2;
+            if (near(x, y, x1, y1, middle, y1) || near(x, y, middle, y1, middle, y2)
+                    || near(x, y, middle, y2, x2, y2)) return link;
         }
         return null;
     }
@@ -764,10 +984,15 @@ public final class QuestUnlockGraphScreen extends AnimatedQuestScreen {
     }
     @Override public boolean mouseClicked(double x, double y, int button) {
         if (inputBlocked() || pending != null || lockPending != null) return true;
+        if (button == 0 && !confirmExit && contextTask.isBlank() && propertiesTask.isBlank() && minimapAt(x, y)) {
+            minimapDragProjection = minimapProjection();
+            minimapDragging = true; minimapFrame=System.nanoTime();moveMinimap(x, y); return true;
+        }
         if (!propertiesTask.isBlank()) {
             if (button == 0) {
-                int w = Math.min(380, width - 32), px = (width - w) / 2, py = Math.max(40, (height - 172) / 2);
-                pressedPropertiesCopy = x >= px && x < px + w && y >= py + 138 && y < py + 172 ? 1 : 0;
+                pressedPropertiesCopy = x >= propertyX() && x < propertyX() + propertyWidth()
+                        && y >= propertyY() + propertyHeight() - 32 && y < propertyY() + propertyHeight()
+                        ? x < width / 2. ? 1 : 2 : propertyViewport().contains(x, y) ? 3 : 0;
             }
             return true;
         }
@@ -789,9 +1014,10 @@ public final class QuestUnlockGraphScreen extends AnimatedQuestScreen {
         if (super.mouseClicked(x, y, button)) return true;
         if (y >= top() && y < bottom() && x >= 0 && x < drawerExtent()) {
             if (!drawerMotion.settled()) return true;
-            var filtered = drawerTasks();
-            int index = (int) Math.floor((y - top() + drawerScroll.position()) / 28);
-            String id = index >= 0 && index < filtered.size() ? filtered.get(index).id() : "";
+            var row=drawerRows().visibleRows(y-top()+drawerScroll.position(),y-top()+drawerScroll.position()+.01).stream().findFirst().orElse(null);
+            if(row==null || row.section())return true;
+            if(row.group()!=null) { if(button==0)toggleDrawerGroup(row.group().id()); return true; }
+            String id=row.quest().id();
             if (button == 1) {
                 openContext(id, x, y);
             } else if (button == 0 && !id.isBlank()) {
@@ -807,7 +1033,7 @@ public final class QuestUnlockGraphScreen extends AnimatedQuestScreen {
         if (x < canvasLeft() || x >= width - 12) return false;
         if (y < top() || y >= bottom()) return false;
         setFocused(null);
-        if (button == 2) { movingCanvas = true; dragX = x; dragY = y; originX = panX; originY = panY; return true; }
+        if (button == 2) { minimapNavigationProjection=null;movingCanvas = true; dragX = x; dragY = y; originX = panX; originY = panY; return true; }
         if (button == 1) {
             String hit = nodeAt(x, y);
             if (!hit.isBlank() || multiSelect) openContext(hit, x, y);
@@ -828,7 +1054,7 @@ public final class QuestUnlockGraphScreen extends AnimatedQuestScreen {
         }
         if (!hit.isBlank()) {
             var p = positions.get(hit);
-            if (x >= sx(p.x() + CARD_W) - 8 && x <= sx(p.x() + CARD_W) + 8) {
+            if (Math.abs(x - sx(p.x())) <= 8 || Math.abs(x - sx(p.x() + CARD_W)) <= 8) {
                 wireFrom = hit;
                 wireDragged = false;
             } else {
@@ -850,6 +1076,7 @@ public final class QuestUnlockGraphScreen extends AnimatedQuestScreen {
         return true;
     }
     @Override public boolean mouseDragged(double x, double y, int button, double dx, double dy) {
+        if (button == 0 && minimapDragging) { moveMinimap(x, y); return true; }
         if (pending != null || lockPending != null || confirmExit || !contextTask.isBlank()
                 || !propertiesTask.isBlank() || inputBlocked()) return true;
         if (button == 2 && movingCanvas) {
@@ -871,14 +1098,19 @@ public final class QuestUnlockGraphScreen extends AnimatedQuestScreen {
         return super.mouseDragged(x, y, button, dx, dy);
     }
     @Override public boolean mouseReleased(double x, double y, int button) {
+        if (button == 0 && minimapDragging) {
+            minimapDragging=false;minimapNavigationProjection=minimapDragProjection;minimapDragProjection=null;
+            navigationWidth=width;navigationHeight=height;navigationZoom=zoom;navigationCanvasLeft=canvasLeft();
+            return true;
+        }
         if (button == 0 && pressedPropertiesCopy >= 0) {
             int action = pressedPropertiesCopy;
             pressedPropertiesCopy = -1;
-            int w = Math.min(380, width - 32), px = (width - w) / 2, py = Math.max(40, (height - 172) / 2);
-            if (action == 1 && !propertiesTask.isBlank() && x >= px && x < px + w
-                    && y >= py + 138 && y < py + 172) copyProperties(propertiesTask);
-            else if (action == 0 || x < px || x >= px + w || y < py || y >= py + 138)
-                propertiesTask = "";
+            boolean footer = y >= propertyY() + propertyHeight() - 32 && y < propertyY() + propertyHeight()
+                    && x >= propertyX() && x < propertyX() + propertyWidth();
+            if (action == 1 && footer && x < width / 2.) copyProperties(propertiesTask);
+            else if (action == 2 && footer && x >= width / 2.) { String id = propertiesTask; propertiesTask = ""; openTask(id); }
+            else if (action == 0) propertiesTask = "";
             return true;
         }
         if (button == 0 && pressedContextAction >= 0) {
@@ -895,6 +1127,7 @@ public final class QuestUnlockGraphScreen extends AnimatedQuestScreen {
                     case 4 -> setSelectedLocked(true);
                     case 5 -> setSelectedLocked(false);
                     case 6 -> disconnectContext();
+                    case 7 -> openTask(contextTask);
                     default -> { }
                 }
             }
@@ -929,7 +1162,14 @@ public final class QuestUnlockGraphScreen extends AnimatedQuestScreen {
                 return true;
             }
             if (!draggingNode.isBlank()) {
+                String released = draggingNode;
+                boolean clicked = !dragRemembered && released.equals(nodeAt(x, y));
                 draggingNode = "";
+                long now = System.nanoTime();
+                if (clicked && released.equals(lastReleasedNode) && now - lastNodeRelease < 350_000_000L) {
+                    lastReleasedNode = ""; openTask(released); return true;
+                }
+                lastReleasedNode = clicked ? released : ""; lastNodeRelease = now;
                 rebuildViewportIndexes();
                 init();
                 return true;
@@ -938,6 +1178,7 @@ public final class QuestUnlockGraphScreen extends AnimatedQuestScreen {
         return super.mouseReleased(x, y, button);
     }
     @Override public boolean mouseScrolled(double x, double y, double horizontal, double vertical) {
+        if (!propertiesTask.isBlank() && !inputBlocked()) { propertyScroll.wheel(vertical * 30); return true; }
         if (pending != null || lockPending != null || confirmExit || !contextTask.isBlank()
                 || !propertiesTask.isBlank() || inputBlocked()) return true;
         if (x < drawerExtent() && y >= top() && y < bottom()) {
@@ -946,6 +1187,12 @@ public final class QuestUnlockGraphScreen extends AnimatedQuestScreen {
         }
         if (x < canvasLeft() || x >= width - 12) return false;
         if (y < top() || y >= bottom()) return super.mouseScrolled(x, y, horizontal, vertical);
+        minimapOverview = false;
+        minimapNavigationProjection=null;
+        minimapOverviewButton.setSelectionHighlighted(false);
+        if (minimapAt(x, y)) {
+            x = (canvasLeft() + width - 12) / 2.; y = (top() + bottom()) / 2.;
+        }
         double old = zoom;
         zoom = Math.clamp(zoom * Math.pow(1.12, vertical), .4, 2);
         panX = x - drawerExtent() - (x - drawerExtent() - panX) * zoom / old;
@@ -1003,13 +1250,178 @@ public final class QuestUnlockGraphScreen extends AnimatedQuestScreen {
         var server = minecraft.getSingleplayerServer();
         var playerId = minecraft.player.getUUID();
         pending = CompletableFuture.supplyAsync(() -> QuestAuthoring.editUnlockGraph(
-                server.getPlayerList().getPlayer(playerId), expectedRevision, parents, expectedHashes, layout), server);
+                server.getPlayerList().getPlayer(playerId), expectedRevision, parents, expectedHashes, layout,
+                Map.copyOf(modes)), server);
         init();
     }
     @Override public void onClose() {
         if (pending != null || lockPending != null) return;
         if (dirty() && !confirmExit) { confirmExit = true; init(); }
         else if (!confirmExit) closeTo(parent);
+    }
+    private int mapWidth() { return Math.min(164, Math.max(96, width / 4)); }
+    private int mapHeight() { return Math.min(88, Math.max(48, (bottom() - top()) / 4)); }
+    private int mapX() { return width - 18 - mapWidth(); }
+    private int mapY() { return bottom() - mapHeight() - 6; }
+    private int mapContentHeight() { return mapHeight() - 18; }
+    private boolean minimapAt(double x, double y) {
+        return x >= mapX() && x < mapX() + mapWidth() && y >= mapY() && y < mapY() + mapContentHeight();
+    }
+    private void rebuildMinimap() {
+        minWorldX = positions.values().stream().mapToInt(QuestUnlockLayout.Position::x).min().orElse(0) - 10.;
+        minWorldY = positions.values().stream().mapToInt(QuestUnlockLayout.Position::y).min().orElse(0) - 10.;
+        maxWorldX = positions.values().stream().mapToInt(p -> p.x() + CARD_W).max().orElse(CARD_W) + 10.;
+        maxWorldY = positions.values().stream().mapToInt(p -> p.y() + CARD_H).max().orElse(CARD_H) + 10.;
+        minimapRevision = Long.MIN_VALUE;
+        refreshMinimapStates();
+    }
+    private void refreshMinimapStates() {
+        long revision = ClientQuestProgress.listRevision();
+        if (revision == minimapRevision) return;
+        Arrays.fill(minimapCounts, 0);
+        var dots = new ArrayList<MinimapDot>(tasks.size());
+        for (var task : tasks) {
+            var position = positions.get(task.id());
+            if (position == null) continue;
+            var state = taskState(task);
+            dots.add(new MinimapDot(task.id(), position.x(), position.y(), state));
+            minimapCounts[state.ordinal()]++;
+        }
+        minimapDots = List.copyOf(dots);
+        minimapRevision = revision;
+        minimapRasterProjection = null;
+    }
+    private void rasterizeMinimap(MapProjection map) {
+        int w = mapWidth(), h = mapContentHeight();
+        if (map.equals(minimapRasterProjection) && w == minimapRasterWidth && h == minimapRasterHeight) return;
+        int[] masks = new int[w * h];
+        Arrays.fill(minimapOffscreen, 0); Arrays.fill(minimapOffscreenStates, 0);
+        for (var dot : minimapDots) {
+            int rawLeft = (int) Math.floor(map.x(dot.x())) - mapX(), rawTop = (int) Math.floor(map.y(dot.y())) - mapY();
+            int rawRight = (int) Math.ceil(map.x(dot.x() + CARD_W)) - mapX();
+            int rawBottom = (int) Math.ceil(map.y(dot.y() + CARD_H)) - mapY();
+            if (rawRight <= 1 || rawLeft >= w - 1 || rawBottom <= 1 || rawTop >= h - 1) {
+                int direction = rawRight <= 1 ? 0 : rawLeft >= w - 1 ? 1 : rawBottom <= 1 ? 2 : 3;
+                minimapOffscreen[direction]++; minimapOffscreenStates[direction] |= dot.state().mask;
+                continue;
+            }
+            int left = Math.clamp(rawLeft, 1, w - 2), top = Math.clamp(rawTop, 1, h - 2);
+            int right = Math.clamp(rawRight, left + 1, w - 1);
+            int bottom = Math.clamp(rawBottom, top + 1, h - 1);
+            for (int py = top; py < bottom; py++)
+                for (int px = left; px < right; px++) masks[py * w + px] |= dot.state().mask;
+        }
+        var runs = new ArrayList<int[]>();
+        for (int py = 1; py < h - 1; py++) {
+            int start = 1, previous = 0;
+            for (int px = 1; px <= w - 1; px++) {
+                int color = px == w - 1 ? 0 : minimapPixelColor(masks[py * w + px], px, py);
+                if (color == previous) continue;
+                if (previous != 0) runs.add(new int[]{start, py, px, previous});
+                start = px; previous = color;
+            }
+        }
+        minimapRasterMasks = masks;
+        minimapRuns = List.copyOf(runs);
+        minimapRasterProjection = map; minimapRasterWidth = w; minimapRasterHeight = h;
+    }
+    private static int minimapPixelColor(int mask, int x, int y) {
+        if (mask == 0) return 0;
+        int index = (x + y) % Integer.bitCount(mask);
+        for (var state : TaskState.values())
+            if ((mask & state.mask) != 0 && index-- == 0) return state.color;
+        return 0;
+    }
+    private MapProjection minimapProjection() {
+        if (minimapDragging && minimapDragProjection != null) return minimapDragProjection;
+        if(minimapNavigationProjection!=null && navigationWidth==width && navigationHeight==height
+                && navigationZoom==zoom && navigationCanvasLeft==canvasLeft())return minimapNavigationProjection;
+        if (minimapOverview) {
+            double left = Math.min(minWorldX, wx(canvasLeft())), right = Math.max(maxWorldX, wx(width - 12));
+            double top = Math.min(minWorldY, wy(top())), bottom = Math.max(maxWorldY, wy(bottom()));
+            double scale = Math.min((mapWidth() - 8) / Math.max(1, right - left),
+                    (mapContentHeight() - 8) / Math.max(1, bottom - top));
+            return new MapProjection(scale, mapX() + mapWidth() / 2. - (left + right) / 2 * scale,
+                    mapY() + mapContentHeight() / 2. - (top + bottom) / 2 * scale);
+        }
+        double scale = zoom * Math.min((mapWidth() - 16.) / Math.max(1, width - 12 - canvasLeft()),
+                (mapContentHeight() - 16.) / Math.max(1, bottom() - top())) * .6;
+        // The minimap mirrors canvas zoom; its central viewport has matching aspect and context around it.
+        double centerX = wx((canvasLeft() + width - 12) / 2.), centerY = wy((top() + bottom()) / 2.);
+        return new MapProjection(scale, mapX() + mapWidth() / 2. - centerX * scale,
+                mapY() + mapContentHeight() / 2. - centerY * scale);
+    }
+    private double[] minimapViewport() {
+        var map = minimapProjection();
+        return new double[]{map.x(wx(canvasLeft())), map.y(wy(top())),
+                (width - 12 - canvasLeft()) / zoom * map.scale(),
+                (bottom() - top()) / zoom * map.scale()};
+    }
+    private void renderMinimap(GuiGraphics g) {
+        int x = mapX(), y = mapY(), w = mapWidth(), h = mapHeight();
+        g.fill(x, y, x + w, y + h, 0xE81D252D);
+        g.enableScissor(x + 1, y + 1, x + w - 1, y + h - 1);
+        refreshMinimapStates();
+        var map = minimapProjection();
+        rasterizeMinimap(map);
+        g.drawManaged(() -> {
+            for (int[] run : minimapRuns) g.fill(x + run[0], y + run[1], x + run[2], y + run[1] + 1, run[3]);
+        });
+        double[] viewport = minimapViewport();
+        int viewX = (int) Math.floor(viewport[0]), viewY = (int) Math.floor(viewport[1]);
+        int viewW = Math.max(1, (int) Math.ceil(viewport[0] + viewport[2]) - viewX);
+        int viewH = Math.max(1, (int) Math.ceil(viewport[1] + viewport[3]) - viewY);
+        g.renderOutline(viewX, viewY, viewW, viewH, 0xFFFFDF98);
+        for (int direction = 0; direction < 4; direction++) {
+            if (minimapOffscreen[direction] == 0) continue;
+            int arrowX = direction == 0 ? x + 3 : direction == 1 ? x + w - 13 : x + w / 2 - 5;
+            int arrowY = direction == 2 ? y + 3 : direction == 3 ? y + mapContentHeight() - 13 : y + mapContentHeight() / 2 - 5;
+            String icon = direction == 0 ? "back" : direction == 1 ? "forward" : direction == 2 ? "sort_up" : "sort_down";
+            JournalNavButton.drawIcon(g, icon, arrowX, arrowY, 10, 0xFFF0E3C8);
+            for (var state : TaskState.values()) {
+                if ((minimapOffscreenStates[direction] & state.mask) != 0)
+                    g.fill(arrowX + state.ordinal() * 3, arrowY + 10, arrowX + state.ordinal() * 3 + 2, arrowY + 12, state.color);
+            }
+        }
+        g.disableScissor();
+        int segment = (w - 12) / 3;
+        for (var state : TaskState.values()) {
+            int left = x + 6 + state.ordinal() * segment;
+            g.fill(left, y + h - 11, left + 5, y + h - 6, state.color);
+            int count = minimapCounts[state.ordinal()];
+            String label = Integer.toString(count);
+            if (font.width(label) > segment - 10 && count >= 1000) label = count / 1000 + "k";
+            g.drawString(font, font.plainSubstrByWidth(label, segment - 10),
+                    left + 8, y + h - 13, state.color, false);
+        }
+        g.renderOutline(x, y, w, h, minimapDragging ? 0xFFFFDF98 : 0xFF718894);
+    }
+    private void moveMinimap(double x, double y) {
+        minimapPointerX=x;minimapPointerY=y;
+        var map = minimapProjection();
+        double targetX = (x - map.originX()) / map.scale();
+        double targetY = (y - map.originY()) / map.scale();
+        panX = (canvasLeft() + width - 12) / 2. - drawerExtent() - targetX * zoom;
+        panY = (top() + bottom()) / 2. - targetY * zoom;
+    }
+    private static double edgeMotion(double point,double low,double high) {
+        if(point<low+12)return -Math.clamp((low+12-point)/12,0,3);
+        if(point>high-12)return Math.clamp((point-high+12)/12,0,3);
+        return 0;
+    }
+    private void advanceMinimapDrag() {
+        long now=System.nanoTime(); double dt=Math.min(.05,(now-minimapFrame)/1_000_000_000.);minimapFrame=now;
+        if(minimapDragProjection==null)return;
+        double dx=edgeMotion(minimapPointerX,mapX(),mapX()+mapWidth())*dt*70;
+        double dy=edgeMotion(minimapPointerY,mapY(),mapY()+mapContentHeight())*dt*70;
+        if(dx==0 && dy==0)return;
+        minimapDragProjection=new MapProjection(minimapDragProjection.scale(),minimapDragProjection.originX()-dx,minimapDragProjection.originY()-dy);
+        moveMinimap(minimapPointerX,minimapPointerY);
+    }
+    @Override public void removed() {
+        searchWorker.cancel();submittedSearch=null;searchChangedAt=0;
+        minimapDragging=false;minimapDragProjection=null;
+        super.removed();
     }
     @Override public boolean isPauseScreen() { return false; }
 }

@@ -395,6 +395,10 @@ final class AuthoringDocumentationRegression {
         int originalX = preferences.itemPickupToastXPercent;
         int originalY = preferences.itemPickupToastYPercent;
         int originalPickupScale = preferences.itemPickupToastScalePercent;
+        int originalTaskTextScale = preferences.taskToastTextScalePercent;
+        int originalPickupTextScale = preferences.itemPickupToastTextScalePercent;
+        int originalMinimapWidth = preferences.minimapAvoidWidthPercent;
+        int originalMinimapHeight = preferences.minimapAvoidHeightPercent;
         int originalTaskX = preferences.taskToastXPercent;
         int originalTaskY = preferences.taskToastYPercent;
         boolean originalAutoAvoid = preferences.hudAutoAvoidMinimap;
@@ -405,6 +409,19 @@ final class AuthoringDocumentationRegression {
         PopupAnimationProfile originalTaskAnimation = preferences.taskToastAnimation;
         var editor = (HudNotificationLayoutScreen) game.screen;
         capture(game, "notification-layout-editor-zh-1920");
+        ((net.minecraft.client.gui.components.EditBox) field(editor, "textScaleInput")).setValue("145");
+        require((int) field(editor, "taskTextScale") == 145,
+                "Task notice text scale input did not update the preview");
+        int[] minimap = (int[]) call(editor, "minimapAvoidRect");
+        double mapHandleX = minimap[0] - 4, mapHandleY = minimap[1] + minimap[3] - 5;
+        editor.mouseClicked(mapHandleX, mapHandleY, 0);
+        editor.mouseDragged(mapHandleX - 24 * (double) call(editor, "sceneScale"),
+                mapHandleY + 24 * (double) call(editor, "sceneScale"), 0,
+                -24 * (double) call(editor, "sceneScale"), 24 * (double) call(editor, "sceneScale"));
+        editor.mouseReleased(mapHandleX, mapHandleY, 0);
+        require((int) field(editor, "minimapWidth") > originalMinimapWidth
+                        && (int) field(editor, "minimapHeight") > originalMinimapHeight,
+                "Minimap avoid area resize handle did not update its dimensions");
         int[] bounds = (int[]) call(editor, "selectedRect");
         double factor = (double) call(editor, "sceneScale");
         double sceneX = (double) call(editor, "sceneX"), sceneY = (double) call(editor, "sceneY");
@@ -455,6 +472,13 @@ final class AuthoringDocumentationRegression {
         ((net.minecraft.client.gui.components.EditBox) field(editor, "scaleInput")).setValue("135");
         require((int) field(editor, "pickupScale") == 135,
                 "Pickup notice scale input did not update the visual preview");
+        ((net.minecraft.client.gui.components.EditBox) field(editor, "textScaleInput")).setValue("160");
+        require((int) field(editor, "pickupTextScale") == 160,
+                "Pickup notice text scale input did not update the preview");
+        ((net.minecraft.client.gui.components.EditBox) field(editor, "minimapWidthInput")).setValue("32");
+        ((net.minecraft.client.gui.components.EditBox) field(editor, "minimapHeightInput")).setValue("29");
+        require((int) field(editor, "minimapWidth") == 32 && (int) field(editor, "minimapHeight") == 29,
+                "Minimap avoid area width/height numeric controls did not update");
         bounds = (int[]) call(editor, "selectedRect");
         centerX = bounds[0] + bounds[2] / 2.0;
         centerY = bounds[1] + bounds[3] / 2.0;
@@ -475,7 +499,11 @@ final class AuthoringDocumentationRegression {
                 "Task notice drag was not applied");
         require(preferences.itemPickupToastScalePercent == 135 && preferences.minimapCorner.equals("bottom_left")
                         && !preferences.hudAutoAvoidMinimap && preferences.taskToastBackgroundEnabled
-                        && preferences.taskToastBackgroundOpacityPercent == 65,
+                        && preferences.taskToastBackgroundOpacityPercent == 65
+                        && preferences.taskToastTextScalePercent == 145
+                        && preferences.itemPickupToastTextScalePercent == 160
+                        && preferences.minimapAvoidWidthPercent == 32
+                        && preferences.minimapAvoidHeightPercent == 29,
                 "Visual notice options did not apply");
         Path file = xtdpotato.xero_quest_journal.platform.PlatformServices.configDir()
                 .resolve("xero_quest/ui/client.json");
@@ -485,6 +513,9 @@ final class AuthoringDocumentationRegression {
                         && saved.itemPickupToastScalePercent == 135
                         && saved.taskToastXPercent == preferences.taskToastXPercent
                         && saved.taskToastYPercent == preferences.taskToastYPercent
+                        && saved.taskToastTextScalePercent == 145
+                        && saved.itemPickupToastTextScalePercent == 160
+                        && saved.minimapAvoidWidthPercent == 32 && saved.minimapAvoidHeightPercent == 29
                         && saved.taskToastBackgroundEnabled && saved.taskToastBackgroundOpacityPercent == 65
                         && Math.abs(saved.taskToastAnimation.sample(0).scale() - .75) < .001
                         && saved.minimapCorner.equals("bottom_left") && !saved.hudAutoAvoidMinimap,
@@ -500,9 +531,16 @@ final class AuthoringDocumentationRegression {
                 "Legacy client preferences did not inherit transparent task notice defaults");
         require(legacy.hudAutoAvoidMinimap && legacy.minimapCorner.equals("top_right"),
                 "Legacy client preferences did not inherit minimap avoidance defaults");
+        require(legacy.taskToastTextScalePercent == 100 && legacy.itemPickupToastTextScalePercent == 100
+                        && legacy.minimapAvoidWidthPercent == 25 && legacy.minimapAvoidHeightPercent == 25,
+                "Legacy client preferences did not inherit text and minimap size defaults");
         preferences.itemPickupToastXPercent = originalX;
         preferences.itemPickupToastYPercent = originalY;
         preferences.itemPickupToastScalePercent = originalPickupScale;
+        preferences.taskToastTextScalePercent = originalTaskTextScale;
+        preferences.itemPickupToastTextScalePercent = originalPickupTextScale;
+        preferences.minimapAvoidWidthPercent = originalMinimapWidth;
+        preferences.minimapAvoidHeightPercent = originalMinimapHeight;
         preferences.taskToastXPercent = originalTaskX;
         preferences.taskToastYPercent = originalTaskY;
         preferences.taskToastBackgroundEnabled = originalTaskBackground;

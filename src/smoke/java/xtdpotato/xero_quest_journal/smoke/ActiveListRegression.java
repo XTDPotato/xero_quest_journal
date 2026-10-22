@@ -132,6 +132,12 @@ final class ActiveListRegression {
                 set(screen, "groupId", "");
                 screen.init(game, screen.width, screen.height);
                 require(field(screen, "taskSearch") != null, "Empty editor lost its search tools");
+                var searchButton = screen.children().stream().filter(StyledButton.class::isInstance)
+                        .map(StyledButton.class::cast).filter(value -> value.styleId().equals("search-settings"))
+                        .findFirst().orElseThrow();
+                require(searchButton.getWidth() == 17 && searchButton.getHeight() == 15
+                                && Math.abs((float) field(searchButton, "toolIconScale") - .75F) < .001F,
+                        "Search/filter tool button was not reduced by 25 percent");
                 set(screen, "editMode", false);
                 game.getLanguageManager().setSelected("zh_cn");
                 game.options.languageCode = "zh_cn";

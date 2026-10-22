@@ -13,12 +13,21 @@ public final class TemplateLayout {
     }
 
     public static void apply(LayoutEditorState layout, String quest, QuestTemplate template, int x, int y) {
+        apply(layout, quest, template, x, y, false);
+    }
+
+    static void apply(LayoutEditorState layout, String quest, QuestTemplate template, int x, int y, boolean preserveInstance) {
         Map<String, String> values = new HashMap<>();
+        Map<String, LayoutEditorState.Element> existing = new HashMap<>();
+        Map<String, int[]> previousPositions = new HashMap<>();
         Set<String> removed = new HashSet<>();
         for (var element : layout.elements().values()) {
             if (!element.quest().equals(quest)) continue;
             if (element.attribute("template_owner", "").equals(template.id())) {
                 values.put(element.attribute("template_key", ""), element.value());
+                existing.put(element.id(), element);
+                var position = layout.position(element.id(), 0, 0);
+                previousPositions.put(element.id(), new int[]{position.x(), position.y()});
                 removed.add(element.id());
             } else if (element.id().startsWith("builtin:" + quest + ":")) {
                 removed.add(element.id());
@@ -37,6 +46,12 @@ public final class TemplateLayout {
                 continue;
             }
             live.add(id);
+            if (preserveInstance && existing.containsKey(id)) {
+                layout.elements().put(id, existing.get(id));
+                int[] position = previousPositions.get(id);
+                layout.setPosition(id, position[0], position[1]);
+                continue;
+            }
             var attrs = new LinkedHashMap<>(control.attributes());
             if (attrs.containsKey("eventGraph")) {
                 var gson = new com.google.gson.Gson();

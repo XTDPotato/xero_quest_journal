@@ -48,14 +48,15 @@ integration. Submission consumes only player-inventory items; use cumulative acq
 ## Search And Filters
 
 Use the search field and its settings menu to choose title/description/subtitle/internal scopes.
-The settings menu remains open until closed. The filter view narrows categories, reward types,
-reward items, completion condition types/targets and other supported metadata.
+The settings menu remains open until closed. In the development build, scopes and filters use
+one vertical scrolling panel, including categories, reward types/items and completion condition types/targets.
+See [Search and unlock graph](task-search-and-unlock-graph.md) for updated controls and screenshots.
 
 Names, IDs and supported pinyin indices help locate entries. Search indexes are built asynchronously;
 the latest query supersedes older work. A naturally empty player category can omit search tools,
 while an unsuccessful search keeps the search field available.
 
-![Search filters](../images/search-filters-en-1920.png)
+![Search filters, development build](../images/combined-search-filters-en-1920.png)
 
 ## Journey And Task Navigation
 

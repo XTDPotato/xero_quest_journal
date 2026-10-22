@@ -7,7 +7,7 @@ import net.minecraft.network.chat.Component;
 /** Texture-backed tools with an accessible label rather than font-dependent symbols. */
 public final class EditorIconButton extends StyledButton {
     public static final int SIZE = 24, ICON_SIZE = 16, PADDING = 4;
-    private final String icon;
+    private String icon;
     private boolean dark;
 
     public EditorIconButton(int x, int y, Component label, Runnable action,
@@ -21,6 +21,11 @@ public final class EditorIconButton extends StyledButton {
     /** Light glyphs on a dark toolbar (node editors); the 24px circular hit area is unchanged. */
     public EditorIconButton dark() {
         dark = true;
+        return this;
+    }
+
+    public EditorIconButton icon(String icon) {
+        this.icon = icon;
         return this;
     }
 

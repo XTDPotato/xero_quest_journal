@@ -74,6 +74,7 @@ public final class QuestDocuments {
                                           xtdpotato.xero_quest_journal.core.model.CompletionPolicy policy) {
         Element quest = root(source);
         quest.attr("completed-events", Boolean.toString(policy.events()))
+                .attr("prerequisite-mode", policy.prerequisiteMode())
                 .attr("completed-reenter-structure", Boolean.toString(policy.reenterStructure()))
                 .attr("completed-export-items", Boolean.toString(policy.exportAcquiredItems()))
                 .attr("structure-progress", Boolean.toString(policy.structureProgress()))

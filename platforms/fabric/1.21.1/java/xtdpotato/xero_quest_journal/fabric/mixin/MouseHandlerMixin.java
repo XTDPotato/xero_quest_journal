@@ -19,7 +19,6 @@ public abstract class MouseHandlerMixin {
         if (window != Minecraft.getInstance().getWindow().getWindow()) return;
         var event = new FabricInputEvent.MouseButton.Pre(button, action);
         XeroQuestClient.clickMailInGame(event);
-        XeroQuestClient.clickUnlockToastInGame(event);
         if (event.isCanceled()) callback.cancel();
     }
     @WrapOperation(method = "method_1611", remap = false, at = @At(value = "INVOKE", remap = true,

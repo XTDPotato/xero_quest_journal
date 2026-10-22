@@ -62,14 +62,19 @@ public final class QuestCompletionToast {
                 - (reduced ? 0 : Math.round((1 - smooth(enter)) * 12));
         int y = 16;
         int iconSize = 42;
-        float toastScale = Math.min(preferences.taskToastScalePercent / 100F,
-                Math.max(.1F, (screenWidth - 16) / 430F));
+        var geometry = NoticeGeometry.task(screenWidth, preferences.taskToastScalePercent,
+                preferences.taskToastTextScalePercent, preferences.taskToastIconScalePercent);
+        float toastScale = geometry.scale();
         float iconScale = preferences.taskToastIconScalePercent / 100F;
+        float textScale = preferences.taskToastTextScalePercent / 100F;
         int iconSlot = Math.max(iconSize, Math.round(iconSize * iconScale / toastScale));
-        int titleX = x + iconSlot + 16;
-        int maxTextWidth = Math.max(1, Math.min(320, screenWidth - titleX - 24));
-        int panelWidth = Math.min(screenWidth - 16, titleX + maxTextWidth + 40);
-        int panelHeight = Math.round(64 * toastScale);
+        int titleX = Math.max(x + iconSlot + 16,
+                x + iconSize / 2 + Math.round(38 * iconScale / toastScale) + 12);
+        int panelWidth = geometry.width();
+        int internalTextScale = Math.max(1, Math.round(textScale / toastScale * 100));
+        int maxTextWidth = Math.max(1, Math.min(320,
+                (panelWidth - titleX - 24) * 100 / internalTextScale));
+        int panelHeight = Math.round(geometry.height() * toastScale);
         int desiredLeft = Math.round(8 + Math.max(0, screenWidth - panelWidth * toastScale - 16)
                 * preferences.taskToastXPercent / 100F);
         int desiredTop = Math.round(8 + Math.max(0, screenHeight - panelHeight - 16)
@@ -99,7 +104,7 @@ public final class QuestCompletionToast {
         graphics.pose().translate(-x, -y, 0);
         alpha *= (float) animation.opacity();
         if (preferences.taskToastBackgroundEnabled)
-            QuestUnlockToast.backing(graphics, 0, y - 10, panelWidth, y + 54,
+            QuestUnlockToast.backing(graphics, 0, y - 10, panelWidth, y - 10 + geometry.height(),
                     alpha * preferences.taskToastBackgroundOpacityPercent / 100F);
         int centerX = x + iconSize / 2, centerY = y + iconSize / 2;
         float stamp = reduced ? 1 : QuestUnlockToast.easeOutBack(QuestUnlockToast.segment(enter, 0, .38F));
@@ -128,14 +133,23 @@ public final class QuestCompletionToast {
         String completedText = game.font.plainSubstrByWidth(completed.getString(), maxTextWidth);
         float titleIn = reduced ? 1 : QuestUnlockToast.easeOutCubic(QuestUnlockToast.segment(enter, .12F, .42F));
         float labelIn = reduced ? 1 : QuestUnlockToast.easeOutCubic(QuestUnlockToast.segment(enter, .26F, .42F));
-        if (titleIn > 0) graphics.drawString(game.font, title, titleX - Math.round((1 - titleIn) * 20), y + 3,
-                fade(0xFFF5F1E9, alpha * titleIn), true);
+        int titleY = y + 3;
+        float localTextScale = textScale / toastScale;
+        int ruleY = Math.max(y + 17, titleY + Math.round(10 * localTextScale) + 2);
+        int labelY = ruleY + 4;
+        if (titleIn > 0) {
+            graphics.pose().pushPose();
+            graphics.pose().translate(titleX - Math.round((1 - titleIn) * 20), titleY, 0);
+            graphics.pose().scale(textScale / toastScale, textScale / toastScale, 1);
+            graphics.drawString(game.font, title, 0, 0, fade(0xFFF5F1E9, alpha * titleIn), true);
+            graphics.pose().popPose();
+        }
         // Gold rule between the name and the status line.
         float grow = reduced ? 1 : QuestUnlockToast.easeOutCubic(QuestUnlockToast.segment(enter, .2F, .6F));
         int ruleWidth = Math.round(Math.min(maxTextWidth, Math.max(game.font.width(title), 80) + 24) * grow);
         for (int i = 0; i < 16 && ruleWidth > 0; i++) {
             int left = titleX + ruleWidth * i / 16, right = titleX + ruleWidth * (i + 1) / 16;
-            graphics.fill(left, y + 17, Math.max(left + 1, right), y + 18,
+            graphics.fill(left, ruleY, Math.max(left + 1, right), ruleY + 1,
                     fade(0xFFF2D29A, alpha * (1 - i / 16F) * .85F));
         }
         if (labelIn > 0) {
@@ -146,8 +160,12 @@ public final class QuestCompletionToast {
             for (int index = 0; index < completedText.length(); ) {
                 int code = completedText.codePointAt(index);
                 String letter = new String(Character.toChars(code));
-                graphics.drawString(game.font, letter, letterX, y + 25, color, true);
-                letterX += game.font.width(letter) + spread;
+                graphics.pose().pushPose();
+                graphics.pose().translate(letterX, labelY, 0);
+                graphics.pose().scale(textScale / toastScale, textScale / toastScale, 1);
+                graphics.drawString(game.font, letter, 0, 0, color, true);
+                graphics.pose().popPose();
+                letterX += Math.round(game.font.width(letter) * localTextScale) + spread;
                 index += Character.charCount(code);
             }
         }

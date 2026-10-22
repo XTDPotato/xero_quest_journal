@@ -8,6 +8,7 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.IntTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NbtIo;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
 import net.neoforged.neoforge.event.entity.EntityTravelToDimensionEvent;
@@ -80,9 +81,10 @@ final class RuntimeRegression {
                 }
                 if (searchSettingsPhase == 1) {
                     capture(game, "runtime-search-settings");
-                    button(game, "search-settings-filters").onPress();
-                    require(game.screen instanceof QuestSearchFilterScreen,
-                            "Advanced task filters did not open");
+                    require(game.screen instanceof QuestSearchSettingsScreen
+                                    && game.screen.children().stream().filter(StyledButton.class::isInstance)
+                                    .map(StyledButton.class::cast).noneMatch(b -> b.styleId().equals("search-settings-filters")),
+                            "Filters still require a separate screen");
                     searchSettingsPhase = 2;
                     wait = 12;
                     return false;
@@ -93,11 +95,25 @@ final class RuntimeRegression {
                     capture(game, "runtime-search-filters");
                     require((double) field(field(game.screen, "scroll"), "maximum") > 0,
                             "Advanced task filter list did not enable smooth scrolling");
+                    set(game.screen, "draft", Map.of("status", Set.of("active")));
+                    var search = (EditBox) field(game.screen, "search");
+                    search.setValue(Component.translatable(
+                            "screen.xero_quest_journal.search_filter.status.active").getString());
+                    searchSettingsPhase = 21;
+                    wait = 4;
+                    return false;
+                }
+                if (searchSettingsPhase == 21) {
+                    capture(game, "runtime-search-filters-checked");
+                    require(((Map<String, Set<String>>) field(game.screen, "draft"))
+                                    .getOrDefault("status", Set.of()).contains("active"),
+                            "Selected checkbox fixture was not active");
                     var selectedFilters = Map.of(
                             "reward_type", Set.of("item"),
                             "reward_item", Set.of("minecraft:emerald"),
                             "condition_type", Set.of("confirm"));
                     set(game.screen, "draft", selectedFilters);
+                    ((EditBox) field(game.screen, "search")).setValue("");
                     button(game, "search-filter-apply").onPress();
                     require(ClientPreferences.get().questSearchFilters.equals(selectedFilters),
                             "Search filter selections were not persisted");
@@ -115,7 +131,7 @@ final class RuntimeRegression {
                     return false;
                 }
                 if (game.screen instanceof QuestSearchSettingsScreen) {
-                    button(game, "search-settings-close").onPress();
+                    button(game, "search-filter-apply").onPress();
                     wait = 12;
                     return false;
                 }
@@ -622,9 +638,7 @@ final class RuntimeRegression {
                 + ", buttons=" + styles);
     }
     private static Object field(Object target, String name) throws Exception {
-        var field = target.getClass().getDeclaredField(name);
-        field.setAccessible(true);
-        return field.get(target);
+        return reflected(target, name).get(target);
     }
     private static Object call(Object target, String name, Class<?>[] types, Object... args) throws Exception {
         var method = target.getClass().getDeclaredMethod(name, types);
@@ -632,9 +646,14 @@ final class RuntimeRegression {
         return method.invoke(target, args);
     }
     private static void set(Object target, String name, Object value) throws Exception {
-        var field = target.getClass().getDeclaredField(name);
-        field.setAccessible(true);
-        field.set(target, value);
+        reflected(target, name).set(target, value);
+    }
+    private static java.lang.reflect.Field reflected(Object target, String name) throws Exception {
+        for (Class<?> type = target.getClass(); type != null; type = type.getSuperclass()) {
+            try { var field = type.getDeclaredField(name); field.setAccessible(true); return field; }
+            catch (NoSuchFieldException ignored) {}
+        }
+        throw new NoSuchFieldException(name);
     }
     private static void capture(Minecraft game, String name) throws Exception {
         Path output = Path.of("../build/verification");

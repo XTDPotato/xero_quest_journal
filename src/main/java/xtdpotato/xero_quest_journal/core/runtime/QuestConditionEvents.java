@@ -31,7 +31,6 @@ public final class QuestConditionEvents {
         if (!(event.getPlayer() instanceof ServerPlayer player)) return;
         int count = event.getOriginalStack().getCount() - event.getCurrentStack().getCount();
         acquired(player, event.getOriginalStack(), count);
-        notifyTrackedPickup(player, event.getOriginalStack(), count);
     }
     @SubscribeEvent
     public static void crafted(PlayerEvent.ItemCraftedEvent event) {
@@ -42,7 +41,10 @@ public final class QuestConditionEvents {
         if (event.getEntity() instanceof ServerPlayer player) acquired(player, event.getSmelting(), event.getSmelting().getCount());
     }
     private static void acquired(ServerPlayer player, ItemStack stack, int count) {
-        if (count > 0) QuestConditions.recordItemAcquired(player, stack, count);
+        if (count > 0) {
+            QuestConditions.recordItemAcquired(player, stack, count);
+            notifyTrackedPickup(player, stack, count);
+        }
     }
 
     private static void notifyTrackedPickup(ServerPlayer player, ItemStack stack, int count) {
@@ -56,7 +58,7 @@ public final class QuestConditionEvents {
             if (matched == null) continue;
             QuestConditions.Progress progress = QuestConditions.progress(player, active, matched);
             PacketDistributor.sendToPlayer(player, new QuestNetwork.ItemPickupNoticePayload(
-                    stack.copyWithCount(1), count, progress.current(), progress.required()));
+                    stack.copyWithCount(1), count, progress.current(), progress.required(), quest.id(), "acquire"));
             return;
         }
     }
@@ -73,11 +75,39 @@ public final class QuestConditionEvents {
     private static QuestDefinition.Trigger matchingItemCondition(ServerPlayer player,
                                                                   QuestDefinition.Trigger trigger,
                                                                   ItemStack picked) {
-        if (java.util.List.of("item_get", "item_hold", "item_acquire").contains(trigger.type())
+        if (java.util.List.of("item_get", "item_hold", "item_acquire", "item_submit").contains(trigger.type())
                 && QuestConditions.matches(picked, trigger.item(), player.registryAccess())) return trigger;
         for (QuestDefinition.Trigger child : trigger.children()) {
             var match = matchingItemCondition(player, child, picked);
             if (match != null) return match;
+        }
+        return null;
+    }
+    public static java.util.List<ItemStack> consumedItems(ServerPlayer player, java.util.List<ItemStack> remaining) {
+        var consumed = new java.util.ArrayList<ItemStack>();
+        for (int slot = 0; slot < remaining.size(); slot++) {
+            var before = player.getInventory().getItem(slot);
+            int count = before.getCount() - remaining.get(slot).getCount();
+            if (before.isEmpty() || count <= 0) continue;
+            var same = consumed.stream().filter(stack -> ItemStack.isSameItemSameComponents(stack, before)).findFirst().orElse(null);
+            if (same == null) consumed.add(before.copyWithCount(count)); else same.grow(count);
+        }
+        return consumed;
+    }
+    public static void notifySubmission(ServerPlayer player, QuestDefinition active, java.util.List<ItemStack> consumed) {
+        for (var stack : consumed) {
+            var matched = matchingSubmissionCondition(player, active.triggers(), stack);
+            if (matched == null) continue;
+            PacketDistributor.sendToPlayer(player, new QuestNetwork.ItemPickupNoticePayload(stack.copyWithCount(1),
+                    stack.getCount(), matched.count(), matched.count(), active.id(), "submit"));
+        }
+    }
+    private static QuestDefinition.Trigger matchingSubmissionCondition(ServerPlayer player,
+            java.util.List<QuestDefinition.Trigger> conditions, ItemStack stack) {
+        for(var condition : conditions) {
+            if(condition.type().equals("item_submit") && QuestConditions.matches(stack, condition.item(), player.registryAccess())) return condition;
+            var nested = matchingSubmissionCondition(player, condition.children(), stack);
+            if(nested != null) return nested;
         }
         return null;
     }

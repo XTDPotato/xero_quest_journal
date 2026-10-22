@@ -104,6 +104,7 @@ public final class QuestConfig {
             loaded.defaultItemCount = Math.max(1, Math.min(1000000, loaded.defaultItemCount));
             loaded.defaultTaskWidth = Math.max(40, Math.min(400, loaded.defaultTaskWidth));
             loaded.defaultTaskHeight = Math.max(20, Math.min(160, loaded.defaultTaskHeight));
+            loaded.tasksPerPage = Math.max(10, Math.min(1000, loaded.tasksPerPage));
             loaded.dailyCommissionCount = Math.max(0, Math.min(16, loaded.dailyCommissionCount));
             loaded.dailyResetHour = Math.max(0, Math.min(23, loaded.dailyResetHour));
             loaded.dailyBonusRewards = loaded.dailyBonusRewards == null ? java.util.List.of()
@@ -148,6 +149,7 @@ public final class QuestConfig {
         public int defaultTaskWidth = 180;
         public int defaultTaskHeight = 22;
         public boolean taskPagination = false;
+        public int tasksPerPage = 50;
         public xtdpotato.xero_quest_journal.core.model.QuestUiTheme uiTheme =
                 xtdpotato.xero_quest_journal.core.model.QuestUiTheme.empty();
         /** Commissions rolled per player and day from tasks marked {@code daily}; 0 disables the system. */

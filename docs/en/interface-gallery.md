@@ -32,15 +32,15 @@ Changing a definition is separate from resetting player progress.
 
 ## Search And Filters
 
-The search-scope menu lets you combine supported title, description, subtitle and internal-content
-scopes. Close the persistent menu explicitly.
+The development build combines search scopes and filters in one vertically scrolling panel.
+Title, description, subtitle and internal-content scopes can be combined. Close the persistent menu explicitly.
 
-![Search scope](../images/search-scope-en-1920.png)
+![Combined search and filters, development build, native English 1920×1080](../images/combined-search-filters-en-1920.png)
 
-The filter view narrows supported category, reward and condition metadata.
+Filters in the same panel narrow supported category, reward and condition metadata.
 Selections work with the search query rather than changing definitions.
 
-![Filters](../images/search-filters-en-1920.png)
+See [Search and unlock graph](task-search-and-unlock-graph.md) for the new icons, matching logic and minimap.
 
 ## Conditions And Rewards
 

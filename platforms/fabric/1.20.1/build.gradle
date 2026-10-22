@@ -119,6 +119,7 @@ tasks.register("prepareFabricSources") {
             }
             if (shortPath.endsWith("QuestConditionEvents.java"))
                 text = text.replace("player.registryAccess()", "player.getServer().registryAccess()")
+                        .replace("ItemStack.isSameItemSameComponents", "ItemStack.isSameItemSameTags")
             text = text.replaceAll(/(?m)^import net\.(?:neoforged|minecraftforge)\.(?:bus\.api|eventbus\.api|fml\.common|api\.distmarker)\.[^;]+;\r?\n/, "")
                     .replaceAll(/@EventBusSubscriber\([\s\S]*?\)\s*/, "")
                     .replaceAll(/@SubscribeEvent(?:\([^)]*\))?\s*/, "")

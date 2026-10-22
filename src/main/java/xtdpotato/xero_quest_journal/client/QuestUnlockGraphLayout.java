@@ -17,7 +17,34 @@ final class QuestUnlockGraphLayout {
     static Map<String, QuestUnlockLayout.Position> initial(List<QuestDefinition> tasks) {
         var parents = new HashMap<String, List<String>>();
         tasks.forEach(task -> parents.put(task.id(), task.parents()));
-        return initial(tasks.stream().map(QuestDefinition::id).toList(), parents);
+        var groups = new LinkedHashMap<String, List<String>>();
+        tasks.forEach(task -> groups.computeIfAbsent(ClientQuestDefinitions.groupOf(task.id()).isBlank()
+                        ? task.type() : ClientQuestDefinitions.groupOf(task.id()), ignored -> new ArrayList<>()).add(task.id()));
+        return grouped(groups, parents);
+    }
+
+    private static Map<String, QuestUnlockLayout.Position> grouped(Map<String, List<String>> groups,
+                                                                  Map<String, List<String>> parents) {
+        var depths = new HashMap<String, Integer>();
+        parents.keySet().forEach(id -> depth(id, parents, depths, new HashSet<>()));
+        int longest = Math.min(GRID_COLUMNS, groups.values().stream().mapToInt(List::size).max().orElse(1));
+        int totalRows = groups.values().stream().mapToInt(members -> (members.size() + longest - 1) / longest).sum();
+        boolean packRows = totalRows > (100_000 - 24 - Y_STEP) / Y_STEP;
+        var positions = new LinkedHashMap<String, QuestUnlockLayout.Position>();
+        int row = 0, packedIndex = 0;
+        for (var members : groups.values()) {
+            var ordered = members.stream().sorted(Comparator.comparingInt((String id) -> depths.getOrDefault(id, 0))
+                    .thenComparing(id -> id)).toList();
+            for (int i = 0; i < ordered.size(); i++) {
+                int index = packRows ? packedIndex++ : i;
+                int column = index % longest;
+                int currentRow = packRows ? index / longest : row + index / longest;
+                positions.put(ordered.get(i), new QuestUnlockLayout.Position(
+                        32 + (longest - 1 - column) * X_STEP, 24 + currentRow * Y_STEP));
+            }
+            row += (ordered.size() + longest - 1) / longest;
+        }
+        return Map.copyOf(positions);
     }
 
     static Map<String, QuestUnlockLayout.Position> initial(List<String> ids, Map<String, List<String>> parents) {

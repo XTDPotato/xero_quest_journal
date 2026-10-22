@@ -68,10 +68,10 @@ public final class QuestConfigScreen extends AnimatedQuestScreen {
         int count = switch (tab) {
             case "general" -> 5;
             case "motion" -> canAuthor() ? 4 : 3;
-            case "notifications" -> 5;
+            case "notifications" -> 4;
             case "appearance" -> 5;
             case "tools" -> QuestReiShortcuts.available() ? 4 : 3;
-            case "tasks" -> 3 + (ClientPreferences.get().fixedQuestContextMenuPosition ? 2 : 0);
+            case "tasks" -> 4 + (ClientPreferences.get().fixedQuestContextMenuPosition ? 2 : 0);
             default -> 2;
         };
         scroll.limit(count * rowHeight() - Math.max(1, bodyBottom() - bodyTop()));
@@ -113,11 +113,6 @@ public final class QuestConfigScreen extends AnimatedQuestScreen {
                 cornerChoice.setTooltip(Tooltip.create(text("minimap_corner_hint")));
                 action("notification_layout", "notification-layout", () ->
                         minecraft.setScreen(new HudNotificationLayoutScreen(this)));
-                var preview = action("notification_preview", "notification-preview", () ->
-                        ClientQuestDefinitions.all().stream().findFirst()
-                                .ifPresent(quest -> QuestUnlockToast.enqueue(quest.id())));
-                preview.active = minecraft.player != null && !ClientQuestDefinitions.all().isEmpty();
-                preview.setMessage(text("preview"));
             }
             case "appearance" -> {
                 number("journey_tab_underline", config.journeyTabUnderlineHeight, 1, 1, 5,
@@ -155,6 +150,7 @@ public final class QuestConfigScreen extends AnimatedQuestScreen {
                         }, styles, "task-pagination"));
                 pagination.active = canAuthor() && configPending == null;
                 pagination.setTooltip(Tooltip.create(text("task_pagination_hint")));
+                pageSizeControl();
                 toggle("quest_reward_sources", config.questRewardSources, value -> config.questRewardSources = value);
                 var menuArea = row("context_menu_position");
                 var menuPosition = body(new StyledChoiceButton<>(menuArea.x(), menuArea.y(), menuArea.width(), 24,
@@ -262,6 +258,35 @@ public final class QuestConfigScreen extends AnimatedQuestScreen {
         var area = row(key);
         return body(new StyledButton(area.x(), area.y(), area.width(), 24, text("open"),
                 ignored -> action.run(), styles, id));
+    }
+    private void pageSizeControl() {
+        var area = row("tasks_per_page");
+        var input = new EditBox(font, area.x() + 34, area.y() + 2, Math.max(24, area.width() - 100), 20,
+                text("tasks_per_page"));
+        input.setMaxLength(4);
+        input.setFilter(raw -> raw.isEmpty() || raw.matches("\\d{1,4}"));
+        input.setValue(Integer.toString(ClientQuestProgress.tasksPerPage()));
+        input.setEditable(canAuthor() && configPending == null);
+        input.setTooltip(Tooltip.create(text("tasks_per_page_hint")));
+        body(input);
+        Runnable save = () -> {
+            try {
+                int value = Integer.parseInt(input.getValue());
+                if (value < 10 || value > 1000) throw new NumberFormatException();
+                if (canAuthor() && configPending == null) configPending = ClientQuestProgress.setTasksPerPage(value);
+            } catch (NumberFormatException invalid) {
+                input.setTextColor(0xFFFF9B8F); status = text("tasks_per_page_hint").getString();
+            }
+        };
+        var less = body(new StyledButton(area.x(), area.y(), 28, 24, Component.literal("-"), ignored -> {
+            input.setValue(Integer.toString(Math.max(10, ClientQuestProgress.tasksPerPage() - 10))); save.run();
+        }, styles, "task-page-size-less"));
+        var more = body(new StyledButton(area.x() + area.width() - 60, area.y(), 28, 24, Component.literal("+"), ignored -> {
+            input.setValue(Integer.toString(Math.min(1000, ClientQuestProgress.tasksPerPage() + 10))); save.run();
+        }, styles, "task-page-size-more"));
+        var apply = body(new EditorIconButton(area.x() + area.width() - 24, area.y(), text("tasks_per_page_apply"),
+                save, styles, "task-page-size-save", "save").dark());
+        less.active = more.active = apply.active = canAuthor() && configPending == null;
     }
     private void saveLocal() {
         saveFailed = !ClientPreferences.get().save();

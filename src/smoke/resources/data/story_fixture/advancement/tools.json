@@ -1,0 +1,23 @@
+{
+  "parent": "story_fixture:root",
+  "display": {
+    "icon": {
+      "id": "minecraft:wooden_pickaxe"
+    },
+    "title": "Story fixture: tools",
+    "description": "Make a wooden pickaxe",
+    "announce_to_chat": false
+  },
+  "criteria": {
+    "pickaxe": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": "minecraft:wooden_pickaxe"
+          }
+        ]
+      }
+    }
+  }
+}

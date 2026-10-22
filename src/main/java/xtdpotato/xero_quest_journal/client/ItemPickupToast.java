@@ -95,16 +95,18 @@ public final class ItemPickupToast {
         int screenWidth = game.getWindow().getGuiScaledWidth();
         int screenHeight = game.getWindow().getGuiScaledHeight();
         int leftMargin = 10;
-        float requestedScale = ClientPreferences.get().itemPickupToastScalePercent / 100F;
-        float groupScale = Math.min(requestedScale, Math.max(.5F, (screenWidth - leftMargin * 2) / 300F));
-        int width = Math.min(760, Math.round((screenWidth - leftMargin * 2) / groupScale));
-        if (width * groupScale < 168) return;
-        int rowHeight = 58;
-        int headerHeight = 33;
+        var preferences = ClientPreferences.get();
+        var geometry = NoticeGeometry.pickup(screenWidth, preferences.itemPickupToastScalePercent,
+                preferences.itemPickupToastTextScalePercent, game.font);
+        float groupScale = geometry.scale();
+        int width = geometry.width();
+        if (width * groupScale < 72) return;
+        int rowHeight = geometry.rowHeight();
+        int headerHeight = geometry.headerHeight();
         int renderedWidth = Math.round(width * groupScale);
         int desiredX = leftMargin + Math.round(Math.max(0, screenWidth - renderedWidth - leftMargin * 2)
                 * ClientPreferences.get().itemPickupToastXPercent / 100F);
-        int panelHeight = headerHeight + MAX_VISIBLE * rowHeight;
+        int panelHeight = geometry.height();
         int renderedHeight = Math.round(panelHeight * groupScale);
         int desiredY = Math.round(Math.max(0, screenHeight - renderedHeight)
                 * ClientPreferences.get().itemPickupToastYPercent / 100F);
@@ -126,19 +128,20 @@ public final class ItemPickupToast {
         for (Entry entry : snapshot)
             headerAlpha = Math.max(headerAlpha, alpha(now - entry.startedAt, reduced));
         if (headerAlpha > 0) {
-            float headerScale = 1.7F;
+            float headerScale = geometry.textScale() * 1.1F;
+            String action = snapshot.getFirst().notice.action();
             int headerWidth = Math.min(width, Math.max(150, Math.round(game.font.width(
-                    Component.translatable("screen.xero_quest_journal.item_pickup.title")) * headerScale) + 32));
+                    Component.translatable("screen.xero_quest_journal.item_pickup." + (action.equals("submit") ? "submitted" : "title"))) * headerScale) + 20));
             int headerX = (width - headerWidth) / 2;
             int headerY = 0;
-            graphics.fillGradient(headerX, headerY, headerX + headerWidth, headerY + 28,
+            graphics.fillGradient(headerX, headerY, headerX + headerWidth, headerY + headerHeight - 5,
                     fade(0x684A78A2, headerAlpha), fade(0x52334F75, headerAlpha));
-            Component title = Component.translatable("screen.xero_quest_journal.item_pickup.title");
+            Component title = Component.translatable("screen.xero_quest_journal.item_pickup." + (action.equals("submit") ? "submitted" : "title"));
             graphics.pose().pushPose();
-            graphics.pose().translate(headerX + headerWidth / 2F, headerY + 14, 0);
+            graphics.pose().translate(headerX + headerWidth / 2F, headerY + headerHeight / 2F, 0);
             graphics.pose().scale(headerScale, headerScale, 1);
-            graphics.pose().translate(-(headerX + headerWidth / 2F), -(headerY + 14), 0);
-            graphics.drawCenteredString(game.font, title, headerX + headerWidth / 2, headerY + 9,
+            graphics.pose().translate(-(headerX + headerWidth / 2F), -(headerY + headerHeight / 2F), 0);
+            graphics.drawCenteredString(game.font, title, headerX + headerWidth / 2, headerY + headerHeight / 2 - game.font.lineHeight / 2,
                     fade(0xFFF4F3F0, headerAlpha));
             graphics.pose().popPose();
         }
@@ -165,40 +168,42 @@ public final class ItemPickupToast {
                     fade(0x555B85AA, alpha));
 
             int progressLeft = x + 8;
-            int progressWidth = Math.min(144, Math.max(110, width / 5));
-            int progressTop = y + 12;
-            int progressHeight = 34;
+            float requestedTextScale = geometry.textScale();
+            String progressLabel = entry.notice.current() + "/" + entry.notice.required();
+            int progressWidth = Math.min(width * 2 / 5, Math.max(Math.min(76, width / 3), Math.round(game.font.width(progressLabel) * requestedTextScale) + 10));
+            int progressHeight = rowHeight - 10;
+            int progressTop = y + 5;
             graphics.fillGradient(progressLeft, progressTop, progressLeft + progressWidth,
                     progressTop + progressHeight, fade(0x9B5E55BA, alpha), fade(0x864251A0, alpha));
-            float progressScale = 1.55F;
+            float progressScale = Math.min(requestedTextScale, (progressWidth - 8F) / Math.max(1, game.font.width(progressLabel)));
             graphics.pose().pushPose();
             graphics.pose().translate(progressLeft + progressWidth / 2F, progressTop + progressHeight / 2F, 0);
             graphics.pose().scale(progressScale, progressScale, 1);
             graphics.pose().translate(-(progressLeft + progressWidth / 2F),
                     -(progressTop + progressHeight / 2F), 0);
             graphics.drawCenteredString(game.font,
-                    Component.literal(entry.notice.current() + "/" + entry.notice.required()),
-                    progressLeft + progressWidth / 2, progressTop + 12, fade(0xFFFFFFFF, alpha));
+                    Component.literal(progressLabel), progressLeft + progressWidth / 2,
+                    progressTop + progressHeight / 2 - game.font.lineHeight / 2, fade(0xFFFFFFFF, alpha));
             graphics.pose().popPose();
 
-            int iconX = progressLeft + progressWidth + 10;
-            int iconSize = 26;
-            int iconY = y + (rowHeight - iconSize) / 2 - 1;
+            int iconX = progressLeft + progressWidth + 6;
+            int iconSize = 16;
+            int iconY = y + (rowHeight - iconSize) / 2;
             ItemStack icon = entry.notice.stack().copy();
             icon.setCount(1);
             graphics.pose().pushPose();
             graphics.pose().translate(iconX + iconSize / 2F, iconY + iconSize / 2F, 0);
-            graphics.pose().scale(1.5F, 1.5F, 1);
             graphics.pose().translate(-(iconX + iconSize / 2F), -(iconY + iconSize / 2F), 0);
             graphics.renderItem(icon, iconX, iconY);
             graphics.pose().popPose();
-            Component itemName = icon.getHoverName();
-            int textX = iconX + 34;
+            Component itemName = Component.translatable("screen.xero_quest_journal.item_pickup.row." + entry.notice.action()).append(" ").append(icon.getHoverName());
+            int textX = iconX + 22;
             int countWidth = game.font.width("x" + entry.notice.pickedCount());
-            float textScale = 1.55F;
+            float textScale = Math.min(requestedTextScale,
+                    Math.max(.25F, (rowRight - textX - 16F) / Math.max(1, countWidth + game.font.width("...") + 10)));
             int available = Math.max(1, (int) ((rowRight - textX - countWidth * textScale - 26) / textScale));
             Component name = Component.literal(game.font.plainSubstrByWidth(itemName.getString(), available));
-            int textY = y + 23;
+            int textY = y + Math.round((rowHeight - game.font.lineHeight * textScale) / 2);
             graphics.pose().pushPose();
             graphics.pose().translate(textX, textY, 0);
             graphics.pose().scale(textScale, textScale, 1);
@@ -209,7 +214,7 @@ public final class ItemPickupToast {
             graphics.pose().translate(countX, textY, 0);
             graphics.pose().scale(textScale, textScale, 1);
             graphics.drawString(game.font, "x" + entry.notice.pickedCount(), 0, 0,
-                    fade(0xFFE4EAF0, alpha), true);
+                    fade(entry.notice.action().equals("submit") ? 0xFF9BE3B4 : 0xFFE4EAF0, alpha), true);
             graphics.pose().popPose();
         }
         graphics.pose().popPose();

@@ -54,7 +54,8 @@ public final class QuestAuthoringHistory {
                 && !(path.startsWith(root.getParent().resolve("templates"))
                 && !path.equals(root.getParent().resolve("templates")))
                 && !path.equals(root.getParent().resolve("unlock_layout.json"))
-                && !path.equals(QuestJournalOrderStore.file()))
+                && !path.equals(QuestJournalOrderStore.file())
+                && !path.equals(xtdpotato.xero_quest_journal.core.TemplateLibraryStore.file()))
             throw new IOException("History file is outside definition storage");
         for (Path cursor = path; cursor != null; cursor = cursor.getParent())
             if (Files.isSymbolicLink(cursor)) throw new IOException("Symbolic link in history path");

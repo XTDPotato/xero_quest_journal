@@ -7,7 +7,8 @@ import java.util.List;
 public record AnecdoteDefinition(String id, String title, String cardText, String icon, String heading,
                                  List<Record> records, boolean defaultDiscovered,
                                  boolean hideWhenLocked, int order,
-                                 List<QuestDefinition.Reward> rewards) {
+                                 List<QuestDefinition.Reward> rewards, AnecdoteCardLayout cardLayout,
+                                 AnecdoteRewardLayout rewardLayout) {
     public static final int MAX_RECORDS = 32;
 
     public record Record(String id, String title, String body, String completedIcon) {
@@ -30,6 +31,8 @@ public record AnecdoteDefinition(String id, String title, String cardText, Strin
         icon = icon == null ? "" : icon.strip();
         heading = clean(heading, 256);
         records = records == null ? List.of() : List.copyOf(records);
+        cardLayout = cardLayout == null ? AnecdoteCardLayout.defaults() : cardLayout;
+        rewardLayout = rewardLayout == null ? AnecdoteRewardLayout.defaults() : rewardLayout;
         rewards = rewards == null || rewards.isEmpty()
                 ? List.of(new QuestDefinition.Reward("item", "minecraft:diamond", 50, "legendary", ""))
                 : List.copyOf(rewards);
@@ -41,6 +44,32 @@ public record AnecdoteDefinition(String id, String title, String cardText, Strin
         for (Record record : records)
             if (record == null || !ids.add(record.id()))
                 throw new IllegalArgumentException("Duplicate or missing anecdote record ID");
+    }
+
+    public AnecdoteDefinition(String id, String title, String cardText, String icon, String heading,
+                              List<Record> records, boolean defaultDiscovered,
+                              boolean hideWhenLocked, int order, List<QuestDefinition.Reward> rewards) {
+        this(id, title, cardText, icon, heading, records, defaultDiscovered, hideWhenLocked, order,
+                rewards, AnecdoteCardLayout.defaults(), AnecdoteRewardLayout.defaults());
+    }
+    public AnecdoteDefinition(String id, String title, String cardText, String icon, String heading,
+                              List<Record> records, boolean defaultDiscovered, boolean hideWhenLocked,
+                              int order, List<QuestDefinition.Reward> rewards, AnecdoteCardLayout cardLayout) {
+        this(id, title, cardText, icon, heading, records, defaultDiscovered, hideWhenLocked, order,
+                rewards, cardLayout, AnecdoteRewardLayout.defaults());
+    }
+
+    public AnecdoteDefinition withRecords(List<Record> next) {
+        return new AnecdoteDefinition(id, title, cardText, icon, heading, next, defaultDiscovered,
+                hideWhenLocked, order, rewards, cardLayout, rewardLayout);
+    }
+    public AnecdoteDefinition withRewards(List<QuestDefinition.Reward> next) {
+        return new AnecdoteDefinition(id, title, cardText, icon, heading, records, defaultDiscovered,
+                hideWhenLocked, order, next, cardLayout, rewardLayout);
+    }
+    public AnecdoteDefinition withRewardLayout(AnecdoteRewardLayout next) {
+        return new AnecdoteDefinition(id, title, cardText, icon, heading, records, defaultDiscovered,
+                hideWhenLocked, order, rewards, cardLayout, next);
     }
 
     public AnecdoteDefinition(String id, String title, String cardText, String icon, String heading,

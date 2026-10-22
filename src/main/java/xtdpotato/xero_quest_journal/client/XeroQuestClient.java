@@ -50,6 +50,13 @@ public final class XeroQuestClient {
         MailArrivalToast.tick();
         XeroToast.tick();
         AnecdoteToast.tick();
+        var generationOffer = xtdpotato.xero_quest_journal.core.network.QuestClientInbox.generationOffer();
+        if (generationOffer != null && minecraft.player != null && minecraft.level != null
+                && (minecraft.screen == null || !generationOffer.automatic()
+                && minecraft.screen instanceof net.minecraft.client.gui.screens.ChatScreen)) {
+            xtdpotato.xero_quest_journal.core.network.QuestClientInbox.clearGenerationOffer();
+            minecraft.setScreen(new QuestGenerateScreen(null, generationOffer));
+        }
         var requestedScreen = xtdpotato.xero_quest_journal.core.network.QuestClientInbox.takeOpenScreen();
         if (requestedScreen != null && minecraft.player != null) {
             switch (requestedScreen.screen()) {
@@ -73,11 +80,15 @@ public final class XeroQuestClient {
         }
         while (QuestKeyMappings.OPEN.consumeClick()) {
             if (minecraft.screen == null && minecraft.player != null) {
-                minecraft.setScreen(ClientPreferences.openDefault(null));
+                if (!QuestUnlockToast.openCurrent())
+                    minecraft.setScreen(ClientPreferences.openDefault(null));
             } else if (minecraft.screen instanceof QuestScreen screen) {
                 if (screen.isClosing()) screen.reopen();
                 else screen.onClose();
             }
+        }
+        while (QuestKeyMappings.DISMISS_NEW_TASK.consumeClick()) {
+            if (minecraft.screen == null) QuestUnlockToast.dismissCurrent();
         }
         while (QuestKeyMappings.OPEN_MAILBOX.consumeClick()) {
             if (minecraft.screen == null && minecraft.player != null) {
@@ -132,7 +143,7 @@ public final class XeroQuestClient {
         }
     }
 
-    @SubscribeEvent
+    @SubscribeEvent(priority = net.neoforged.bus.api.EventPriority.LOWEST)
     public static void renderMailOverScreen(ScreenEvent.Render.Post event) {
         renderNotifications(event.getGuiGraphics());
     }
@@ -148,7 +159,6 @@ public final class XeroQuestClient {
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
         try {
-            XeroTips.render(graphics);
             MailArrivalToast.render(graphics);
             XeroToast.render(graphics);
             if (hud) {
@@ -157,6 +167,7 @@ public final class XeroQuestClient {
                 ItemPickupToast.render(graphics);
             }
             AnecdoteToast.render(graphics);
+            XeroTips.render(graphics);
             graphics.flush();
         } finally {
             graphics.pose().popPose();
@@ -187,18 +198,6 @@ public final class XeroQuestClient {
                 / game.getWindow().getScreenHeight();
         if (event.getAction() == 1 ? MailArrivalToast.click(x, y) : MailArrivalToast.release(x, y))
             event.setCanceled(true);
-    }
-
-    @SubscribeEvent
-    public static void clickUnlockToastInGame(InputEvent.MouseButton.Pre event) {
-        Minecraft game = Minecraft.getInstance();
-        if (event.getButton() != GLFW.GLFW_MOUSE_BUTTON_LEFT || event.getAction() != GLFW.GLFW_PRESS
-                || game.screen != null) return;
-        double x = game.mouseHandler.xpos() * game.getWindow().getGuiScaledWidth()
-                / Math.max(1.0, game.getWindow().getScreenWidth());
-        double y = game.mouseHandler.ypos() * game.getWindow().getGuiScaledHeight()
-                / Math.max(1.0, game.getWindow().getScreenHeight());
-        if (QuestUnlockToast.dismissAt(x, y)) event.setCanceled(true);
     }
 
     @SubscribeEvent

@@ -1,0 +1,162 @@
+[
+  {
+    "file": "combined-search-filters-zh-1920.png",
+    "scene": "combined-search-filters-zh-1920",
+    "locale": "zh_cn",
+    "width": 1920,
+    "height": 1080,
+    "timestamp": "2026-10-20T23:24:27.9154114+08:00",
+    "sha256": "d8591edc55eef60c662d2133edd5b24268ad9450aa911e96b1693b59df47f9b4",
+    "source": "runClient -PtaskWorkflowTest"
+  },
+  {
+    "file": "combined-search-filters-en-1920.png",
+    "scene": "combined-search-filters-en-1920",
+    "locale": "en_us",
+    "width": 1920,
+    "height": 1080,
+    "timestamp": "2026-10-20T23:24:31.6665945+08:00",
+    "sha256": "551abd2255869a6845749bc901513a6187a373ea26abc290fa273d21f81b16f5",
+    "source": "runClient -PtaskWorkflowTest"
+  },
+  {
+    "file": "unlock-group-rows-minimap-zh-1920.png",
+    "scene": "unlock-group-rows-minimap-zh-1920",
+    "locale": "zh_cn",
+    "width": 1920,
+    "height": 1080,
+    "timestamp": "2026-10-20T23:24:27.1353998+08:00",
+    "sha256": "19db20ffbc1ae3ffc78022a2196e02fc185d8fb8a4968e69d427482cc1a5b5bf",
+    "source": "runClient -PtaskWorkflowTest"
+  },
+  {
+    "file": "template-objective-hover-zh-1920.png",
+    "scene": "template-objective-hover-zh-1920",
+    "locale": "zh_cn",
+    "width": 1920,
+    "height": 1080,
+    "timestamp": "2026-10-20T23:24:26.9506733+08:00",
+    "sha256": "8ecb112fc796cb606c1b7b29df0d311b1ae8755aee751d8401807f3793f6ab79",
+    "source": "runClient -PtaskWorkflowTest"
+  },
+  {
+    "file": "native-task-edit-consistency-zh-1920.png",
+    "scene": "native-task-edit-consistency-zh-1920",
+    "locale": "zh_cn",
+    "width": 1920,
+    "height": 1080,
+    "timestamp": "2026-10-20T23:24:35.2158517+08:00",
+    "sha256": "350a7b1c44746e236da03391c78bd52a1539d94d3add6ecb77d8d383748d2499",
+    "source": "runClient -PtaskWorkflowTest"
+  },
+  {
+    "file": "task-editor-grid-visible-zh-1920.png",
+    "scene": "task-editor-grid-visible-zh-1920",
+    "locale": "zh_cn",
+    "width": 1920,
+    "height": 1080,
+    "timestamp": "2026-10-20T23:24:26.3472435+08:00",
+    "sha256": "05e1a215f2808263f384ed180cb51ccc2a0822429232d55c2c316b0c587ea889",
+    "source": "runClient -PtaskWorkflowTest"
+  },
+  {
+    "file": "task-page-size-setting-zh-1920.png",
+    "scene": "task-page-size-setting-zh-1920",
+    "locale": "zh_cn",
+    "width": 1920,
+    "height": 1080,
+    "timestamp": "2026-10-20T23:24:38.6321434+08:00",
+    "sha256": "37f5c28adfb20f3ec081a57a6081f7d1d1276209095008b5ce78f5bb6ba69913",
+    "source": "runClient -PtaskWorkflowTest"
+  },
+  {
+    "file": "generation-chooser-zh-1920.png",
+    "scene": "generation-chooser-zh-1920",
+    "locale": "zh_cn",
+    "width": 1920,
+    "height": 1080,
+    "timestamp": "2026-10-21T20:42:24.1603874+08:00",
+    "sha256": "92999086aa08a52196e7f1547d41ff578d5378b3e306dc061687f784b7e3f65d",
+    "source": "runClient -PgenerationTest"
+  },
+  {
+    "file": "generated-structure-guidance-zh-1920.png",
+    "scene": "generated-structure-guidance-zh-1920",
+    "locale": "zh_cn",
+    "width": 1920,
+    "height": 1080,
+    "timestamp": "2026-10-21T20:42:30.4523788+08:00",
+    "sha256": "5be606439f0981b3d9762d3359941a7d5db2446e146545bdd0f5658d1c2d5ecc",
+    "source": "runClient -PgenerationTest"
+  },
+  {
+    "file": "template-acquire-order-zh-1920.png",
+    "scene": "template-acquire-order-zh-1920",
+    "locale": "zh_cn",
+    "width": 1920,
+    "height": 1080,
+    "timestamp": "2026-10-21T20:42:26.7532818+08:00",
+    "sha256": "0eec3b2450461d1c49ab36c0ed41a47d42eb0189b57e6bdf61b92d10c05833c3",
+    "source": "runClient -PgenerationTest"
+  },
+  {
+    "file": "notification-layout-editor-zh-1920.png",
+    "scene": "notification-layout-editor-zh-1920",
+    "locale": "zh_cn",
+    "width": 1920,
+    "height": 1080,
+    "timestamp": "2026-10-21T20:42:32.3652997+08:00",
+    "sha256": "faa908ccd53cee2906a19ae13f41bc8553209eb615777e551326d753498648e6",
+    "source": "runClient -PgenerationTest"
+  },
+  {
+    "file": "unlock-async-group-search-zh-1920.png",
+    "scene": "unlock-async-group-search-zh-1920",
+    "locale": "zh_cn",
+    "width": 1920,
+    "height": 1080,
+    "timestamp": "2026-10-21T20:42:41.1564553+08:00",
+    "sha256": "f8611d09c87b31023fdb342a8607d494a7fff6be35049fa2d2bb62d5f1f8f83e",
+    "source": "runClient -PgenerationTest"
+  },
+  {
+    "file": "unlock-minimap-free-drag-zh-1920.png",
+    "scene": "unlock-minimap-free-drag-zh-1920",
+    "locale": "zh_cn",
+    "width": 1920,
+    "height": 1080,
+    "timestamp": "2026-10-21T20:42:41.8070921+08:00",
+    "sha256": "7f08d94d4af1ab3337e248ce18854712c56d66a676857a49459946dfa91c2aa7",
+    "source": "runClient -PgenerationTest"
+  },
+  {
+    "file": "compact-task-item-notices-zh-1920.png",
+    "scene": "compact-task-item-notices-zh-1920",
+    "locale": "zh_cn",
+    "width": 1920,
+    "height": 1080,
+    "timestamp": "2026-10-21T20:42:42.3957312+08:00",
+    "sha256": "5d787945bf151a9648e918eafe890e76cca549cebbffefa3e8f20f3afa02466f",
+    "source": "runClient -PgenerationTest"
+  },
+  {
+    "file": "compact-task-submit-notices-zh-1920.png",
+    "scene": "compact-task-submit-notices-zh-1920",
+    "locale": "zh_cn",
+    "width": 1920,
+    "height": 1080,
+    "timestamp": "2026-10-21T20:42:42.9999237+08:00",
+    "sha256": "8e65761f2081ca62f3bc015f07fa16d3315afa68261fd9061bb9082295287be8",
+    "source": "runClient -PgenerationTest"
+  },
+  {
+    "file": "unlock-properties-adaptive.png",
+    "scene": "unlock-properties-adaptive",
+    "locale": "zh_cn",
+    "width": 1920,
+    "height": 1080,
+    "timestamp": "2026-10-21T22:11:55.7474424+08:00",
+    "sha256": "a18d638ef97c849d6a69bb68edd8db37f90e8906ae7d93dc5b6d91e6bdeda847",
+    "source": "runClient -PunlockGraphTest"
+  }
+]

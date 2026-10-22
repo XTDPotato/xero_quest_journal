@@ -62,6 +62,21 @@ public final class QuestCommand {
                 .then(editModeCommand())
                 .then(dailyCommands())
                 .then(generateCommand())
+                .then(Commands.literal("locate").then(Commands.argument("id", StringArgumentType.word())
+                        .executes(context -> {
+                            var player = context.getSource().getPlayerOrException();
+                            String id = StringArgumentType.getString(context, "id");
+                            if (!xtdpotato.xero_quest_journal.core.runtime.QuestRuntime.tracked(player).contains(id))
+                                xtdpotato.xero_quest_journal.core.runtime.QuestRuntime.toggleTracking(player, id);
+                            String result = xtdpotato.xero_quest_journal.core.runtime.QuestStructureGuidance.request(player, id);
+                            player.sendSystemMessage(Component.translatable("screen.xero_quest_journal.action." + result));
+                            return result.startsWith("guidance_") ? 1 : 0;
+                        })))
+                .then(Commands.literal("start_generate_gui").executes(context -> {
+                    xtdpotato.xero_quest_journal.core.network.QuestGenerationNetwork.open(
+                            context.getSource().getPlayerOrException(), false);
+                    return 1;
+                }))
                 .then(deleteGeneratedCommand())
                 .then(mailCommands()));
         dispatcher.register(toastCommand());
