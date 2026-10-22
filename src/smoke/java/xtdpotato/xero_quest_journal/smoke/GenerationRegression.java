@@ -26,6 +26,7 @@ final class GenerationRegression {
     private static Object stableButton;
     private static Map<String, String> sources;
     private static String village;
+    private static String rewardRepairTask = "";
     private static HudNotificationLayoutScreen hud;
     private static long started;
     static boolean tick(Minecraft game) throws Exception {
@@ -61,6 +62,9 @@ final class GenerationRegression {
             case 3 -> {
                 if (!(game.screen instanceof QuestGenerateScreen)) return false;
                 ((StyledChoiceButton<String>)button(game.screen,"generate-namespace")).select("story_fixture");
+                button(game.screen, "generate-advanced").onPress();
+                ((EditBox) field(game.screen, "taskMultiplierField")).setValue("2");
+                ((EditBox) field(game.screen, "rewardMultiplierField")).setValue("2");
                 button(game.screen,"generate-start").onPress(); wait=10;
             }
             case 4 -> {
@@ -68,15 +72,51 @@ final class GenerationRegression {
                 var tasks = QuestRepository.all().stream().filter(q -> q.id().startsWith("auto_story")).toList();
                 check(tasks.size()>2, "Progress mode did not add linked recipe tasks");
                 var advancement = tasks.stream().filter(q -> q.triggers().stream().anyMatch(t -> t.type().equals("advancement") && t.item().equals("story_fixture:root"))).findFirst().orElseThrow();
-                check(!advancement.rewards().isEmpty() && advancement.rewards().stream().allMatch(r -> r.type().equals("item")), "Progress reward is not useful next-stage recipe supplies");
+                check(advancement.rewards().stream().anyMatch(r -> r.type().equals("item"))
+                                && advancement.rewards().stream().anyMatch(r -> r.type().equals("experience")
+                                && r.count() >= 40),
+                        "Progress reward is missing recipe supplies or its guaranteed experience");
+                check(tasks.stream().allMatch(q -> q.rewards().stream()
+                                .anyMatch(reward -> reward.type().equals("experience") && reward.count() >= 1)),
+                        "Progress story task did not receive at least 1 experience");
+                check(tasks.stream().anyMatch(q -> q.triggers().stream()
+                                .anyMatch(trigger -> trigger.type().equals("item_hold") && trigger.count() == 2)),
+                        "Advanced task amount multiplier was not applied to generated item goals");
                 var ids = new HashSet<String>(); tasks.forEach(q -> ids.add(q.id()));
                 for (var q : tasks) check(!q.parents().contains(q.id()) && q.parents().stream().allMatch(ids::contains), "Broken story prerequisite");
                 sources = new HashMap<>(); for (var q : tasks) sources.put(q.id(),QuestRepository.source(q.id()));
-                work = server.submit(() -> QuestGenerator.start(server,"story_fixture",QuestGenerator.RewardMode.RECIPE,1,QuestGenerator.GenerationMode.PROGRESS,true,(m,f)->{ if(f) throw new AssertionError(m.getString()); })); wait=10;
+                rewardRepairTask = tasks.stream().filter(q -> !q.rewards().isEmpty()).map(QuestDefinition::id)
+                        .findFirst().orElseThrow();
+                work = server.submit(() -> {
+                    try {
+                        try (var paths = Files.walk(QuestRepository.root())) {
+                            Path taskFile = paths.filter(path -> path.getFileName().toString()
+                                    .equals(rewardRepairTask + ".json")).findFirst().orElseThrow();
+                            var broken = com.google.gson.JsonParser.parseString(
+                                    QuestRepository.source(rewardRepairTask)).getAsJsonObject();
+                            broken.add("rewards", new com.google.gson.JsonArray());
+                            broken.add("generatedRewards", new com.google.gson.JsonArray());
+                            Files.writeString(taskFile, new com.google.gson.GsonBuilder()
+                                    .setPrettyPrinting().create().toJson(broken));
+                        }
+                        QuestRepository.reload();
+                        sources.remove(rewardRepairTask);
+                        return QuestGenerator.start(server,"story_fixture",QuestGenerator.RewardMode.RECIPE,1,
+                                QuestGenerator.GenerationMode.PROGRESS,true,
+                                new QuestGenerator.GenerationOptions(2, 2, true, true,
+                                        true, true, true, true),
+                                (m,f)->{ if(f) throw new AssertionError(m.getString()); });
+                    } catch (Exception failure) {
+                        throw new IllegalStateException("Unable to prepare story reward repair fixture", failure);
+                    }
+                }); wait=10;
             }
             case 5 -> {
                 if (QuestGenerator.running()) return false;
                 for (var e : sources.entrySet()) check(e.getValue().equals(QuestRepository.source(e.getKey())), "Rerun replaced existing task");
+                check(QuestRepository.find(rewardRepairTask).rewards().stream()
+                                .anyMatch(reward -> reward.type().equals("experience") && reward.count() >= 1),
+                        "Regeneration did not repair an empty generated story reward");
                 game.setScreen(journal = new QuestScreen()); ClientEditMode.set(true);
                 templates = new QuestTemplateScreen(journal,""); game.setScreen(templates); wait=4;
             }

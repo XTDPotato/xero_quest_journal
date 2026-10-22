@@ -32,6 +32,10 @@ tasks.register("prepareModernSources") {
         [file("../../../src/main/java"), file("../1.21.1/java")].each { sourceRoot ->
             fileTree(sourceRoot).matching { include "**/*.java" }.files.each { source ->
                 def relative = sourceRoot.toPath().relativize(source.toPath()).toString().replace("\\", "/")
+                    if (relative in [
+                            "xtdpotato/xero_quest_journal/client/UiCompositor.java",
+                            "xtdpotato/xero_quest_journal/client/CategoryIconRenderer.java"
+                    ]) return
                 def destination = new File(root, relative)
                 destination.parentFile.mkdirs()
                 destination.setText(adaptModernMinecraftSource(relative, source.getText("UTF-8")), "UTF-8")

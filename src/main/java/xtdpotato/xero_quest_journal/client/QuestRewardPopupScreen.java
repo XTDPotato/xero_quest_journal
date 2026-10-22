@@ -71,7 +71,7 @@ public final class QuestRewardPopupScreen extends AnimatedQuestScreen {
     }
 
     static List<QuestDefinition.Reward> receiptRewards(List<QuestDefinition.Reward> rewards) {
-        return rewards.stream().filter(reward -> switch (reward.type()) {
+        return rewards.stream().filter(QuestDefinition.Reward::displayed).filter(reward -> switch (reward.type()) {
             case "item", "experience", "levels", "effect" -> true;
             default -> false;
         }).toList();

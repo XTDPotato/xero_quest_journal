@@ -88,11 +88,13 @@ final class TaskUiCorrectionsRegression {
             case 3 -> {
                 require((boolean) field(journal, "editMode"), "Edit did not open");
                 require(controls(journal).equals(initialControls), "Entering edit changed native controls");
+                assertSelectedRowCentered(journal);
                 capture(game, "native-task-edit-consistency-zh-1920");
                 button(journal, "edit").onPress(); wait = 4;
             }
             case 4 -> {
                 require(controls(journal).equals(initialControls), "Leaving edit changed native controls");
+                assertSelectedRowCentered(journal);
                 call(journal, "saveLayout"); wait = 6;
             }
             case 5 -> {
@@ -142,7 +144,8 @@ final class TaskUiCorrectionsRegression {
                 if (ClientQuestProgress.view(ID) == null || !ClientQuestProgress.view(ID).status().equals("claimed")) return false;
                 if (game.screen != journal) { game.screen.onClose(); wait = 4; return false; }
                 call(journal, "init");
-                require(field(journal, "category").equals("completed") && field(journal, "selectedId").equals(ID), "Claim did not reveal same task in completed tab");
+                require(field(journal, "category").equals("active") && field(journal, "selectedId").equals(ID + "_next"),
+                        "Claim did not select the nearest same-type active task");
                 graph = new QuestUnlockGraphScreen(journal, ID); game.setScreen(graph); wait = 4;
             }
             case 11 -> {
@@ -167,7 +170,14 @@ final class TaskUiCorrectionsRegression {
                 game.setScreen(null); wait = 2;
             }
             case 14 -> {
-                QuestUnlockToast.clear(); QuestUnlockToast.enqueue(ID); QuestUnlockToast.enqueue(ID + "_next"); wait = 3;
+                QuestUnlockToast.clear(); QuestCompletionToast.clear();
+                QuestUnlockToast.enqueue(ID); QuestUnlockToast.enqueue(ID + "_next");
+                QuestCompletionToast.enqueue(ID);
+                QuestUnlockToast.dismiss(true);
+                require(!QuestUnlockToast.isPresenting(), "Alt+~ clear retained new-task notices");
+                require(QuestCompletionToast.visible(), "Clearing new-task notices also cleared completion notice");
+                QuestUnlockToast.clear(); QuestCompletionToast.clear();
+                QuestUnlockToast.enqueue(ID); QuestUnlockToast.enqueue(ID + "_next"); wait = 3;
             }
             case 15 -> {
                 require(QuestKeyMappings.DISMISS_NEW_TASK.getDefaultKey().getValue() == GLFW.GLFW_KEY_GRAVE_ACCENT, "Wrong notice dismiss default");
@@ -209,6 +219,27 @@ final class TaskUiCorrectionsRegression {
             }
             case 20 -> {
                 require(ClientQuestProgress.tasksPerPage() == 1000, "Server page size update not applied");
+                require(QuestIcons.tagStacks("#minecraft:planks").size() > 1,
+                        "Item tag entries are not available for item-display cycling");
+                require((boolean) invoke(journal, "validItemDisplayValue", new Class<?>[]{String.class},
+                        "#minecraft:planks"), "Item display does not accept item tags");
+                var legacyReward = new com.google.gson.Gson().fromJson(
+                        "{\"type\":\"item\",\"item\":\"minecraft:diamond\",\"count\":1}",
+                        QuestDefinition.Reward.class);
+                require(legacyReward.displayed() && legacyReward.claimMode().equals("default"),
+                        "Legacy reward defaults were not preserved");
+                var automaticReward = new QuestDefinition.Reward("item", "minecraft:diamond", 1,
+                        "", "", true, "automatic");
+                var hiddenManualReward = new QuestDefinition.Reward("item", "minecraft:emerald", 1,
+                        "", "", false, "manual");
+                require(xtdpotato.xero_quest_journal.core.runtime.QuestRewards.automatic(
+                                ClientQuestDefinitions.find(ID), automaticReward)
+                                && !xtdpotato.xero_quest_journal.core.runtime.QuestRewards.automatic(
+                                ClientQuestDefinitions.find(ID), hiddenManualReward),
+                        "Per-reward claim overrides did not override task defaults");
+                require(xtdpotato.xero_quest_journal.core.runtime.QuestRewards.automaticPopupRewards(
+                                ClientQuestDefinitions.find(ID), List.of(automaticReward, hiddenManualReward)).size() == 1,
+                        "Hidden/manual rewards leaked into the automatic receipt");
                 for (String suffix : List.of("add_item_display", "add_image", "add_scroll", "config.tasks_per_page", "unlock_graph.open_task"))
                     require(net.minecraft.client.resources.language.I18n.exists("screen.xero_quest_journal." + suffix), "Missing lang " + suffix);
                 pending = CompletableFuture.runAsync(() -> {
@@ -266,6 +297,21 @@ final class TaskUiCorrectionsRegression {
     private static void capture(Minecraft game, String name) throws Exception {
         Files.createDirectories(OUTPUT);
         try (var image = Screenshot.takeScreenshot(game.getMainRenderTarget())) { image.writeToFile(OUTPUT.resolve(name + ".png")); }
+    }
+    private static void assertSelectedRowCentered(QuestScreen screen) throws Exception {
+        require(field(screen, "selectedId").equals(ID), "Edit-mode toggle changed the selected task");
+        var rows = (List<?>) field(field(screen, "journalList"), "rows");
+        var row = rows.stream().filter(value -> {
+            try { return invoke(value, "key", new Class<?>[0]).equals("quest:" + ID); }
+            catch (Exception failure) { throw new IllegalStateException(failure); }
+        }).findFirst().orElseThrow();
+        double offset = ((Number) invoke(row, "offset", new Class<?>[0])).doubleValue();
+        int rowHeight = ((Number) invoke(row, "height", new Class<?>[0])).intValue();
+        int listHeight = (int) invoke(screen, "listHeight", new Class<?>[0]);
+        double maximum = (double) invoke(screen, "maxListScroll", new Class<?>[0]);
+        double expected = Math.clamp(offset - (listHeight - rowHeight) / 2.0, 0, maximum);
+        double actual = (double) field(screen, "listScroll");
+        require(Math.abs(actual - expected) < 1.1, "Edit-mode toggle did not reveal selected task row");
     }
     private static void require(boolean value, String message) { if (!value) throw new AssertionError(message + " at UI stage " + stage); }
 }

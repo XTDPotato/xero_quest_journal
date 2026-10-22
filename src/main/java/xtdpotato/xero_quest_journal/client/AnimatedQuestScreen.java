@@ -386,8 +386,9 @@ public abstract class AnimatedQuestScreen extends Screen {
         discardClippedFocus();
         renderBackground(graphics, x, y, delta);
         // Include vanilla input backgrounds, cursors and selection in the viewport.
-        for (var renderable : renderables) {
-            if (!(renderable instanceof AbstractWidget widget)) {
+        for (var child : children()) {
+            if (!(child instanceof net.minecraft.client.gui.components.Renderable renderable)) continue;
+            if (!(child instanceof AbstractWidget widget)) {
                 renderable.render(graphics, x, y, delta);
                 continue;
             }

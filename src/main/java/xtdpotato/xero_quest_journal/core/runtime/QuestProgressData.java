@@ -337,6 +337,17 @@ public final class QuestProgressData extends SavedData {
         setDirty();
     }
 
+    public void replaceReward(UUID player, QuestDefinition quest, int index, QuestDefinition.Reward reward) {
+        Entry previous = entry(player, quest);
+        if (previous == null || previous.claimed() || index < 0 || index >= previous.rewards().size())
+            throw new IllegalStateException("Cannot update completed reward");
+        var rewards = new ArrayList<>(previous.rewards());
+        rewards.set(index, reward);
+        players.get(player).put(quest.progressKey(),
+                new Entry(false, rewards, previous.completedAt()));
+        setDirty();
+    }
+
     public boolean reset(UUID player, QuestDefinition quest) {
         Map<String, Entry> records = players.get(player);
         boolean changed = records != null && records.remove(quest.progressKey()) != null;
@@ -482,7 +493,9 @@ public final class QuestProgressData extends SavedData {
                     CompoundTag reward = items.getCompound(k);
                     rewards.add(new QuestDefinition.Reward(reward.getString("type"),
                             reward.getString("item"), reward.getInt("count"),
-                            reward.getString("quality"), reward.getString("background")));
+                            reward.getString("quality"), reward.getString("background"),
+                            !reward.contains("displayed") || reward.getBoolean("displayed"),
+                            reward.getString("claimMode")));
                 }
                 records.put(quest.getString("key"), new Entry(quest.getBoolean("claimed"), rewards, quest.getLong("time")));
             }
@@ -622,6 +635,8 @@ public final class QuestProgressData extends SavedData {
                     reward.putInt("count", value.count());
                     reward.putString("quality", value.quality());
                     reward.putString("background", value.background());
+                    reward.putBoolean("displayed", value.displayed());
+                    reward.putString("claimMode", value.claimMode());
                     rewards.add(reward);
                 });
                 quest.put("rewards", rewards);

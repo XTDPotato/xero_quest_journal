@@ -52,7 +52,8 @@ foreach ($target in $targets) {
                 "client/QuestStructurePreviewScreen", "client/QuestUnlockGraphScreen", "client/AsyncQuestSearch",
                 "client/QuestGenerateScreen", "client/TemplateGroupScreen", "client/NoticeGeometry",
                 "core/TemplateLibraryStore", "core/network/QuestGenerationNetwork", "core/network/TemplateLibraryNetwork",
-                "core/runtime/QuestStructureGuidance")) {
+                "core/runtime/QuestStructureGuidance", "client/QuestRewardsScreen", "client/QuestTagItemsScreen",
+                "client/RecipeViewerBridge", "core/runtime/QuestRewards")) {
             if (!$jar.GetEntry("xtdpotato/xero_quest_journal/$class.class")) {
                 throw "Authoring changes are absent from $source"
             }

@@ -465,7 +465,8 @@ public final class QuestNetwork {
         int bytes = id.length() * 3 + view.status().length() * 3 + 129;
         for (var reward : view.rewards()) {
             bytes += (reward.type().length() + reward.item().length()
-                    + reward.quality().length() + reward.background().length()) * 3 + 24;
+                    + reward.quality().length() + reward.background().length()
+                    + reward.claimMode().length()) * 3 + 26;
         }
         return bytes;
     }
@@ -1613,7 +1614,8 @@ public final class QuestNetwork {
                 }
                 for (var reward : view.rewards()) {
                     if (reward.type().length() > 32 || reward.item().length() > 8192
-                            || reward.quality().length() > 16 || reward.background().length() > 7) {
+                            || reward.quality().length() > 16 || reward.background().length() > 7
+                            || reward.claimMode().length() > 16) {
                         throw new IllegalArgumentException("Reward exceeds protocol limits");
                     }
                 }
@@ -1635,7 +1637,7 @@ public final class QuestNetwork {
 
     private static QuestDefinition.Reward readReward(RegistryFriendlyByteBuf buffer) {
         return new QuestDefinition.Reward(buffer.readUtf(32), buffer.readUtf(8192), buffer.readVarInt(),
-                buffer.readUtf(16), buffer.readUtf(7));
+                buffer.readUtf(16), buffer.readUtf(7), buffer.readBoolean(), buffer.readUtf(16));
     }
 
     private static void writeReward(RegistryFriendlyByteBuf buffer, QuestDefinition.Reward reward) {
@@ -1644,6 +1646,8 @@ public final class QuestNetwork {
         buffer.writeVarInt(reward.count());
         buffer.writeUtf(reward.quality(), 16);
         buffer.writeUtf(reward.background(), 7);
+        buffer.writeBoolean(reward.displayed());
+        buffer.writeUtf(reward.claimMode(), 16);
     }
 
     public record EditModePayload(boolean enabled) implements CustomPacketPayload {

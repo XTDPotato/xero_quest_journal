@@ -76,17 +76,16 @@ public final class QuestRuntime {
                     && QuestConditions.plan(player, QuestSteps.current(data, player.getUUID(), quest), false)
                     .satisfied()) advanceOrComplete(data, player, quest, null);
             var entry = data.entry(player.getUUID(), quest);
-            // Daily commissions deliver their rewards on completion unless the author chose manual claims.
-            if (entry != null && !entry.claimed() && (quest.rewardMode().equals("automatic")
-                    || quest.rewardMode().equals("default")
-                    && (quest.daily() || !QuestConfig.defaults().defaultManualRewards))) {
-                String claimResult = claim(player, quest.id());
-                if (claimResult.equals("choice_required")
-                        || claimResult.equals("claimed") && quest.completionPolicy().automaticRewardPopup()) {
+            if (entry != null && !entry.claimed()
+                    && QuestRewards.hasAutomaticPending(player, quest, entry.rewards())) {
+                String claimResult = QuestRewards.claimAutomatic(player, quest);
+                var automaticRewards = QuestRewards.automaticPopupRewards(quest,
+                        data.entry(player.getUUID(), quest).rewards());
+                if (!automaticRewards.isEmpty() && claimResult.equals("claimed")
+                        && quest.completionPolicy().automaticRewardPopup()) {
                     PacketDistributor.sendToPlayer(player,
                             new xtdpotato.xero_quest_journal.core.network.QuestNetwork.AutomaticClaimPayload(
-                            quest.id(), quest.title(), entry.rewards().stream()
-                                    .map(QuestDefinition.Reward::display).toList()));
+                            quest.id(), quest.title(), automaticRewards));
                 }
             }
         }

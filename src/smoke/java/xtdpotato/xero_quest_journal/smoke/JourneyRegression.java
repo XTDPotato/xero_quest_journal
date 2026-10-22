@@ -6,6 +6,7 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import org.lwjgl.glfw.GLFW;
 import xtdpotato.xero_quest_journal.client.ClientQuestDefinitions;
+import xtdpotato.xero_quest_journal.client.ClientQuestProgress;
 import xtdpotato.xero_quest_journal.client.JourneyScreen;
 import xtdpotato.xero_quest_journal.client.JourneyTaskColumns;
 import xtdpotato.xero_quest_journal.client.QuestScreen;
@@ -33,6 +34,7 @@ final class JourneyRegression {
     private static final String ID = "journey_continuous_smoke";
     private static final String FIRST = ID + "_first";
     private static final String SECOND = ID + "_second";
+    private static final String LOCKED_TASK = "auto_story_" + ID + "_locked";
     private static final String IMAGE_A = "minecraft:textures/gui/title/background/panorama_0.png";
     private static final String IMAGE_B = "minecraft:textures/gui/title/background/panorama_1.png";
     private static int stage;
@@ -98,6 +100,12 @@ final class JourneyRegression {
                                     "{\"id\":\"" + questId + "\",\"title\":\"Side story " + i
                                             + "\",\"type\":\"legendary\",\"parents\":[\"" + ID + "_task_1\"]}");
                         }
+                        quests.append(",\"").append(LOCKED_TASK).append('"');
+                        Files.writeString(group.resolve(LOCKED_TASK + ".json"),
+                                "{\"id\":\"" + LOCKED_TASK + "\",\"title\":\"Locked journey task\","
+                                        + "\"type\":\"legendary\",\"icon\":\"minecraft:iron_ingot\","
+                                        + "\"defaultUnlocked\":false,\"journeyVisible\":true,"
+                                        + "\"parents\":[\"" + ID + "_task_1\"]}");
                         Files.writeString(group.resolve(FIRST + ".chapter.json"),
                                 "{\"id\":\"" + FIRST + "\",\"name\":\"First chapter\",\"group\":\"" + ID
                                         + "\",\"quests\":[" + quests + "],\"journeyBackgrounds\":["
@@ -194,10 +202,20 @@ final class JourneyRegression {
                 if (journey.inputBlocked()) return false;
                 QuestConfig.defaults().uiAnimationMillis = 240;
                 selectTab(FIRST);
-                require(journey.chapterCount() >= 8 && journey.visibleQuestCount() == 11,
+                require(journey.chapterCount() >= 8 && journey.visibleQuestCount() == 12,
                         "Journey chapters/tasks missing");
-                require((int) field(journey, "columns") == 6 && (int) field(journey, "branchRows") == 5,
+                require((int) field(journey, "columns") == 6 && (int) field(journey, "branchRows") == 6,
                         "Actual side quests were not laid out as branches");
+                require(((List<?>) field(journey, "slots")).stream().anyMatch(slot -> {
+                    try {
+                        var quest = invoke(slot, "quest", new Class<?>[0]);
+                        return ((QuestDefinition) quest).id().equals(LOCKED_TASK);
+                    } catch (Exception failure) {
+                        throw new IllegalStateException(failure);
+                    }
+                }) && ClientQuestProgress.view(LOCKED_TASK) != null
+                                && !ClientQuestProgress.view(LOCKED_TASK).unlocked(),
+                        "Locked generated task did not remain visible in the journey timeline");
                 wait = 14;
             }
             case 8 -> {
@@ -272,18 +290,21 @@ final class JourneyRegression {
                         "Timeline progress marker is not half-size and half-opacity");
                 double savedTimelineX = scroll("timelineX");
                 int trackY = progressBounds[1];
-                int trackStart = progressBounds[0] + 1;
-                int trackEnd = progressBounds[2] - 1;
+                int visibleLeft = Math.max(progressBounds[0], (int) invoke(journey, "tabsLeft"));
+                int visibleRight = Math.min(progressBounds[2], (int) invoke(journey, "tabsRight"));
+                int trackStart = visibleLeft + 1;
+                int trackEnd = visibleRight - 1;
                 require((boolean) invoke(journey, "timelineProgressHit",
                                 new Class<?>[]{double.class, double.class}, (trackStart + trackEnd) / 2.0, trackY)
                                 && !(boolean) invoke(journey, "timelineProgressHit",
                                 new Class<?>[]{double.class, double.class}, (double) trackStart, trackY + 12),
                         "Chapter progress slider hover hitbox is incorrect");
                 int scrubX = trackStart + Math.round((trackEnd - trackStart) * .35F);
+                double scrubProgress = (scrubX - visibleLeft) / (double) Math.max(1, visibleRight - visibleLeft);
                 journey.mouseClicked(trackStart, trackY, 0);
                 journey.mouseDragged(scrubX, trackY, 0, scrubX - trackStart, 0);
                 journey.mouseReleased(scrubX, trackY, 0);
-                require(Math.abs(scroll("timelineX") - (chapterStart + chapterRange * .35)) < 1.5,
+                require(Math.abs(scroll("timelineX") - (chapterStart + chapterRange * scrubProgress)) < 1.5,
                         "Dragging the chapter progress line did not seek within the active chapter");
                 invoke(field(journey, "timelineX"), "jump", new Class<?>[]{double.class}, savedTimelineX);
                 invoke(journey, "followTimeline");
@@ -307,7 +328,7 @@ final class JourneyRegression {
                         "Outgoing underline did not contract");
                 capture(game, "journey-tab-transition");
                 selectTab(FIRST);
-                require(journey.visibleQuestCount() == 11
+                require(journey.visibleQuestCount() == 12
                                 && ((JourneyBackdrop) field(journey, "backdrop")).source().equals(IMAGE_A),
                         "Returning to the first tab did not restore its start");
                 wait = 12;

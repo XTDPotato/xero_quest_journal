@@ -14,6 +14,7 @@ import java.util.concurrent.CompletableFuture;
 final class ClaimReceiptRegression {
     private static final String ID = "claim_receipt_" + System.currentTimeMillis();
     private static int stage;
+    private static int stageWait;
     private static QuestScreen journal;
     private static CompletableFuture<Void> setup;
 
@@ -49,7 +50,18 @@ final class ClaimReceiptRegression {
                 invoke("runClaimAll", new Class<?>[0]);
             }
             case 2 -> {
-                if (!(game.screen instanceof QuestRewardPopupScreen)) return false;
+                if (!(game.screen instanceof QuestRewardPopupScreen)) {
+                    if (++stageWait > 180) {
+                        require(false, "Bulk receipt not opened; screen="
+                                + (game.screen == null ? "null" : game.screen.getClass().getSimpleName())
+                                + ", action=" + field(journal, "actionMessage")
+                                + ", pending=" + field(journal, "actionPending")
+                                + ", first=" + ClientQuestProgress.view(ID + 0).status()
+                                + ", second=" + ClientQuestProgress.view(ID + 1).status());
+                    }
+                    return false;
+                }
+                stageWait = 0;
                 require(ClientQuestProgress.view(ID + 0).status().equals("claimed"), "Bulk claim was rejected");
                 require(ClientQuestProgress.view(ID + 1).status().equals("complete"), "Full inventory claim succeeded");
                 require("partially_claimed".equals(field(journal, "actionMessage")), "Partial result not reported");

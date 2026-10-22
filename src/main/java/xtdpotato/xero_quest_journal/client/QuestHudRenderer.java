@@ -161,16 +161,21 @@ public final class QuestHudRenderer {
             return;
         }
         Runnable draw = () -> {
-            int y = 42;
             int screenWidth = game.getWindow().getGuiScaledWidth();
             int screenHeight = game.getWindow().getGuiScaledHeight();
+            int y = 42;
             long now = System.nanoTime();
             boolean reduced = ClientPreferences.get().reducedMotion;
             int blockHeight = Math.max(26, snapshot.stream()
                     .mapToInt(line -> line.completed() ? 24 : 34).sum());
+            var preferences = ClientPreferences.get();
+            int blockWidth = Math.min(360, Math.max(120, screenWidth - 16));
+            var desired = HudOverlayLayout.atPercent(screenWidth, screenHeight, blockWidth, blockHeight,
+                    preferences.taskToastXPercent, preferences.taskToastYPercent, 8);
             var block = HudOverlayLayout.place(screenWidth, screenHeight,
-                    new HudOverlayLayout.Rect(0, y, Math.min(360, Math.max(120, screenWidth - 16)), blockHeight),
-                    HudOverlayLayout.Corner.TOP_LEFT, 8);
+                    desired,
+                    HudOverlayLayout.cornerFromPercent(preferences.taskToastXPercent,
+                            preferences.taskToastYPercent), 8);
             graphics.pose().pushPose();
             graphics.pose().translate(block.x(), block.y() - y, 0);
             for (var line : snapshot) {

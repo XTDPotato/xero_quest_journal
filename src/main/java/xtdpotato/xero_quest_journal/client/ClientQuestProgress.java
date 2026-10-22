@@ -515,12 +515,19 @@ public final class ClientQuestProgress {
         return result;
     }
     public static CompletableFuture<String> chooseGenerationMode(String mode, String namespace, boolean recipes) {
+        return chooseGenerationMode(mode, namespace, recipes,
+                xtdpotato.xero_quest_journal.core.io.QuestGenerator.GenerationOptions.defaults());
+    }
+
+    public static CompletableFuture<String> chooseGenerationMode(String mode, String namespace, boolean recipes,
+            xtdpotato.xero_quest_journal.core.io.QuestGenerator.GenerationOptions options) {
         if (Minecraft.getInstance().getConnection() == null) return CompletableFuture.completedFuture("remote_unavailable");
         if (pendingActions.size() >= 8) return CompletableFuture.completedFuture("busy");
         long request = ++nextRequestId;
         var result = new CompletableFuture<String>(); pendingActions.put(request, result);
         deadlines.put(request, System.nanoTime() + 15_000_000_000L);
-        try { PacketDistributor.sendToServer(new xtdpotato.xero_quest_journal.core.network.QuestGenerationNetwork.Choose(request, mode, namespace, recipes)); }
+        try { PacketDistributor.sendToServer(new xtdpotato.xero_quest_journal.core.network.QuestGenerationNetwork.Choose(
+                request, mode, namespace, recipes, options)); }
         catch (RuntimeException failure) { pendingActions.remove(request); deadlines.remove(request); result.complete("remote_unavailable"); }
         return result;
     }

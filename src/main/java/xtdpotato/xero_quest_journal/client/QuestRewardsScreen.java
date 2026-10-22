@@ -6,12 +6,14 @@ import net.minecraft.client.gui.components.Checkbox;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.Util;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.storage.LevelResource;
 import xtdpotato.xero_quest_journal.core.io.QuestAuthoring;
 import xtdpotato.xero_quest_journal.core.io.AtomicFiles;
 import xtdpotato.xero_quest_journal.core.io.QuestRepository;
+import xtdpotato.xero_quest_journal.core.QuestConfig;
 import xtdpotato.xero_quest_journal.core.model.QuestDefinition;
 import xtdpotato.xero_quest_journal.core.model.QuestRewardQuality;
 import xtdpotato.xero_quest_journal.core.runtime.QuestRewards;
@@ -136,8 +138,7 @@ public final class QuestRewardsScreen extends AnimatedQuestScreen {
         clearWidgets();
         rowWidgets.clear();
         styles = ButtonStyleSheet.load();
-        rowHeight = mailSaved != null ? 126
-                : rewards.stream().anyMatch(d -> d.type.equals("effect") || d.type.equals("item")) ? 100 : 76;
+        rowHeight = 132;
         int x = left(), w = panelWidth();
         motion.limit((rewards.size() - rows()) * rowHeight);
         motion.jump(scroll);
@@ -205,7 +206,17 @@ public final class QuestRewardsScreen extends AnimatedQuestScreen {
                                     })));
                 } else if (draft.type.equals("command") || draft.type.equals("function")
                         || draft.type.equals("script")) {
-                    var edit = new EditorIconButton(actionLeft, y + 8,
+                    int editX = actionLeft;
+                    if (draft.type.equals("function") || draft.type.equals("script")) {
+                        var folder = new EditorIconButton(actionLeft - 28, y + 8,
+                                text("rewards.reward_open_folder"), () -> openRewardFolder(draft),
+                                styles, "rewards-open-folder-" + index, "folder");
+                        folder.active = pending == null;
+                        folder.setTooltip(Tooltip.create(text("rewards.reward_open_folder_hint")));
+                        addRenderableWidget(folder);
+                        editX -= 28;
+                    }
+                    var edit = new EditorIconButton(editX, y + 8,
                             text("rewards.edit_source"), () -> editSource(draft),
                             styles, "rewards-edit-source-" + index, "edit");
                     edit.active = pending == null;
@@ -283,6 +294,21 @@ public final class QuestRewardsScreen extends AnimatedQuestScreen {
                         .selected(!draft.hidden && !draft.hidePopup && (draft.type.equals("item") || draft.type.equals("loot")))
                         .onValueChange((box, value) -> draft.hidePopup = !value).build());
                 popup.active = !draft.hidden && (draft.type.equals("item") || draft.type.equals("loot"));
+            } else {
+                var displayed = Checkbox.builder(text("rewards.displayed"), font)
+                        .pos(x + 34, y + 92).selected(draft.displayed)
+                        .onValueChange((box, value) -> { draft.displayed = value; }).build();
+                displayed.active = pending == null;
+                displayed.setTooltip(Tooltip.create(text("rewards.displayed_hint")));
+                addRenderableWidget(displayed);
+                var claimMode = new StyledChoiceButton<>(x + Math.min(310, w / 3), y + 90,
+                        Math.max(190, Math.min(260, w / 3)), 20, text("rewards.claim_mode"),
+                        List.of("default", "manual", "automatic"), draft.claimMode,
+                        value -> text("rewards.claim_mode." + value),
+                        value -> draft.claimMode = value, styles, "rewards-claim-mode-" + index);
+                claimMode.active = pending == null;
+                claimMode.setTooltip(Tooltip.create(text("rewards.claim_mode_hint")));
+                addRenderableWidget(claimMode);
             }
             children().subList(firstWidget, children().size()).stream()
                     .filter(AbstractWidget.class::isInstance).map(AbstractWidget.class::cast).forEach(rowWidgets::add);
@@ -351,13 +377,17 @@ public final class QuestRewardsScreen extends AnimatedQuestScreen {
             minecraft.setScreen(new QuestRewardTextEditorScreen(this,
                     text("reward_type.function"), source, file,
                     value -> CompletableFuture.supplyAsync(() -> {
-                        try {
-                            AtomicFiles.write(file, value, true);
-                            return true;
-                        } catch (Exception failure) {
-                            return false;
-                        }
-                    }, server),
+                                try {
+                                    AtomicFiles.write(file, value, true);
+                                    return true;
+                                } catch (Exception failure) {
+                                    return false;
+                                }
+                            }, server)
+                            .thenCompose(written -> written
+                                    ? server.reloadResources(server.getPackRepository().getSelectedIds())
+                                    .thenApply(ignored -> true)
+                                    : CompletableFuture.completedFuture(false)),
                     value -> init()));
         } catch (Exception failure) {
             error = "create.error.reward";
@@ -377,6 +407,43 @@ public final class QuestRewardsScreen extends AnimatedQuestScreen {
                     .findFirst().orElse(null);
         } catch (Exception failure) {
             return null;
+        }
+    }
+
+    private void openRewardFolder(Draft draft) {
+        try {
+            Path folder;
+            if (draft.type.equals("script")) {
+                Path root = QuestConfig.root().resolve("scripts").toAbsolutePath().normalize();
+                Path script = root.resolve(draft.item).normalize();
+                if (!script.startsWith(root)) {
+                    error = "create.error.reward";
+                    return;
+                }
+                folder = script.getParent() == null ? root : script.getParent();
+                Files.createDirectories(folder);
+            } else {
+                var server = minecraft.getSingleplayerServer();
+                ResourceLocation id = ResourceLocation.tryParse(draft.item);
+                if (server == null || id == null) {
+                    error = "create.error.reward";
+                    return;
+                }
+                Path datapacks = server.getWorldPath(LevelResource.DATAPACK_DIR);
+                Path file = findFunctionFile(datapacks, id);
+                if (file != null) folder = file.toAbsolutePath().normalize().getParent();
+                else {
+                    folder = datapacks.resolve("xero_quest_journal/data")
+                            .resolve(id.getNamespace()).resolve("function");
+                    Path parentPath = Path.of(id.getPath()).getParent();
+                    if (parentPath != null) folder = folder.resolve(parentPath);
+                    folder = folder.toAbsolutePath().normalize();
+                    Files.createDirectories(folder);
+                }
+            }
+            Util.getPlatform().openFile(folder.toFile());
+        } catch (Exception failure) {
+            error = "create.error.save";
         }
     }
 
@@ -595,12 +662,16 @@ public final class QuestRewardsScreen extends AnimatedQuestScreen {
         boolean particles = true;
         boolean hidden;
         boolean hidePopup;
+        boolean displayed = true;
+        String claimMode = "default";
         Draft(QuestDefinition.Reward reward) {
             type = reward.type();
             item = reward.item();
             count = Integer.toString(reward.count());
             quality = reward.quality().isBlank() ? "auto" : reward.quality();
             background = reward.background();
+            displayed = reward.displayed();
+            claimMode = reward.claimMode();
             if (type.equals("effect")) {
                 var effect = RewardEffect.parse(item);
                 if (effect != null) {
@@ -616,7 +687,8 @@ public final class QuestRewardsScreen extends AnimatedQuestScreen {
                 target = new RewardEffect(target, Integer.parseInt(level.strip()), particles).encoded();
             }
             return new QuestDefinition.Reward(type, target, Integer.parseInt(count.strip()),
-                    type.equals("item") ? quality : "", type.equals("item") ? background : "");
+                    type.equals("item") ? quality : "", type.equals("item") ? background : "",
+                    displayed, claimMode);
         }
     }
 

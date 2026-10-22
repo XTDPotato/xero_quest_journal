@@ -35,6 +35,7 @@ public final class QuestGenerationNetwork {
                 else {
                     boolean started = QuestGenerator.start(player.server, payload.namespace(), QuestGenerator.RewardMode.RECIPE, 1,
                             QuestGenerator.GenerationMode.valueOf(payload.mode().toUpperCase(Locale.ROOT)), payload.recipes(),
+                            payload.options(),
                             (message, failure) -> player.server.execute(() -> player.sendSystemMessage(message)));
                     result = started ? "generation_started" : "generation_busy";
                 }
@@ -56,15 +57,37 @@ public final class QuestGenerationNetwork {
         };
         public Type<Offer> type() { return TYPE; }
     }
-    public record Choose(long requestId, String mode, String namespace, boolean recipes) implements CustomPacketPayload {
+    public record Choose(long requestId, String mode, String namespace, boolean recipes,
+                         QuestGenerator.GenerationOptions options) implements CustomPacketPayload {
+        public Choose(long requestId, String mode, String namespace, boolean recipes) {
+            this(requestId, mode, namespace, recipes, QuestGenerator.GenerationOptions.defaults());
+        }
         public Choose {
             if (!List.of("dismiss", "progress", "structure", "both", "catalog").contains(mode)
-                    || namespace == null || !namespace.matches("[a-z0-9_.-]{1,128}")) throw new IllegalArgumentException("Invalid generation choice");
+                    || namespace == null || !namespace.matches("[a-z0-9_.-]{1,128}"))
+                throw new IllegalArgumentException("Invalid generation choice");
+            options = options == null ? QuestGenerator.GenerationOptions.defaults() : options;
         }
         public static final Type<Choose> TYPE = new Type<>(ResourceLocation.fromNamespaceAndPath("xero_quest_journal", "generation_choose"));
         public static final StreamCodec<RegistryFriendlyByteBuf, Choose> CODEC = new StreamCodec<>() {
-            public Choose decode(RegistryFriendlyByteBuf b) { return new Choose(b.readVarLong(), b.readUtf(16), b.readUtf(128), b.readBoolean()); }
-            public void encode(RegistryFriendlyByteBuf b, Choose p) { b.writeVarLong(p.requestId()); b.writeUtf(p.mode(),16); b.writeUtf(p.namespace(),128); b.writeBoolean(p.recipes()); }
+            public Choose decode(RegistryFriendlyByteBuf b) {
+                long id = b.readVarLong();
+                String mode = b.readUtf(16), namespace = b.readUtf(128);
+                boolean recipes = b.readBoolean();
+                var options = new QuestGenerator.GenerationOptions(
+                        b.readVarInt(), b.readVarInt(), b.readBoolean(), b.readBoolean(),
+                        b.readBoolean(), b.readBoolean(), b.readBoolean(), b.readBoolean());
+                return new Choose(id, mode, namespace, recipes, options);
+            }
+            public void encode(RegistryFriendlyByteBuf b, Choose p) {
+                b.writeVarLong(p.requestId()); b.writeUtf(p.mode(), 16); b.writeUtf(p.namespace(), 128);
+                b.writeBoolean(p.recipes());
+                var options = p.options();
+                b.writeVarInt(options.taskMultiplier()); b.writeVarInt(options.rewardMultiplier());
+                b.writeBoolean(options.bonusExperience()); b.writeBoolean(options.itemRewards());
+                b.writeBoolean(options.advancements()); b.writeBoolean(options.itemTasks());
+                b.writeBoolean(options.combatTasks()); b.writeBoolean(options.structureTasks());
+            }
         };
         public Type<Choose> type() { return TYPE; }
     }
