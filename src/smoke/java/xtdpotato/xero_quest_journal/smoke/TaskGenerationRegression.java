@@ -454,10 +454,16 @@ final class TaskGenerationRegression {
         jsonAccessor.setAccessible(true);
         var output = (com.google.gson.JsonObject) jsonAccessor.invoke(planned.get("auto_item_minecraft_stick"));
         var outputRewards = output.getAsJsonArray("rewards");
-        require(outputRewards.size() == 1
-                        && outputRewards.get(0).getAsJsonObject().get("item").getAsString().equals("minecraft:stick")
-                        && outputRewards.get(0).getAsJsonObject().get("count").getAsInt() == 16,
-                "Output mode did not reward the generated task item at the requested quantity");
+        boolean outputItem = false, guaranteedExperience = false;
+        for (var value : outputRewards) {
+            var reward = value.getAsJsonObject();
+            outputItem |= reward.get("item").getAsString().equals("minecraft:stick")
+                    && reward.get("count").getAsInt() == 16;
+            guaranteedExperience |= reward.get("type").getAsString().equals("experience")
+                    && reward.get("count").getAsInt() >= 1;
+        }
+        require(outputItem && guaranteedExperience,
+                "Output mode did not reward the generated task item and guarantee experience");
 
         var recipeSettings = constructor.newInstance("minecraft",
                 xtdpotato.xero_quest_journal.core.io.QuestGenerator.RewardMode.RECIPE, 1);

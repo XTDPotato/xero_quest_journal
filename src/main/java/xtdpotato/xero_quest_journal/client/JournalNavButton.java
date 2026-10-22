@@ -253,6 +253,20 @@ public class JournalNavButton extends StyledButton {
             g.pose().popPose();
             return;
         }
+        if (name.equals("folder")) {
+            int stroke = Math.max(2, size / 8);
+            int tabTop = y + Math.max(2, size / 5);
+            int bodyTop = y + Math.max(5, size / 3);
+            int left = x + Math.max(2, size / 8);
+            int right = x + size - Math.max(2, size / 8);
+            int tabRight = x + size / 2 + stroke;
+            g.fill(left, tabTop, tabRight, tabTop + stroke, color);
+            g.fill(left, tabTop + stroke, left + stroke, bodyTop + stroke, color);
+            g.fill(left + stroke, bodyTop, right - stroke, bodyTop + stroke, color);
+            g.fill(right - stroke, bodyTop + stroke, right, y + size - Math.max(2, size / 8), color);
+            g.fill(left, y + size - Math.max(2, size / 8) - stroke, right, y + size - Math.max(2, size / 8), color);
+            return;
+        }
         if (name.contains(":") || name.contains("/") || name.contains("\\")) {
             QuestIcons.render(g, name, x, y, size);
             return;

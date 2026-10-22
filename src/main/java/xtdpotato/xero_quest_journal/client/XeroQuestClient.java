@@ -88,7 +88,12 @@ public final class XeroQuestClient {
             }
         }
         while (QuestKeyMappings.DISMISS_NEW_TASK.consumeClick()) {
-            if (minecraft.screen == null) QuestUnlockToast.dismissCurrent();
+            if (minecraft.screen == null) {
+                long window = minecraft.getWindow().getWindow();
+                boolean altDown = org.lwjgl.glfw.GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT_ALT) == GLFW.GLFW_PRESS
+                        || org.lwjgl.glfw.GLFW.glfwGetKey(window, GLFW.GLFW_KEY_RIGHT_ALT) == GLFW.GLFW_PRESS;
+                QuestUnlockToast.dismiss(altDown);
+            }
         }
         while (QuestKeyMappings.OPEN_MAILBOX.consumeClick()) {
             if (minecraft.screen == null && minecraft.player != null) {

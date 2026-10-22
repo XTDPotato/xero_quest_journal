@@ -143,8 +143,29 @@ public final class QuestGenerator {
 
     /** {@code filter} is a namespace or blank; {@code multiplier} scales every reward amount. */
     public enum GenerationMode { CATALOG, PROGRESS, STRUCTURE, BOTH }
-    private record Settings(String filter, RewardMode mode, int multiplier, GenerationMode generation, boolean relatedRecipes) {
-        Settings(String filter, RewardMode mode, int multiplier) { this(filter, mode, multiplier, GenerationMode.CATALOG, true); }
+    public record GenerationOptions(int taskMultiplier, int rewardMultiplier, boolean bonusExperience,
+                                    boolean itemRewards, boolean advancements, boolean itemTasks,
+                                    boolean combatTasks, boolean structureTasks) {
+        public GenerationOptions {
+            taskMultiplier = Math.clamp(taskMultiplier, 1, 64);
+            rewardMultiplier = Math.clamp(rewardMultiplier, 1, 64);
+        }
+        public static GenerationOptions defaults() {
+            return new GenerationOptions(1, 1, true, true, true, true, true, true);
+        }
+    }
+    private record Settings(String filter, RewardMode mode, int multiplier, GenerationMode generation,
+                            boolean relatedRecipes, GenerationOptions options) {
+        Settings(String filter, RewardMode mode, int multiplier) {
+            this(filter, mode, multiplier, GenerationMode.CATALOG, true, GenerationOptions.defaults());
+        }
+        Settings(String filter, RewardMode mode, int multiplier, GenerationMode generation,
+                 boolean relatedRecipes) {
+            this(filter, mode, multiplier, generation, relatedRecipes, GenerationOptions.defaults());
+        }
+        int taskCount(int base) {
+            return Math.max(1, Math.min(1_000_000, base * options.taskMultiplier()));
+        }
     }
 
     private static final AtomicBoolean RUNNING = new AtomicBoolean();
@@ -232,11 +253,20 @@ public final class QuestGenerator {
     }
     public static boolean start(MinecraftServer server, String namespace, RewardMode mode, int multiplier,
                                 GenerationMode generation, boolean relatedRecipes, Reporter reporter) {
+        return start(server, namespace, mode, multiplier, generation, relatedRecipes,
+                new GenerationOptions(1, multiplier, true, true, true, true, true, true), reporter);
+    }
+    public static boolean start(MinecraftServer server, String namespace, RewardMode mode, int multiplier,
+                                GenerationMode generation, boolean relatedRecipes, GenerationOptions options,
+                                Reporter reporter) {
         if (server == null || !server.isSameThread()) throw new IllegalArgumentException("Generation requires server thread");
         if (!RUNNING.compareAndSet(false, true)) return false;
         String target = namespace == null ? "" : namespace.strip().toLowerCase(Locale.ROOT);
         Settings settings = new Settings(target.equals("all") ? "" : target, mode == null ? RewardMode.TIER : mode,
-                Math.max(1, Math.min(64, multiplier)), generation, relatedRecipes);
+                options == null ? Math.max(1, Math.min(64, multiplier))
+                        : options.rewardMultiplier(), generation, relatedRecipes,
+                options == null ? new GenerationOptions(1, multiplier, true, true, true, true, true, true)
+                        : options);
         Snapshot snapshot;
         try {
             snapshot = snapshot(server);
@@ -503,10 +533,13 @@ public final class QuestGenerator {
         }
         Set<String> existing = new HashSet<>(snapshot.existing());
         Map<String, Planned> planned = new LinkedHashMap<>();
-        planAdvancements(snapshot.advancements(), settings, Set.of(), planned);
-        planItems(snapshot.recipes(), snapshot.lootItems(), settings, snapshot.features(), Set.of(), planned);
-        planTacticalItems(snapshot.tacticalTasks(), snapshot.tacticalRecipes(), settings, Set.of(), planned);
-        planKills(settings, snapshot.features(), Set.of(), planned);
+        if (settings.options().advancements())
+            planAdvancements(snapshot.advancements(), settings, Set.of(), planned);
+        if (settings.options().itemTasks()) {
+            planItems(snapshot.recipes(), snapshot.lootItems(), settings, snapshot.features(), Set.of(), planned);
+            planTacticalItems(snapshot.tacticalTasks(), snapshot.tacticalRecipes(), settings, Set.of(), planned);
+        }
+        if (settings.options().combatTasks()) planKills(settings, snapshot.features(), Set.of(), planned);
         // Existing generator-owned documents can receive absent presentation defaults.
         // Explicit hot-event fields and edited titles/descriptions are never overwritten.
         Map<String, JsonObject> legacy = new HashMap<>();
@@ -523,10 +556,12 @@ public final class QuestGenerator {
             if (Files.isSymbolicLink(path)) { iterator.remove(); continue; }
             String original = Files.readString(path);
             var data = JsonParser.parseString(original).getAsJsonObject();
+            boolean managedTriggers = data.has("generatedTriggers")
+                    && java.util.Objects.equals(data.get("triggers"), data.get("generatedTriggers"));
             if (!data.has("generatedBy") || !data.get("generatedBy").getAsString().equals("xero_quest_journal")
                     || !data.has("generatedNamespace")
                     || !data.get("generatedNamespace").getAsString().equals(task.namespace())
-                    || !java.util.Objects.equals(data.get("triggers"), task.json().get("triggers"))) {
+                    || !managedTriggers && !java.util.Objects.equals(data.get("triggers"), task.json().get("triggers"))) {
                 iterator.remove();
                 continue;
             }
@@ -552,6 +587,7 @@ public final class QuestGenerator {
             var data = legacy.get(task.id());
             if (data == null) continue;
             boolean changed = updateGeneratedParents(data, task, dependencies, existing);
+            changed |= updateGeneratedTriggers(data, task.json());
             changed |= updateGeneratedRewards(data, task.json());
             String oldTitleKey = data.has("titleKey") ? data.get("titleKey").getAsString() : "";
             if ((oldTitleKey.startsWith("item.") || oldTitleKey.startsWith("block.")
@@ -681,13 +717,14 @@ public final class QuestGenerator {
     private static void runStory(MinecraftServer server, Settings settings, Snapshot snapshot, Reporter reporter) throws Exception {
         var plan = new LinkedHashMap<String, Planned>();
         var allItems = new LinkedHashMap<String, Planned>();
-        var sourceSettings = new Settings("", RewardMode.RECIPE, 1);
-        if (settings.generation() != GenerationMode.STRUCTURE)
+        var sourceSettings = new Settings("", RewardMode.RECIPE, settings.multiplier(),
+                settings.generation(), settings.relatedRecipes(), settings.options());
+        if (settings.generation() != GenerationMode.STRUCTURE && settings.options().itemTasks())
             planItems(snapshot.recipes(), snapshot.lootItems(), sourceSettings, snapshot.features(), Set.of(), allItems);
         var recipeRewards = new HashMap<String, JsonArray>();
         allItems.forEach((id, task) -> recipeRewards.put(id, task.json().getAsJsonArray("rewards").deepCopy()));
         var advancementTasks = new LinkedHashMap<String, Planned>();
-        if (settings.generation() != GenerationMode.STRUCTURE)
+        if (settings.generation() != GenerationMode.STRUCTURE && settings.options().advancements())
             planAdvancements(snapshot.advancements(), settings, Set.of(), advancementTasks);
         var wantedItems = new LinkedHashSet<String>();
         var originParents = new HashMap<String, String>();
@@ -716,13 +753,18 @@ public final class QuestGenerator {
                         var value = reward.getAsJsonObject(); String material = value.get("item").getAsString();
                         if (!value.get("type").getAsString().equals("item") || material.equals(output)
                                 || child.items().contains(material)) continue;
-                        supplies.merge(material, Math.min(4, value.get("count").getAsInt()), Math::max);
+                        supplies.merge(material, Math.max(1, value.get("count").getAsInt()), Math::max);
                     }
                 }
             }
-            var rewards = new JsonArray(); supplies.entrySet().stream().limit(4).forEach(entry -> rewards.add(reward("item", entry.getKey(), entry.getValue())));
+            var rewards = new JsonArray();
+            for (var entry : supplies.entrySet().stream().limit(4).toList())
+                rewards.add(reward("item", entry.getKey(), entry.getValue()));
+            if (rewards.isEmpty()) rewards = storyFallbackRewards(task, settings, recipeRewards);
             task.json().add("rewards", rewards);
-            task.json().addProperty("generatedRewardReason", "Materials from recipes required by following advancement criteria");
+            task.json().addProperty("generatedRewardReason", supplies.isEmpty()
+                    ? "Difficulty reward because no following recipe materials were found"
+                    : "Materials from recipes required by following advancement criteria");
         }
         // An auxiliary recipe branch can start after its associated advancement's parent.
         for (var entry : originParents.entrySet()) {
@@ -740,9 +782,11 @@ public final class QuestGenerator {
                 var value = element.getAsJsonObject();
                 if (value.get("item").getAsString().equals(task.json().get("icon").getAsString())
                         || value.get("item").getAsString().equals(next.json().get("icon").getAsString())) continue;
-                rewards.add(reward("item", value.get("item").getAsString(), Math.min(4, value.get("count").getAsInt())));
+                rewards.add(reward("item", value.get("item").getAsString(),
+                        Math.max(1, value.get("count").getAsInt())));
                 if (rewards.size() == 4) break;
             }
+            if (rewards.isEmpty()) rewards = storyFallbackRewards(task, settings, recipeRewards);
             task.json().add("rewards", rewards);
         }
         var renamed = new HashMap<String, String>();
@@ -755,7 +799,7 @@ public final class QuestGenerator {
             story.put(id, new Planned(id, task.namespace(), "story", task.chapter(), task.json(),
                     task.parentCandidates().stream().filter(renamed::containsKey).map(renamed::get).distinct().toList(), 0));
         }
-        if (settings.generation() != GenerationMode.PROGRESS) {
+        if (settings.generation() != GenerationMode.PROGRESS && settings.options().structureTasks()) {
             var previous = new HashMap<String, String>();
             for (var structure : snapshot.structures()) {
                 if (!matches(settings.filter(), structure.id())) continue;
@@ -779,7 +823,9 @@ public final class QuestGenerator {
                 json.add("presentation", GSON.toJsonTree(template.presentation(id)));
                 json.addProperty("generatedLocate", true);
                 json.addProperty("rewardMode", "manual");
-                var rewards = new JsonArray(); rewards.add(reward("item", "minecraft:bread", 4)); rewards.add(reward("item", "minecraft:torch", 8));
+                var rewards = new JsonArray();
+                rewards.add(reward("item", "minecraft:bread", 4 * settings.multiplier()));
+                rewards.add(reward("item", "minecraft:torch", 8 * settings.multiplier()));
                 json.add("rewards", rewards);
                 String parent = previous.put(route, id);
                 if (parent == null && settings.generation() == GenerationMode.BOTH)
@@ -791,45 +837,85 @@ public final class QuestGenerator {
             }
         }
         if (story.isEmpty()) { reporter.send(Component.translatable("command.xero_quest_journal.generate_none"), false); return; }
+        for (var task : story.values())
+            applyGeneratedRewardOptions(task.json().getAsJsonArray("rewards"), settings);
         // Stage the whole cross-mod graph before publishing, so forward dependencies are never discarded.
         var writes = new LinkedHashMap<Path, String>();
+        var expectedExisting = new LinkedHashMap<Path, String>();
         var dependencies = new HashMap<String, List<String>>();
         QuestRepository.all().forEach(q -> dependencies.put(q.id(), q.parents()));
         story.values().forEach(task -> { if (!snapshot.existing().contains(task.id())) dependencies.put(task.id(), task.parentCandidates()); });
         var chapters = new LinkedHashMap<String, Map<String, List<String>>>();
         for (var task : story.values()) {
-            if (snapshot.existing().contains(task.id()) || Files.exists(taskFile(task))) continue;
+            Path file = taskFile(task);
+            if (snapshot.existing().contains(task.id()) || Files.exists(file)) {
+                if (!Files.isSymbolicLink(file) && Files.exists(file)) {
+                    String original = Files.readString(file);
+                    var existing = JsonParser.parseString(original).getAsJsonObject();
+                    boolean changed = updateGeneratedTriggers(existing, task.json());
+                    changed |= repairEmptyStoryRewards(existing, task.json());
+                    if (changed) {
+                        writes.put(file, GSON.toJson(existing));
+                        expectedExisting.put(file.toAbsolutePath().normalize(), original);
+                    }
+                }
+                continue;
+            }
             for (String parent : task.parentCandidates()) if (parent.equals(task.id()) || dependsOn(parent, task.id(), dependencies))
                 throw new IllegalArgumentException("Cyclic story task " + task.id());
             var json = task.json(); json.add("parents", GSON.toJsonTree(task.parentCandidates()));
             json.add("generatedParents", GSON.toJsonTree(task.parentCandidates()));
             json.addProperty("generatedBy", "xero_quest_journal"); json.addProperty("generatedNamespace", task.namespace());
             json.addProperty("generatedMode", "story"); json.add("generatedRewards", json.getAsJsonArray("rewards").deepCopy());
+            json.add("generatedTriggers", json.get("triggers").deepCopy());
             GSON.fromJson(json, xtdpotato.xero_quest_journal.core.model.QuestDefinition.class);
-            writes.put(taskFile(task), GSON.toJson(json));
+            writes.put(file, GSON.toJson(json));
             chapters.computeIfAbsent(task.namespace(), ignored -> new LinkedHashMap<>()).computeIfAbsent(task.chapter(), ignored -> new ArrayList<>()).add(task.id());
         }
-        if (writes.isEmpty()) { reporter.send(Component.translatable("command.xero_quest_journal.generate_none"), false); return; }
-        reporter.send(Component.translatable("command.xero_quest_journal.generate_started", writes.size(), chapters.size()), false);
         synchronized (QuestRepository.class) {
-            for (var write : writes.entrySet()) {
-                if (Files.exists(write.getKey()) || Files.isSymbolicLink(write.getKey().getParent()))
-                    throw new java.io.IOException("Task changed during generation");
+            for (String namespace : story.values().stream().map(Planned::namespace)
+                    .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new))) {
+                String groupId = "auto_" + clean(namespace);
+                Path manifest = groupDirectory(namespace).resolve("group_manifest.json");
+                if (!Files.exists(manifest) && QuestRepository.groups().stream().noneMatch(g -> g.id().equals(groupId))) {
+                    var group = new JsonObject();
+                    group.addProperty("id", groupId);
+                    group.addProperty("uid", UUID.randomUUID().toString());
+                    group.addProperty("name", modName(namespace));
+                    group.addProperty("icon", storyGroupIcon(namespace, story.values()));
+                    group.addProperty("type", "active");
+                    writes.put(manifest, GSON.toJson(group));
+                } else if (Files.exists(manifest) && !Files.isSymbolicLink(manifest)) {
+                    String original = Files.readString(manifest);
+                    var group = JsonParser.parseString(original).getAsJsonObject();
+                    if (group.has("icon") && group.get("icon").getAsString().equals("minecraft:book")) {
+                        expectedExisting.put(manifest.toAbsolutePath().normalize(), original);
+                        group.addProperty("icon", storyGroupIcon(namespace, story.values()));
+                        writes.put(manifest, GSON.toJson(group));
+                    }
+                }
             }
             for (var entry : chapters.entrySet()) {
-                String groupId = "auto_" + clean(entry.getKey()); Path directory = groupDirectory(entry.getKey());
-                Path manifest = directory.resolve("group_manifest.json");
-                if (!Files.exists(manifest) && QuestRepository.groups().stream().noneMatch(g -> g.id().equals(groupId))) {
-                    var group = new JsonObject(); group.addProperty("id", groupId); group.addProperty("uid", UUID.randomUUID().toString());
-                    group.addProperty("name", modName(entry.getKey())); group.addProperty("icon", "minecraft:book"); group.addProperty("type", "active");
-                    writes.put(manifest, GSON.toJson(group));
-                }
-                writes.putAll(stageChapters(directory, groupId, entry.getValue()));
+                String groupId = "auto_" + clean(entry.getKey());
+                Path directory = groupDirectory(entry.getKey());
+                writes.putAll(stageChapters(directory, groupId, entry.getValue(), expectedExisting));
             }
+            if (writes.isEmpty()) {
+                reporter.send(Component.translatable("command.xero_quest_journal.generate_none"), false);
+                return;
+            }
+            reporter.send(Component.translatable("command.xero_quest_journal.generate_started",
+                    writes.size(), chapters.size()), false);
             var before = QuestAuthoringHistory.capture(writes.keySet());
             var written = new ArrayList<Path>();
             try {
                 for (var entry : writes.entrySet()) {
+                    Path path = entry.getKey();
+                    String expected = expectedExisting.get(path.toAbsolutePath().normalize());
+                    boolean changed = Files.isSymbolicLink(path) || Files.isSymbolicLink(path.getParent())
+                            || (expected == null ? Files.exists(path)
+                            : !Files.exists(path) || !Files.readString(path).equals(expected));
+                    if (changed) throw new java.io.IOException("Task changed during generation");
                     AtomicFiles.write(entry.getKey(), entry.getValue(), before.get(entry.getKey().toAbsolutePath().normalize()) != null);
                     written.add(entry.getKey());
                 }
@@ -861,6 +947,99 @@ public final class QuestGenerator {
             var current = pending.removeFirst(); var task = items.get(current);
             if (task != null && selected.add(current)) pending.addAll(task.parentCandidates());
             if (selected.size() > 4096) throw new IllegalArgumentException("Too many related recipe tasks; choose a smaller namespace");
+        }
+    }
+
+    private static JsonArray storyFallbackRewards(Planned task, Settings settings,
+                                                   Map<String, JsonArray> recipeRewards) {
+        JsonArray result = new JsonArray();
+        if (settings.mode() == RewardMode.NONE && !settings.options().bonusExperience()) return result;
+        int scale = settings.multiplier();
+        if (task.category().equals("items")) {
+            if (settings.mode() == RewardMode.OUTPUT) {
+                result.add(reward("item", task.json().get("icon").getAsString(), scale));
+                return result;
+            }
+            JsonArray ingredients = recipeRewards.get(task.id());
+            if (settings.mode() == RewardMode.RECIPE && ingredients != null && !ingredients.isEmpty()) {
+                ingredients.forEach(value -> result.add(value.deepCopy()));
+                return result;
+            }
+        }
+        int tier = Math.max(1, Math.min(3, task.spotlightScore() >= 200 ? 3 : 1));
+        return rewards(tier, new Settings(settings.filter(), RewardMode.TIER, scale,
+                settings.generation(), settings.relatedRecipes(), settings.options()));
+    }
+
+    private static void applyGeneratedRewardOptions(JsonArray values, Settings settings) {
+        var retained = new JsonArray();
+        for (var value : values) {
+            if (!value.isJsonObject() || !value.getAsJsonObject().has("type")) {
+                retained.add(value.deepCopy());
+                continue;
+            }
+            String type = value.getAsJsonObject().get("type").getAsString();
+            if (!settings.options().itemRewards() && Set.of("item", "loot_choice").contains(type)
+                    || !settings.options().bonusExperience() && type.equals("experience")) continue;
+            retained.add(value.deepCopy());
+        }
+        for (int index = values.size() - 1; index >= 0; index--) values.remove(index);
+        retained.forEach(value -> values.add(value.deepCopy()));
+        boolean hasExperience = false;
+        for (var value : values) {
+            if (value.isJsonObject() && value.getAsJsonObject().has("type")
+                    && value.getAsJsonObject().get("type").getAsString().equals("experience")) {
+                hasExperience = true;
+                break;
+            }
+        }
+        if (!hasExperience) {
+            int experience = settings.options().bonusExperience()
+                    ? Math.max(1, 20 * settings.multiplier()) : 1;
+            values.add(reward("experience", "", experience));
+        }
+    }
+
+    private static boolean repairEmptyStoryRewards(JsonObject existing, JsonObject planned) {
+        if (!existing.has("generatedBy") || !existing.get("generatedBy").getAsString().equals("xero_quest_journal")
+                || !existing.has("generatedMode") || !existing.get("generatedMode").getAsString().equals("story"))
+            return false;
+        JsonElement current = existing.get("rewards");
+        JsonElement baseline = existing.get("generatedRewards");
+        JsonElement replacement = planned.get("rewards");
+        if (current == null || !current.isJsonArray() || !current.getAsJsonArray().isEmpty()
+                || baseline != null && (!baseline.isJsonArray() || !baseline.getAsJsonArray().isEmpty())
+                || replacement == null || !replacement.isJsonArray() || replacement.getAsJsonArray().isEmpty())
+            return false;
+        existing.add("rewards", replacement.deepCopy());
+        existing.add("generatedRewards", replacement.deepCopy());
+        return true;
+    }
+
+    private static String storyGroupIcon(String namespace, java.util.Collection<Planned> tasks) {
+        String matchingTaskIcon = tasks.stream().filter(task -> task.namespace().equals(namespace))
+                .map(task -> task.json().get("icon").getAsString())
+                .filter(icon -> namespace.equals(iconNamespace(icon)) && !icon.equals("minecraft:book"))
+                .findFirst().orElse("");
+        if (!matchingTaskIcon.isBlank()) return matchingTaskIcon;
+        if (!namespace.equals("minecraft")) {
+            for (Item item : BuiltInRegistries.ITEM) {
+                ResourceLocation id = BuiltInRegistries.ITEM.getKey(item);
+                if (id.getNamespace().equals(namespace) && item != net.minecraft.world.item.Items.AIR)
+                    return id.toString();
+            }
+        }
+        return tasks.stream().filter(task -> task.namespace().equals(namespace))
+                .map(task -> task.json().get("icon").getAsString())
+                .filter(icon -> !icon.equals("minecraft:book"))
+                .findFirst().orElse("minecraft:compass");
+    }
+
+    private static String iconNamespace(String icon) {
+        try {
+            return ResourceLocation.parse(icon).getNamespace();
+        } catch (RuntimeException invalid) {
+            return "";
         }
     }
 
@@ -910,7 +1089,22 @@ public final class QuestGenerator {
     private static void markGeneratedRewards(JsonObject quest, Settings settings) {
         quest.addProperty("generatedRewardMode", settings.mode().name().toLowerCase(Locale.ROOT));
         quest.addProperty("generatedRewardMultiplier", settings.multiplier());
+        quest.addProperty("generatedTaskMultiplier", settings.options().taskMultiplier());
+        quest.addProperty("generatedBonusExperience", settings.options().bonusExperience());
+        quest.addProperty("generatedItemRewards", settings.options().itemRewards());
         quest.add("generatedRewards", quest.getAsJsonArray("rewards").deepCopy());
+        if (quest.has("triggers")) quest.add("generatedTriggers", quest.get("triggers").deepCopy());
+    }
+
+    private static boolean updateGeneratedTriggers(JsonObject existing, JsonObject planned) {
+        JsonElement triggers = existing.get("triggers");
+        JsonElement baseline = existing.get("generatedTriggers");
+        JsonElement replacement = planned.get("triggers");
+        if (triggers == null || baseline == null || !triggers.equals(baseline)
+                || replacement == null || triggers.equals(replacement)) return false;
+        existing.add("triggers", replacement.deepCopy());
+        existing.add("generatedTriggers", replacement.deepCopy());
+        return true;
     }
 
     private static boolean updateGeneratedParents(JsonObject data, Planned task,
@@ -960,7 +1154,9 @@ public final class QuestGenerator {
                 ? current.equals(existing.get("generatedRewards")) : legacyTierRewards(current);
         if (!managed) return false;
         boolean changed = false;
-        for (String key : List.of("rewards", "generatedRewards", "generatedRewardMode", "generatedRewardMultiplier")) {
+        for (String key : List.of("rewards", "generatedRewards", "generatedRewardMode",
+                "generatedRewardMultiplier", "generatedTaskMultiplier", "generatedBonusExperience",
+                "generatedItemRewards")) {
             if (!java.util.Objects.equals(existing.get(key), planned.get(key))) {
                 existing.add(key, planned.get(key).deepCopy());
                 changed = true;
@@ -1002,8 +1198,13 @@ public final class QuestGenerator {
             JsonObject quest = quest(id, data.title(), data.description(),
                     data.id().getNamespace().equals("minecraft") ? "main" : "world", data.icon());
             quest.add("triggers", trigger("advancement", data.id().toString(), 1));
-            quest.add("rewards", rewards(data.tier(), settings));
+            JsonArray generatedRewards = rewards(data.tier(), settings);
+            applyGeneratedRewardOptions(generatedRewards, settings);
+            quest.add("rewards", generatedRewards);
             markGeneratedRewards(quest, settings);
+            quest.addProperty("descriptionKey", "generate.xero_quest_journal.description.advancement");
+            quest.addProperty("description", Component.translatable(
+                    "generate.xero_quest_journal.description.advancement").getString());
             List<String> parents = data.parent() == null ? List.of() : List.of(baseId("auto_adv", data.parent()));
             planned.put(id, new Planned(id, data.id().getNamespace(), "advancements", "1_advancements",
                     quest, parents, data.tier() >= 2 ? 100 * data.tier() + Math.min(30, data.depth())
@@ -1103,12 +1304,14 @@ public final class QuestGenerator {
             JsonObject quest = quest(id, Component.translatable(titleKey, item.getDescription()),
                     Component.translatable(descriptionKey), "world", key.toString());
             quest.addProperty("titleKey", titleKey);
-            quest.add("triggers", trigger("item_hold", key.toString(), 1));
+            quest.add("triggers", trigger("item_hold", key.toString(), settings.taskCount(1)));
             JsonArray itemRewards = settings.mode() == RewardMode.OUTPUT
                     ? outputRewards(key.toString(), settings.multiplier())
                     : settings.mode() == RewardMode.RECIPE
                     ? recipeRewards(item, recipes, depth, itemQuest, settings.multiplier()) : null;
-            quest.add("rewards", itemRewards != null ? itemRewards : rewards(tier, settings));
+            JsonArray generatedRewards = itemRewards != null ? itemRewards : rewards(tier, settings);
+            applyGeneratedRewardOptions(generatedRewards, settings);
+            quest.add("rewards", generatedRewards);
             markGeneratedRewards(quest, settings);
             planned.put(id, new Planned(id, key.getNamespace(), "items", chapter, quest,
                     itemParents(item, recipes, depth, itemQuest),
@@ -1146,14 +1349,16 @@ public final class QuestGenerator {
                     Component.translatable("generate.xero_quest_journal.description.special_item"),
                     "world", task.target());
             if (!task.titleKey().isBlank()) quest.addProperty("titleKey", task.titleKey());
-            quest.add("triggers", trigger("item_acquire", task.target(), 1));
+            quest.add("triggers", trigger("item_acquire", task.target(), settings.taskCount(1)));
             JsonArray itemRewards = settings.mode() == RewardMode.OUTPUT
                     ? outputRewards(task.target(), settings.multiplier())
                     : settings.mode() == RewardMode.RECIPE
                     ? tacticalRecipeRewards(byIdentity.get(task.identity()), settings.multiplier()) : null;
             if (itemRewards == null && settings.mode() == RewardMode.RECIPE)
                 itemRewards = outputRewards(task.target(), settings.multiplier());
-            quest.add("rewards", itemRewards == null ? rewards(task.tier(), settings) : itemRewards);
+            JsonArray generatedRewards = itemRewards == null ? rewards(task.tier(), settings) : itemRewards;
+            applyGeneratedRewardOptions(generatedRewards, settings);
+            quest.add("rewards", generatedRewards);
             markGeneratedRewards(quest, settings);
             planned.put(task.id(), new Planned(task.id(), task.namespace(), "items",
                     tacticalChapter(task.kind()), quest, List.of(), task.tier() >= 3 ? 220 : 0));
@@ -1298,7 +1503,7 @@ public final class QuestGenerator {
             if (existing.contains(id) || planned.containsKey(id)) continue;
             double health = maxHealth(type);
             int tier = health >= 100 ? 3 : health >= 30 ? 2 : 1;
-            int count = tier == 3 ? 1 : tier == 2 ? 3 : 5;
+            int count = settings.taskCount(tier == 3 ? 1 : tier == 2 ? 3 : 5);
             SpawnEggItem egg = SpawnEggItem.byId(type);
             String icon = egg != null ? BuiltInRegistries.ITEM.getKey(egg).toString() : "minecraft:iron_sword";
             String titleKey = "generate.xero_quest_journal.title.defeat";
@@ -1307,7 +1512,9 @@ public final class QuestGenerator {
                             + (tier == 3 ? "boss" : "combat")), "world", icon);
             quest.addProperty("titleKey", titleKey);
             quest.add("triggers", trigger("kill", key.toString(), count));
-            quest.add("rewards", rewards(tier, settings));
+            JsonArray generatedRewards = rewards(tier, settings);
+            applyGeneratedRewardOptions(generatedRewards, settings);
+            quest.add("rewards", generatedRewards);
             markGeneratedRewards(quest, settings);
             planned.put(id, new Planned(id, key.getNamespace(), "combat", "6_combat", quest, List.of(),
                     tier == 3 ? 400 + (int) Math.min(100, health / 10) : 0));
@@ -1370,7 +1577,9 @@ public final class QuestGenerator {
         JsonArray rewards = new JsonArray();
         if (settings.mode() == RewardMode.NONE || settings.mode() == RewardMode.OUTPUT) return rewards;
         int scale = settings.multiplier();
-        rewards.add(reward("experience", "", (tier == 3 ? 150 : tier == 2 ? 60 : 20) * scale));
+        if (settings.options().bonusExperience())
+            rewards.add(reward("experience", "", Math.max(1,
+                    (tier == 3 ? 150 : tier == 2 ? 60 : 20) * scale)));
         if (tier >= 2) rewards.add(reward("item", "minecraft:emerald", (tier == 3 ? 4 : 2) * scale));
         if (tier == 3) rewards.add(reward("item", "minecraft:diamond", scale));
         return rewards;
@@ -1390,6 +1599,12 @@ public final class QuestGenerator {
             AtomicFiles.write(entry.getKey(), entry.getValue(), true);
     }
     private static Map<Path, String> stageChapters(Path directory, String groupId, Map<String, List<String>> additions) throws Exception {
+        return stageChapters(directory, groupId, additions, null);
+    }
+
+    private static Map<Path, String> stageChapters(Path directory, String groupId,
+                                                   Map<String, List<String>> additions,
+                                                   Map<Path, String> expectedExisting) throws Exception {
         var writes = new LinkedHashMap<Path, String>();
         for (String chapterKey : CHAPTERS) {
             List<String> added = additions.get(chapterKey);
@@ -1400,7 +1615,9 @@ public final class QuestGenerator {
                     .orElse(directory.resolve(chapterId + ".chapter.json"));
             JsonObject chapter;
             if (Files.exists(file)) {
-                chapter = JsonParser.parseString(Files.readString(file)).getAsJsonObject();
+                String original = Files.readString(file);
+                if (expectedExisting != null) expectedExisting.put(file.toAbsolutePath().normalize(), original);
+                chapter = JsonParser.parseString(original).getAsJsonObject();
             } else {
                 chapter = new JsonObject();
                 chapter.addProperty("id", chapterId);
@@ -1424,7 +1641,8 @@ public final class QuestGenerator {
     private static String groupIcon(List<Planned> quests) {
         return quests.stream().filter(quest -> quest.category().equals("items")).findFirst()
                 .or(() -> quests.stream().findFirst())
-                .map(quest -> quest.json().get("icon").getAsString()).orElse("minecraft:book");
+                .map(quest -> quest.json().get("icon").getAsString())
+                .filter(icon -> !icon.equals("minecraft:book")).orElse("minecraft:compass");
     }
 
     private static String modName(String namespace) {

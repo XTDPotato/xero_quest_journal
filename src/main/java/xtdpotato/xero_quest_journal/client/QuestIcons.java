@@ -34,10 +34,12 @@ public final class QuestIcons {
     private static final long MAX_LOCAL_IMAGE_BYTES = 16L * 1024L * 1024L;
     private static final Set<String> LOCAL_IMAGE_EXTENSIONS = Set.of(".png", ".jpg", ".jpeg", ".bmp");
     private static final Map<ResourceLocation, ItemStack> ITEM_STACKS = new ConcurrentHashMap<>();
+    private static final Map<ResourceLocation, List<ItemStack>> TAG_STACKS = new ConcurrentHashMap<>();
     private static final Transliterator PINYIN = Transliterator.getInstance(
             "Han-Latin; NFD; [:Nonspacing Mark:] Remove; NFC");
     private static Object itemLanguage;
     private static Object itemConnection;
+    private static Object tagConnection;
     private static List<IconChoice> itemChoices = List.of();
     private static Object textureLanguage;
     private static List<IconChoice> textureChoices = List.of();
@@ -109,6 +111,28 @@ public final class QuestIcons {
         var id = ResourceLocation.tryParse(value);
         if (id == null || !BuiltInRegistries.ITEM.containsKey(id)) return ItemStack.EMPTY;
         return ITEM_STACKS.computeIfAbsent(id, key -> new ItemStack(BuiltInRegistries.ITEM.get(key)));
+    }
+
+    public static List<ItemStack> tagStacks(String value) {
+        if (value == null || !value.startsWith("#")) return List.of();
+        ResourceLocation id = ResourceLocation.tryParse(value.substring(1));
+        if (id == null) return List.of();
+        Object connection = Minecraft.getInstance().getConnection();
+        if (tagConnection != connection) {
+            TAG_STACKS.clear();
+            tagConnection = connection;
+        }
+        return TAG_STACKS.computeIfAbsent(id, tagId -> BuiltInRegistries.ITEM.getTag(
+                        net.minecraft.tags.TagKey.create(
+                                net.minecraft.core.registries.Registries.ITEM, tagId))
+                .map(entries -> entries.stream().map(holder -> new ItemStack(holder.value()))
+                        .filter(stack -> !stack.isEmpty())
+                        .collect(java.util.stream.Collectors.collectingAndThen(
+                                java.util.stream.Collectors.toMap(stack ->
+                                                BuiltInRegistries.ITEM.getKey(stack.getItem()).toString(),
+                                        stack -> stack, (first, ignored) -> first, java.util.LinkedHashMap::new),
+                                map -> List.copyOf(map.values()))))
+                .orElse(List.of()));
     }
 
     public static void render(GuiGraphics graphics, String value, int x, int y,
@@ -243,6 +267,8 @@ public final class QuestIcons {
     /** Clears icon indexes so the picker can discover changed language packs and local files. */
     public static synchronized void refreshChoices() {
         ITEM_STACKS.clear();
+        TAG_STACKS.clear();
+        tagConnection = null;
         itemLanguage = null;
         itemChoices = List.of();
         textureLanguage = null;

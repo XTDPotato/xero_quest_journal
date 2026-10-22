@@ -313,8 +313,7 @@ public final class JourneyScreen extends AnimatedQuestScreen {
                 QuestDefinition quest = ClientQuestDefinitions.find(id);
                 var progress = ClientQuestProgress.view(id);
                 if (quest != null && quest.journeyVisible() && !quest.hidden()
-                        && (progress == null || !progress.hidden())
-                        && (editing || !quest.automaticallyGenerated() || progress == null || progress.unlocked()))
+                        && (progress == null || !progress.hidden()))
                     next.add(quest);
             }
             List<QuestSlot> layout = new ArrayList<>();
@@ -983,6 +982,9 @@ public final class JourneyScreen extends AnimatedQuestScreen {
         var questAppearance = slot.quest().journeyAppearance().over(appearance(slot.chapter()));
         var state = ClientQuestProgress.view(slot.quest().id());
         boolean complete = state != null && state.completed();
+        boolean locked = state == null
+                ? !slot.quest().defaultUnlocked() || !slot.quest().parents().isEmpty()
+                : !state.unlocked();
         graphics.fill(x + 2, y + 3, x + CARD_WIDTH + 3, y + h + 3, 0x44202632);
         boolean focused = slot.quest().id().equals(selectedQuest);
         boolean fullCard = slot.categoryColumn() || slot.branch() == 0;
@@ -1011,10 +1013,12 @@ public final class JourneyScreen extends AnimatedQuestScreen {
                 && (!elementStyle.icon().isBlank() || !slot.quest().icon().isBlank()) ? 24 : 0;
         if (iconSpace > 0) JourneyAppearanceRenderer.icon(graphics, elementStyle, slot.quest().icon(),
                 x + 7, labelY - 3, 24, 27, 0xFFFFFFFF, false);
+        if (locked) JournalNavButton.drawIcon(graphics, "lock", x + CARD_WIDTH - 21,
+                fullCard ? y + 5 : labelY + 4, 15, 0xFFE1D4B8);
         JourneyAppearanceRenderer.text(graphics, font, elementStyle, QuestText.title(slot.quest()).getString(), x + 8 + iconSpace, labelY + 8,
-                CARD_WIDTH - (complete ? 33 : 16) - iconSpace,
+                CARD_WIDTH - (complete || locked ? 33 : 16) - iconSpace,
                 elementStyle.background().isBlank() ? 0xFF394452 : 0xFFFFFFFF, false);
-        if (complete) JourneyAppearanceRenderer.icon(graphics, questAppearance.get("complete"), "@complete",
+        if (complete && !locked) JourneyAppearanceRenderer.icon(graphics, questAppearance.get("complete"), "@complete",
                 x + CARD_WIDTH - 24, labelY + 3, 18, 18, 0xFFFFFFFF, false);
         JourneyAppearanceRenderer.text(graphics, font, questAppearance.get("subtitle"), slot.quest().legendary().subtitle(),
                 x + 7, labelY + 31, CARD_WIDTH - 14, 0xFFF5E8CF, false);

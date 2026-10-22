@@ -32,8 +32,11 @@ public final class QuestStatusIcons {
                 return;
             }
             case "complete", "claimed" -> {
-                symbol = "\u2713";
-                color = highlighted ? 0xFF287348 : 0xFF79D69A;
+                int markSize = Math.max(12, size * 3 / 4);
+                JournalNavButton.drawIcon(graphics, "mail_check",
+                        x + (size - markSize) / 2, y + (size - markSize) / 2, markSize,
+                        applyAlpha(highlighted ? 0xFF287348 : 0xFF79D69A, alpha));
+                return;
             }
             case "unavailable" -> {
                 symbol = "\u00d7";

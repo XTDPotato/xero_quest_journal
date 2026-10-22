@@ -168,7 +168,8 @@ final class JournalDetailRenderer {
                     Math.max(1, w - dailyWidth - 12)), x, top + 8, color, false);
             boolean claimed = status.equals("claimed");
             int columns = Math.max(1, (w - dailyWidth - 8 + 4) / RewardCardRenderer.COLUMN_STEP);
-            for (int i = 0; i < Math.min(columns, rewards.size()); i++) {
+            int visibleCards = editMode ? Math.max(0, columns - 1) : columns;
+            for (int i = 0; i < Math.min(visibleCards, rewards.size()); i++) {
                 var reward = rewards.get(i);
                 int cardX = x + i * RewardCardRenderer.COLUMN_STEP;
                 int cardY = top + 20;
@@ -178,25 +179,37 @@ final class JournalDetailRenderer {
                         reward.count(), reward.quality(), reward.background(), cardX, cardY,
                         1F, 1F, claimed, hovered);
             }
-        } else if (editMode) {
-            g.drawString(font, text("rewards.locked"), x, top + 8, 0xFFF2CF83, false);
-            int cardX = x, cardY = top + 20;
+        }
+        if (editMode) {
+            if (rewards.isEmpty())
+                g.drawString(font, text("rewards.locked"), x, top + 8, 0xFFF2CF83, false);
+            int cardX = addButtonX(rewards, x, x + w - dailyWidth);
+            int cardY = top + 20;
             int cardRight = cardX + RewardCardRenderer.WIDTH;
             int cardBottom = cardY + RewardCardRenderer.HEIGHT;
             g.fillGradient(cardX, cardY, cardRight, cardY + 28, 0xFF536B83, 0xFF7087A0);
             g.fill(cardX, cardY + 28, cardRight, cardBottom, 0xCC2A2D34);
             g.renderOutline(cardX, cardY, RewardCardRenderer.WIDTH, RewardCardRenderer.HEIGHT, 0xFFD9E5F2);
-            JournalNavButton.drawIcon(g, "add", cardX + 9, cardY + 9, 16, 0xFFF2CF83);
+            JournalNavButton.drawIcon(g, "add", cardX + 9, cardY + 9, 16,
+                    mouseX >= cardX && mouseX < cardRight && mouseY >= cardY && mouseY < cardBottom
+                            ? 0xFFFFE3A2 : 0xFFF2CF83);
         }
         if (daily) renderDaily(g, font, x + w - dailyWidth, top, dailyWidth, mouseX, mouseY, claimButtonShown);
     }
 
-    static boolean addButtonAt(List<QuestDefinition.Reward> rewards, int left, int top,
+    static boolean addButtonAt(List<QuestDefinition.Reward> rewards, int left, int top, int right,
                                double mouseX, double mouseY) {
-        if (rewards != null && !rewards.isEmpty()) return false;
-        int x = left + 10, y = top + 20;
-        return mouseX >= x && mouseX < x + RewardCardRenderer.WIDTH
-                && mouseY >= y && mouseY < y + RewardCardRenderer.HEIGHT;
+        int cardX = addButtonX(rewards, left + 10, right - 10);
+        int cardY = top + 20;
+        return mouseX >= cardX && mouseX < cardX + RewardCardRenderer.WIDTH
+                && mouseY >= cardY && mouseY < cardY + RewardCardRenderer.HEIGHT;
+    }
+
+    private static int addButtonX(List<QuestDefinition.Reward> rewards, int start, int right) {
+        int count = rewards == null ? 0 : rewards.size();
+        int preferred = start + count * RewardCardRenderer.COLUMN_STEP;
+        int maximum = Math.max(start, right - RewardCardRenderer.WIDTH);
+        return Math.min(preferred, maximum);
     }
 
     static int dailyBlockWidth(Font font) {

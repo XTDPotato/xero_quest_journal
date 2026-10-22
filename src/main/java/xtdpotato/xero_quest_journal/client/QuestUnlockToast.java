@@ -34,6 +34,11 @@ public final class QuestUnlockToast {
         QuestHudToastQueue.dismiss(QuestHudToastQueue.Type.UNLOCK);
     }
 
+    public static void dismiss(boolean all) {
+        if (all) clearUnlockNotices();
+        else dismissCurrent();
+    }
+
     public static boolean openCurrent() {
         String id = currentQuestId();
         if (id.isBlank() || QuestScreen.questById(id) == null) return false;
@@ -113,16 +118,14 @@ public final class QuestUnlockToast {
         float iconScale = preferences.taskToastIconScalePercent / 100F;
         int panelWidth = geometry.width();
         int panelHeight = Math.round(geometry.height() * toastScale);
-        int desiredLeft = Math.round(8 + Math.max(0, screenWidth - panelWidth * toastScale - 16)
-                * preferences.taskToastXPercent / 100F);
-        int desiredTop = Math.round(8 + Math.max(0, screenHeight - panelHeight - 16)
-                * preferences.taskToastYPercent / 100F);
         int initialLeft = Math.round(x * (1 - toastScale));
         int initialTop = Math.round(y - 12 * toastScale);
         var animation = taskToastTransform(enter, exit, reduced);
+        var desired = HudOverlayLayout.atPercent(screenWidth, screenHeight,
+                Math.round(panelWidth * toastScale), panelHeight,
+                preferences.taskToastXPercent, preferences.taskToastYPercent, 8);
         var panel = HudOverlayLayout.place(screenWidth, screenHeight,
-                new HudOverlayLayout.Rect(desiredLeft, desiredTop,
-                        Math.round(panelWidth * toastScale), panelHeight),
+                desired,
                 HudOverlayLayout.cornerFromPercent(preferences.taskToastXPercent, preferences.taskToastYPercent), 8);
         int offsetX = panel.x() - initialLeft;
         int offsetY = panel.y() - initialTop;

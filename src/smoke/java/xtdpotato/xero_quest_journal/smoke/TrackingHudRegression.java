@@ -406,7 +406,13 @@ final class TrackingHudRegression {
     }
 
     private static void checkHud(Minecraft game, Fixture fixture, boolean visible) throws Exception {
-        int matches = countColor(game, 18, 42, 16, 16, fixture.color());
+        int screenWidth = game.getWindow().getGuiScaledWidth();
+        int screenHeight = game.getWindow().getGuiScaledHeight();
+        var preferences = ClientPreferences.get();
+        var expected = HudOverlayLayout.atPercent(screenWidth, screenHeight,
+                Math.min(360, Math.max(120, screenWidth - 16)), 34,
+                preferences.taskToastXPercent, preferences.taskToastYPercent, 8);
+        int matches = countColor(game, expected.x() + 18, expected.y(), 16, 16, fixture.color());
         require(visible ? matches >= 2 : matches == 0,
                 "HUD marker pixels mismatch for " + fixture.name() + ": " + matches);
         if (!visible) return;

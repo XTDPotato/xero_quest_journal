@@ -327,9 +327,13 @@ public record QuestDefinition(
         }
     }
 
-    public record Reward(String type, String item, int count, String quality, String background) {
+    public record Reward(String type, String item, int count, String quality, String background,
+                         Boolean displayed, String claimMode) {
         public Reward(String type, String item, int count) {
-            this(type, item, count, "", "");
+            this(type, item, count, "", "", true, "default");
+        }
+        public Reward(String type, String item, int count, String quality, String background) {
+            this(type, item, count, quality, background, true, "default");
         }
 
         public Reward {
@@ -337,14 +341,24 @@ public record QuestDefinition(
             item = item == null ? "" : item;
             quality = QuestRewardQuality.normalize(quality);
             background = QuestRewardQuality.normalizeBackground(background);
+            displayed = displayed == null || displayed;
+            claimMode = normalizeClaimMode(claimMode);
             if (count < 1 || count > 1000000) {
                 throw new IllegalArgumentException("Reward count must be 1..1000000");
             }
         }
 
+        public static String normalizeClaimMode(String value) {
+            String normalized = value == null ? "" : value.strip().toLowerCase(java.util.Locale.ROOT);
+            return switch (normalized) {
+                case "manual", "automatic" -> normalized;
+                default -> "default";
+            };
+        }
+
         public Reward display() {
             return new Reward(type, List.of("command", "script", "function").contains(type) ? "" : item,
-                    count, quality, background);
+                    count, quality, background, displayed, claimMode);
         }
     }
 

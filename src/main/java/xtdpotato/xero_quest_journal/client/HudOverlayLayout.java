@@ -73,6 +73,17 @@ public final class HudOverlayLayout {
         return fallback;
     }
 
+    public static Rect atPercent(int screenWidth, int screenHeight, int width, int height,
+                                 int xPercent, int yPercent, int margin) {
+        width = Math.min(Math.max(1, width), Math.max(1, screenWidth - margin * 2));
+        height = Math.min(Math.max(1, height), Math.max(1, screenHeight - margin * 2));
+        int x = margin + Math.round(Math.max(0, screenWidth - width - margin * 2)
+                * Math.clamp(xPercent, 0, 100) / 100F);
+        int y = margin + Math.round(Math.max(0, screenHeight - height - margin * 2)
+                * Math.clamp(yPercent, 0, 100) / 100F);
+        return new Rect(x, y, width, height);
+    }
+
     public static Rect place(int screenWidth, int screenHeight, Rect desired, Corner preferred, int margin) {
         if (RESERVED.stream().noneMatch(desired::intersects)) {
             RESERVED.add(desired);

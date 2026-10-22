@@ -109,6 +109,10 @@ tasks.register("prepareFabricSources") {
         roots.each { sourceRoot ->
         fileTree(sourceRoot).matching { include "**/*.java" }.files.each { source ->
             def relative = sourceRoot.toPath().relativize(source.toPath()).toString().replace("\\", "/")
+            if (modernMinecraft && relative in [
+                    "xtdpotato/xero_quest_journal/client/UiCompositor.java",
+                    "xtdpotato/xero_quest_journal/client/CategoryIconRenderer.java"
+            ]) return
             if (sourceRoot == file("../../../src/main/java") && (
                     relative == "xtdpotato/xero_quest_journal/XeroQuestJournal.java"
                     || relative.startsWith("xtdpotato/xero_quest_journal/platform/")

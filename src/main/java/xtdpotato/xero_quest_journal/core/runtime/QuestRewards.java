@@ -15,6 +15,7 @@ import xtdpotato.xero_quest_journal.core.model.QuestDefinition;
 
 import java.util.*;
 import com.google.gson.Gson;
+import xtdpotato.xero_quest_journal.core.QuestConfig;
 
 /** Reward execution stays server-side; ambiguous receipts block automatic retries. */
 public final class QuestRewards {
@@ -72,9 +73,11 @@ public final class QuestRewards {
             if (reward.type().equals("loot")) {
                 LootDefinition table = QuestLootStore.find(reward.item());
                 if (table == null) throw new IllegalArgumentException("Missing loot table");
-                result.addAll(resolve(table, player, reward.count()));
+                for (var resolved : resolve(table, player, reward.count()))
+                    result.add(withSettings(resolved, reward));
             } else if (reward.type().equals("script")) {
-                try { result.add(new QuestDefinition.Reward("script", QuestScripts.source(reward.item()), 1)); }
+                try { result.add(new QuestDefinition.Reward("script", QuestScripts.source(reward.item()), 1,
+                        reward.quality(), reward.background(), reward.displayed(), reward.claimMode())); }
                 catch (Exception failure) { throw new IllegalArgumentException("Cannot freeze script", failure); }
             } else {
                 result.add(reward);
@@ -82,6 +85,12 @@ public final class QuestRewards {
             if (result.size() > 128) throw new IllegalArgumentException("Loot result is too large");
         }
         return List.copyOf(result);
+    }
+
+    private static QuestDefinition.Reward withSettings(QuestDefinition.Reward resolved,
+                                                        QuestDefinition.Reward settings) {
+        return new QuestDefinition.Reward(resolved.type(), resolved.item(), resolved.count(),
+                resolved.quality(), resolved.background(), settings.displayed(), settings.claimMode());
     }
 
     private static List<QuestDefinition.Reward> resolve(LootDefinition table, ServerPlayer player, int repeats) {
@@ -251,11 +260,50 @@ public final class QuestRewards {
     }
 
     public static String claim(ServerPlayer player, QuestDefinition quest, boolean allowDrop) {
-        return claim(player, quest, allowDrop, Map.of());
+        return claim(player, quest, allowDrop, Map.of(), false);
+    }
+
+    public static boolean automatic(QuestDefinition quest, QuestDefinition.Reward reward) {
+        return switch (reward.claimMode()) {
+            case "automatic" -> true;
+            case "manual" -> false;
+            default -> quest.rewardMode().equals("automatic")
+                    || quest.rewardMode().equals("default")
+                    && (quest.daily() || !QuestConfig.defaults().defaultManualRewards);
+        };
+    }
+
+    public static boolean hasAutomaticPending(ServerPlayer player, QuestDefinition quest,
+                                              List<QuestDefinition.Reward> rewards) {
+        var data = QuestProgressData.get(player.getServer());
+        var entry = data.entry(player.getUUID(), quest);
+        if (entry == null || entry.claimed()) return false;
+        for (int index = 0; index < rewards.size(); index++) {
+            if (automatic(quest, rewards.get(index))
+                    && !data.receipt(player.getUUID(), quest, index).equals("done")) return true;
+        }
+        return false;
+    }
+
+    public static List<QuestDefinition.Reward> automaticPopupRewards(QuestDefinition quest,
+                                                                      List<QuestDefinition.Reward> rewards) {
+        var result = new ArrayList<QuestDefinition.Reward>();
+        for (var reward : rewards) {
+            if (!reward.displayed() || !automatic(quest, reward)) continue;
+            if (reward.type().equals("loot_choice")) {
+                var candidates = choices(reward);
+                if (!candidates.isEmpty()) result.add(candidates.getFirst().display());
+            } else result.add(reward.display());
+        }
+        return List.copyOf(result);
+    }
+
+    public static String claimAutomatic(ServerPlayer player, QuestDefinition quest) {
+        return claim(player, quest, false, Map.of(), true);
     }
 
     public static String claimChoice(ServerPlayer player, QuestDefinition quest, int rewardIndex, int choiceIndex) {
-        return claim(player, quest, false, Map.of(rewardIndex, choiceIndex));
+        return claim(player, quest, false, Map.of(rewardIndex, choiceIndex), false);
     }
 
     public static String claimChoices(ServerPlayer player, QuestDefinition quest, Map<Integer, Integer> selections) {
@@ -264,11 +312,11 @@ public final class QuestRewards {
 
     public static String claimChoices(ServerPlayer player, QuestDefinition quest,
                                       Map<Integer, Integer> selections, boolean allowDrop) {
-        return claim(player, quest, allowDrop, selections == null ? Map.of() : selections);
+        return claim(player, quest, allowDrop, selections == null ? Map.of() : selections, false);
     }
 
     private static String claim(ServerPlayer player, QuestDefinition quest, boolean allowDrop,
-                                Map<Integer, Integer> selections) {
+                                Map<Integer, Integer> selections, boolean automaticOnly) {
         if (player == null || player.getServer() == null || !player.getServer().isSameThread()) return "permission";
         if (!QuestFocus.allowsReward(player, quest)) return "focus_active";
         if (QuestStructures.active(player)) return "scene_active";
@@ -277,20 +325,22 @@ public final class QuestRewards {
         if (entry == null) return "incomplete";
         if (entry.claimed()) return "already_claimed";
         List<QuestDefinition.Reward> rewards = new ArrayList<>(entry.rewards());
-        boolean hasChoice = rewards.stream().anyMatch(reward -> reward.type().equals("loot_choice"));
-        if (hasChoice) {
-            for (int index = 0; index < rewards.size(); index++) {
-                QuestDefinition.Reward reward = rewards.get(index);
-                if (!reward.type().equals("loot_choice")) continue;
-                Integer selected = selections.get(index);
-                List<QuestDefinition.Reward> candidates = choices(reward);
-                if (selected == null || selected < 0 || selected >= candidates.size()) return "choice_required";
-                rewards.set(index, candidates.get(selected));
-            }
-            if (rewards.stream().anyMatch(reward -> reward.type().equals("loot_choice"))) return "invalid_choice";
-        } else if (!selections.isEmpty()) {
-            return "invalid_choice";
+        if (selections.keySet().stream().anyMatch(index -> index < 0 || index >= rewards.size()
+                || !rewards.get(index).type().equals("loot_choice"))) return "invalid_choice";
+        for (int index = 0; index < rewards.size(); index++) {
+            QuestDefinition.Reward reward = rewards.get(index);
+            if (!reward.type().equals("loot_choice")) continue;
+            if (automaticOnly && !automatic(quest, reward)) continue;
+            if (data.receipt(player.getUUID(), quest, index).equals("done")) continue;
+            List<QuestDefinition.Reward> candidates = choices(reward);
+            Integer selected = automaticOnly ? 0 : selections.get(index);
+            if (selected == null || selected < 0 || selected >= candidates.size()) return "choice_required";
+            QuestDefinition.Reward resolved = withSettings(candidates.get(selected), reward);
+            rewards.set(index, resolved);
+            if (automaticOnly) data.replaceReward(player.getUUID(), quest, index, resolved);
         }
+        if (!automaticOnly && rewards.stream().anyMatch(reward -> reward.type().equals("loot_choice")))
+            return "choice_required";
         if (!EXECUTING.add(player.getUUID())) return "busy";
         try {
             List<ItemStack> planned = new ArrayList<>(player.getInventory().items.stream().map(ItemStack::copy).toList());
@@ -299,6 +349,7 @@ public final class QuestRewards {
                 var reward = rewards.get(i);
                 String receipt = data.receipt(player.getUUID(), quest, i);
                 if (receipt.equals("done")) continue;
+                if (automaticOnly && !automatic(quest, reward)) continue;
                 if (!receipt.isEmpty()) return "reward_failed";
                 if (!reward.type().equals("script") && !valid(reward)) return "unavailable";
                 if (!reward.type().equals("item")) continue;
@@ -332,7 +383,9 @@ public final class QuestRewards {
             }
             // Reserve the item batch before any side effect. A crash leaves an explicit uncertain receipt.
             for (int i = 0; i < rewards.size(); i++) {
-                if (rewards.get(i).type().equals("item") && data.receipt(player.getUUID(), quest, i).isEmpty())
+                if (rewards.get(i).type().equals("item")
+                        && (!automaticOnly || automatic(quest, rewards.get(i)))
+                        && data.receipt(player.getUUID(), quest, i).isEmpty())
                     data.receipt(player.getUUID(), quest, i, "running");
             }
             player.getServer().overworld().getDataStorage().save();
@@ -342,7 +395,10 @@ public final class QuestRewards {
                 if (entity == null) throw new IllegalStateException("Reward drop canceled");
             }
             for (int i = 0; i < rewards.size(); i++) {
-                if (rewards.get(i).type().equals("item")) data.receipt(player.getUUID(), quest, i, "done");
+                if (rewards.get(i).type().equals("item")
+                        && (!automaticOnly || automatic(quest, rewards.get(i)))
+                        && data.receipt(player.getUUID(), quest, i).equals("running"))
+                    data.receipt(player.getUUID(), quest, i, "done");
             }
             player.getInventory().setChanged();
             player.containerMenu.broadcastChanges();
@@ -350,6 +406,7 @@ public final class QuestRewards {
             for (int i = 0; i < rewards.size(); i++) {
                 var reward = rewards.get(i);
                 if (data.receipt(player.getUUID(), quest, i).equals("done")) continue;
+                if (automaticOnly && !automatic(quest, reward)) continue;
                 data.receipt(player.getUUID(), quest, i, "running");
                 player.getServer().overworld().getDataStorage().save();
                 try {
@@ -364,8 +421,13 @@ public final class QuestRewards {
                     player.getServer().overworld().getDataStorage().save();
                 }
             }
-            data.claimed(player.getUUID(), quest, rewards);
-            player.getServer().overworld().getDataStorage().save();
+            boolean allDelivered = true;
+            for (int index = 0; index < rewards.size(); index++)
+                allDelivered &= data.receipt(player.getUUID(), quest, index).equals("done");
+            if (allDelivered) {
+                data.claimed(player.getUUID(), quest, rewards);
+                player.getServer().overworld().getDataStorage().save();
+            }
             return "claimed";
         } catch (Exception failure) {
             XeroQuestJournal.LOGGER.error("Reward batch {} needs administrator review", quest.id(), failure);

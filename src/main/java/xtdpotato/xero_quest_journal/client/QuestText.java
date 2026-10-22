@@ -51,6 +51,7 @@ public final class QuestText {
             result.append(Component.literal("\n" + description).withStyle(net.minecraft.ChatFormatting.GRAY));
         List<QuestDefinition.Reward> rewards = view != null && view.completed()
                 && !view.rewards().isEmpty() ? view.rewards() : quest.rewards();
+        rewards = rewards.stream().filter(QuestDefinition.Reward::displayed).toList();
         if (!rewards.isEmpty()) {
             result.append(Component.literal("\n")
                     .append(Component.translatable("screen.xero_quest_journal.tooltip.rewards"))
@@ -117,7 +118,7 @@ public final class QuestText {
         var step = currentStep(quest);
         if (step != null) return stepTitle(step, title(quest));
         if (!quest.objective().isBlank()) return Component.literal(quest.objective());
-        if (quest.id().startsWith("auto_adv_") && quest.triggers().size() == 1
+        if (quest.automaticallyGenerated() && quest.triggers().size() == 1
                 && quest.triggers().getFirst().type().equals("advancement"))
             return Component.translatable("screen.xero_quest_journal.objective.advancement", title(quest));
         return describe(quest.triggers(), title(quest));
@@ -206,7 +207,14 @@ public final class QuestText {
                     if (location != null) return placeName(location);
                 }
                 case "advancement" -> {
-                    return Component.literal(prettyId(target));
+                    ResourceLocation advancement = ResourceLocation.tryParse(target);
+                    if (advancement != null) {
+                        String namespace = advancement.getNamespace().equals("minecraft")
+                                ? "" : advancement.getNamespace() + ".";
+                        String key = "advancements." + namespace
+                                + advancement.getPath().replace('/', '.') + ".title";
+                        return Component.translatableWithFallback(key, prettyId(target));
+                    }
                 }
                 case "quest" -> {
                     String first = target.split("\\s*,\\s*")[0];

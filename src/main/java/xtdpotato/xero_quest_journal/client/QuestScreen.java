@@ -69,7 +69,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
     private String groupId = "";
     private String chapterId = "";
     private String selectedId = "";
-    private String pendingCompletedSelectionId = "";
+    private String pendingClaimNeighborId = "";
     private final Set<String> readMarkedTasks = new HashSet<>();
     private CompletableFuture<String> readAllPending;
     private QuestDefinition selected;
@@ -583,7 +583,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
         if (canAuthor()) {
             nav("edit", editMode ? "preview" : "edit", width - 62, headerControlY(), 22, 24, JournalNavButton.Kind.ICON,
                     editMode ? "preview" : "edit", overviewMode ? this::overviewEditMenu : () -> {
-                        editMode = !editMode;
+                        setEditMode(!editMode);
                         systemLayout = false;
                         error = null;
                         init();
@@ -796,21 +796,6 @@ public final class QuestScreen extends AnimatedQuestScreen {
                 ClientQuestDefinitions.groups();
         List<xtdpotato.xero_quest_journal.core.network.QuestCatalog.Chapter> chapters =
                 ClientQuestDefinitions.chapters();
-        if (!pendingCompletedSelectionId.isBlank()) {
-            var claimed = ClientQuestProgress.view(pendingCompletedSelectionId);
-            if (claimed != null && claimed.status().equals("claimed")) {
-                selectedId = pendingCompletedSelectionId;
-                pendingCompletedSelectionId = "";
-                category = "completed";
-                groupId = chapterId = searchQuery = "";
-                listPage = 0;
-                resetListScroll();
-                revealSelectedPage = true;
-                revealTaskRow = selectedId;
-            } else if (claimed == null || !claimed.status().equals("complete")) {
-                pendingCompletedSelectionId = "";
-            }
-        }
         advanceFromCompletedTask();
         var previouslySelectedView = selectedId.isBlank() ? null : ClientQuestProgress.view(selectedId);
         if (!editMode && previouslySelectedView != null && previouslySelectedView.status().equals("claimed")
@@ -1875,6 +1860,17 @@ public final class QuestScreen extends AnimatedQuestScreen {
         init();
     }
 
+    private void setEditMode(boolean enabled) {
+        if (editMode == enabled) return;
+        editMode = enabled;
+        if (!selectedId.isBlank()) {
+            revealSelectedPage = true;
+            revealTaskRow = selectedId;
+        }
+        listReleaseVelocity = 0;
+        listScrollFrameNanos = System.nanoTime();
+    }
+
     private void navigateTaskSelection(int direction) {
         if (editMode || overviewMode || quests.size() < 2 || selectedId.isBlank()) return;
         int current = questIndex(selectedId);
@@ -1896,6 +1892,34 @@ public final class QuestScreen extends AnimatedQuestScreen {
         resetListScroll();
         rememberSelectedQuest(target.id());
         init();
+    }
+
+    private String nearestClaimNeighbor(String claimedId) {
+        int current = questIndex(claimedId);
+        if (current < 0) return "";
+        QuestDefinition claimed = ClientQuestDefinitions.find(claimedId);
+        if (claimed == null) return "";
+        for (int distance = 1; distance < quests.size(); distance++) {
+            int after = current + distance;
+            if (after < quests.size() && claimNeighbor(quests.get(after), claimedId, claimed.type())) return quests.get(after).id();
+            int before = current - distance;
+            if (before >= 0 && claimNeighbor(quests.get(before), claimedId, claimed.type())) return quests.get(before).id();
+        }
+        for (int distance = 1; distance < quests.size(); distance++) {
+            int after = current + distance;
+            if (after < quests.size() && claimNeighbor(quests.get(after), claimedId, null)) return quests.get(after).id();
+            int before = current - distance;
+            if (before >= 0 && claimNeighbor(quests.get(before), claimedId, null)) return quests.get(before).id();
+        }
+        return "";
+    }
+
+    private boolean claimNeighbor(QuestDefinition candidate, String claimedId, String requiredType) {
+        if (candidate.id().equals(claimedId) || requiredType != null && !candidate.type().equals(requiredType))
+            return false;
+        var view = ClientQuestProgress.view(candidate.id());
+        return !candidate.hidden() && view != null && view.unlocked() && !view.hidden()
+                && !view.status().equals("claimed");
     }
 
     private void rememberSelectedQuest(String id) {
@@ -2544,6 +2568,10 @@ public final class QuestScreen extends AnimatedQuestScreen {
     }
 
     private ItemStack itemStack(String value) {
+        if (value != null && value.startsWith("#")) {
+            var tagged = QuestIcons.tagStacks(value);
+            return tagged.isEmpty() ? ItemStack.EMPTY : tagged.get(tagItemIndex(value, tagged.size())).copy();
+        }
         if (QuestItemStackValue.encoded(value)) {
             return minecraft.player == null ? ItemStack.EMPTY
                     : QuestItemStackValue.decode(value, minecraft.player.registryAccess()).orElse(ItemStack.EMPTY);
@@ -2552,6 +2580,107 @@ public final class QuestScreen extends AnimatedQuestScreen {
         if (id == null || !BuiltInRegistries.ITEM.containsKey(id)) return ItemStack.EMPTY;
         var item = BuiltInRegistries.ITEM.get(id);
         return item == net.minecraft.world.item.Items.AIR ? ItemStack.EMPTY : new ItemStack(item);
+    }
+
+    private static int tagItemIndex(String tag, int count) {
+        if (count <= 1) return 0;
+        int offset = Math.floorMod(tag.hashCode(), count);
+        return (int) ((System.nanoTime() / 1_100_000_000L + offset) % count);
+    }
+
+    private void openTagItems(String tag) {
+        List<ItemStack> items = QuestIcons.tagStacks(tag);
+        if (RecipeViewerBridge.availableViewer().isBlank()
+                || !RecipeViewerBridge.openTag(tag, items))
+            minecraft.setScreen(new QuestTagItemsScreen(this, tag, items));
+    }
+
+    private void openItemTagMenu(int x, int y, String tag) {
+        var entries = new ArrayList<Map.Entry<String, Runnable>>();
+        entries.add(Map.entry("item_display.tag_show_all", () ->
+                minecraft.setScreen(new QuestTagItemsScreen(this, tag, QuestIcons.tagStacks(tag)))));
+        if (!RecipeViewerBridge.availableViewer().isBlank()) {
+            entries.add(Map.entry("item_display.tag_open_viewer", () -> {
+                List<ItemStack> items = QuestIcons.tagStacks(tag);
+                if (!RecipeViewerBridge.openTag(tag, items))
+                    minecraft.setScreen(new QuestTagItemsScreen(this, tag, items));
+            }));
+        }
+        showMenu(x, y, entries);
+    }
+
+    private String tagItemDisplayAt(double x, double y) {
+        String target = hit(x, y);
+        if (target == null) return "";
+        var element = layout.elements().get(target);
+        if (element == null || !element.kind().equals("item_display") || !runtimeVisible(element)) return "";
+        String value = effectiveElement(element).value();
+        return value != null && value.startsWith("#") && !QuestIcons.tagStacks(value).isEmpty() ? value : "";
+    }
+
+    private void renderItemDisplayTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
+        if (editMode || !menu.isEmpty() || form != null || iconPicker != null) return;
+        String target = hit(mouseX, mouseY);
+        var element = target == null ? null : layout.elements().get(target);
+        if (element == null || !runtimeVisible(element)) return;
+        ItemStack stack;
+        String tag = "";
+        if (element.kind().equals("item_display")) {
+            String value = effectiveElement(element).value();
+            List<ItemStack> tagged = value.startsWith("#") ? QuestIcons.tagStacks(value) : List.of();
+            stack = tagged.isEmpty() ? itemStack(value) : tagged.get(tagItemIndex(value, tagged.size()));
+            if (!tagged.isEmpty()) tag = value;
+        } else if (element.kind().equals("quest_rewards")) {
+            int index = rewardIndexAt(element, mouseX, mouseY);
+            List<QuestDefinition.Reward> rewards = displayedRewards();
+            if (index < 0 || index >= rewards.size() || !rewards.get(index).type().equals("item")) return;
+            stack = itemStack(rewards.get(index).item());
+            if (!stack.isEmpty())
+                stack.setCount(Math.max(1, Math.min(stack.getMaxStackSize(), rewards.get(index).count())));
+        } else return;
+        if (stack.isEmpty()) return;
+        var tooltip = new ArrayList<>(Screen.getTooltipFromItem(minecraft, stack));
+        if (!tag.isBlank()) tooltip.add(Component.literal(tag).withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
+        graphics.renderTooltip(font, tooltip, java.util.Optional.empty(), mouseX, mouseY);
+    }
+
+    private Component itemDisplayTooltip(String value) {
+        List<ItemStack> tagged = value != null && value.startsWith("#") ? QuestIcons.tagStacks(value) : List.of();
+        ItemStack stack = tagged.isEmpty() ? itemStack(value) : tagged.get(tagItemIndex(value, tagged.size()));
+        if (stack.isEmpty()) return value == null || value.isBlank()
+                ? text("item_display.choose") : Component.literal(value);
+        var lines = Screen.getTooltipFromItem(minecraft, stack);
+        var tooltip = Component.empty();
+        for (var line : lines) {
+            if (!tooltip.getSiblings().isEmpty()) tooltip.append("\n");
+            tooltip.append(line.copy());
+        }
+        if (!tagged.isEmpty())
+            tooltip.append(Component.literal("\n" + value).withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
+        return tooltip;
+    }
+
+    private void openItemDisplayPreview(String value) {
+        List<ItemStack> tagged = value != null && value.startsWith("#") ? QuestIcons.tagStacks(value) : List.of();
+        ItemStack stack = tagged.isEmpty() ? itemStack(value) : tagged.get(tagItemIndex(value, tagged.size()));
+        if (stack.isEmpty()) return;
+        String item = QuestItemStackValue.encoded(value) ? value
+                : BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
+        minecraft.setScreen(new QuestRewardPopupScreen(this,
+                new QuestDefinition.Reward("item", item, 1)));
+    }
+
+    private void renderTaskRewardTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
+        if (editMode || form != null || iconPicker != null || selected == null || rewardFooterHeight() <= 0)
+            return;
+        var hit = JournalDetailRenderer.cardAt(font, selected, displayedRewards(), detailsLeft,
+                detailContentBottom(), width - 14, mouseX, mouseY);
+        if (hit == null || hit.bonus() || !hit.reward().type().equals("item")) return;
+        ItemStack stack = itemStack(hit.reward().item());
+        if (stack.isEmpty()) return;
+        stack.setCount(Math.max(1, Math.min(stack.getMaxStackSize(), hit.reward().count())));
+        graphics.renderTooltip(font, Screen.getTooltipFromItem(minecraft, stack),
+                java.util.Optional.empty(), mouseX, mouseY);
     }
 
     private static void renderItemStack(GuiGraphics graphics, ItemStack original, int x, int y,
@@ -3631,13 +3760,33 @@ public final class QuestScreen extends AnimatedQuestScreen {
         }
         if (form.kind.equals("item_display")) {
             Form editing = form;
-            labeledField("layout.value", form.description, x + 12, y + 80, w - 52, 4096,
-                    value -> form.description = value);
+            int rowX = x + 12, rowY = y + 80, previewSize = 22;
+            var preview = new StyledButton(rowX, rowY - 1, previewSize + 2, previewSize + 2,
+                    Component.empty(), ignored -> openItemDisplayPreview(editing.description),
+                    styles, "item-display-preview", "toolbar-button") {
+                @Override
+                protected void renderContent(GuiGraphics graphics, ButtonStyle style, int color) {
+                    ItemStack stack = itemStack(editing.description);
+                    if (stack.isEmpty()) {
+                        graphics.renderOutline(getX() + 2, getY() + 2, getWidth() - 4, getHeight() - 4,
+                                0xFF9DB4D2);
+                        return;
+                    }
+                    renderItemStack(graphics, stack, getX() + 3, getY() + 3,
+                            getWidth() - 6, getHeight() - 6, style.opacity());
+                }
+            };
+            preview.setTooltip(Tooltip.create(itemDisplayTooltip(editing.description)));
+            addRenderableWidget(preview);
+            EditBox value = field("layout.value", form.description, rowX + 32, rowY,
+                    w - 84, 4096, next -> form.description = next);
+            value.setHint(Component.empty());
+            value.setTooltip(null);
             var choose = new StyledButton(x + w - 36, y + 80, 24, 20, Component.literal("..."),
                     ignored -> {
-                        iconPicker = new IconPicker(editing.description, value -> {
+                        iconPicker = new IconPicker(editing.description, picked -> {
                             if (form != editing) return;
-                            editing.description = value;
+                            editing.description = picked;
                         }, true);
                         init();
                     }, styles, "item-display-choose", "toolbar-button");
@@ -4748,6 +4897,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
     }
 
     private boolean validItemDisplayValue(String value) {
+        if (validItemTag(value)) return true;
         if (QuestItemStackValue.encoded(value)) {
             return minecraft.player != null && QuestItemStackValue
                     .decode(value, minecraft.player.registryAccess()).isPresent();
@@ -5344,7 +5494,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
             }
             actionPending = null;
             if (claim != null && claim.overflowId() != null && actionMessage.equals("claimed"))
-                pendingCompletedSelectionId = claim.overflowId();
+                selectNeighborAfterClaim(claim.overflowId());
             ClientQuestProgress.tick();
             init();
             if ("choice_required".equals(actionMessage) && claim != null && claim.overflowId() != null) {
@@ -5610,6 +5760,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
             detailCompositor.centered(graphics, width, height, detailsLeft, detailsTop(),
                     width - 14, canvasBottom(), 1, detailReveal.eased());
         }
+        renderTaskRewardTooltip(graphics, mouseX, mouseY);
     }
 
     private void revealDetails() {
@@ -5892,8 +6043,17 @@ public final class QuestScreen extends AnimatedQuestScreen {
             if (drawContent && element.kind().equals("quest_icon")) {
                 QuestIcons.render(g, selected == null ? "" : selected.icon(), x, y, elementWidth, elementHeight, alpha);
             } else if (drawContent && element.kind().equals("item_display")) {
-                ItemStack stack = itemStack(effectiveElement(element).value());
+                String itemValue = effectiveElement(element).value();
+                List<ItemStack> tagItems = itemValue.startsWith("#") ? QuestIcons.tagStacks(itemValue) : List.of();
+                ItemStack stack = tagItems.isEmpty() ? itemStack(itemValue)
+                        : tagItems.get(tagItemIndex(itemValue, tagItems.size()));
                 if (!stack.isEmpty()) renderItemStack(g, stack, x, y, elementWidth, elementHeight, alpha);
+                if (tagItems.size() > 1 && elementWidth >= 34 && elementHeight >= 18) {
+                    String frame = (tagItemIndex(itemValue, tagItems.size()) + 1) + "/" + tagItems.size();
+                    g.drawString(font, frame, x + elementWidth - font.width(frame) - 2,
+                            y + elementHeight - font.lineHeight - 1,
+                            applyAlpha(0xFFE8E0CE, alpha), true);
+                }
                 if (hoveredSurface || pressedSurface)
                     g.renderOutline(x - 1, y - 1, elementWidth + 2, elementHeight + 2,
                             applyAlpha(pressedSurface ? 0xFFFFE3A2 : 0xFFF0D28A, alpha));
@@ -6295,7 +6455,8 @@ public final class QuestScreen extends AnimatedQuestScreen {
     private List<QuestDefinition.Reward> displayedRewards() {
         if (selected == null) return List.of();
         var view = ClientQuestProgress.view(selected.id());
-        return view == null ? selected.rewards() : view.rewards();
+        List<QuestDefinition.Reward> values = editMode || view == null ? selected.rewards() : view.rewards();
+        return values.stream().filter(reward -> editMode || reward.displayed()).toList();
     }
 
     private void openRewardsEditor() {
@@ -6344,17 +6505,35 @@ public final class QuestScreen extends AnimatedQuestScreen {
         int columnStep = canvasPixels(RewardCardRenderer.COLUMN_STEP);
         int rowStep = canvasPixels(RewardCardRenderer.ROW_STEP);
         int columns = Math.max(1, (w + canvasPixels(4)) / columnStep);
-        int index = 0;
-        for (var reward : rewards) {
-            int left = x + index % columns * columnStep;
-            int top = y + heading + index / columns * rowStep;
-            index++;
-            if (top >= y + h) break;
+        int cardWidth = canvasPixels(RewardCardRenderer.WIDTH);
+        int cardHeight = canvasPixels(RewardCardRenderer.HEIGHT);
+        for (int rewardIndex = 0; rewardIndex < rewards.size(); rewardIndex++) {
+            int column = rewardIndex % columns;
+            int row = rewardIndex / columns;
+            int left = x + column * columnStep;
+            int top = y + heading + row * rowStep;
+            if (left + cardWidth > x + w || top + cardHeight > y + h) break;
+            var reward = rewards.get(rewardIndex);
             boolean claimed = view != null && view.status().equals("claimed");
             RewardCardRenderer.render(g, font, QuestRewardsScreen.icon(reward.type(), reward.item()),
                     reward.count(), reward.quality(), reward.background(), left, top,
                     (float) canvasRenderScale(), alpha, claimed,
-                    index - 1 == hoveredReward);
+                    rewardIndex == hoveredReward);
+        }
+        if (editMode && columns > 0) {
+            int addColumn = rewards.size() % columns;
+            int addRow = rewards.size() / columns;
+            int addX = x + addColumn * columnStep;
+            int addY = y + heading + addRow * rowStep;
+            if (addX + cardWidth <= x + w && addY + cardHeight <= y + h) {
+                int cardW = cardWidth, cardH = cardHeight;
+                g.fillGradient(addX, addY, addX + cardW, addY + canvasPixels(28),
+                        0xFF536B83, 0xFF7087A0);
+                g.fill(addX, addY + canvasPixels(28), addX + cardW, addY + cardH, 0xCC2A2D34);
+                g.renderOutline(addX, addY, cardW, cardH, 0xFFD9E5F2);
+                JournalNavButton.drawIcon(g, "add", addX + Math.max(1, canvasPixels(9)),
+                        addY + Math.max(1, canvasPixels(9)), canvasPixels(16), 0xFFF2CF83);
+            }
         }
         g.disableScissor();
     }
@@ -6745,6 +6924,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
         }
         renderContextMenu(g, x, y, tick);
         renderTaskReorder(g, tick);
+        renderItemDisplayTooltip(g, x, y);
     }
 
     private void renderContextMenu(GuiGraphics g, int x, int y, float tick) {
@@ -6915,7 +7095,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
         entries.add(Map.entry("overview_background.edit",
                 () -> minecraft.setScreen(new OverviewBackgroundScreen(this))));
         if (editMode) entries.add(Map.entry("preview", () -> {
-            editMode = false;
+            setEditMode(false);
             movingTask = movingTab = "";
             init();
         }));
@@ -6924,7 +7104,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
 
     private void enterAllTaskEditor() {
         if (!canAuthor()) return;
-        editMode = true;
+        setEditMode(true);
         systemLayout = hierarchyOpen = false;
         movingTask = movingTab = "";
         category = "active";
@@ -7318,7 +7498,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
         }
         ClientPreferences.get().lastTaskTemplate = template.id();
         ClientPreferences.get().save();
-        editMode = true;
+        setEditMode(true);
         form = new Form("task", template.type());
         form.placement = placement;
         form.targetGroup = targetGroup;
@@ -7786,6 +7966,11 @@ public final class QuestScreen extends AnimatedQuestScreen {
             return true;
         }
         if (button == 1 && !editMode) {
+            String taggedControl = tagItemDisplayAt(x, y);
+            if (!taggedControl.isBlank()) {
+                openItemTagMenu((int) x, (int) y, taggedControl);
+                return true;
+            }
             menu.clear();
             menuTarget = null;
             return true;
@@ -7810,13 +7995,15 @@ public final class QuestScreen extends AnimatedQuestScreen {
         }
         if (button == 0 && selected != null && rewardFooterHeight() > 0
                 && y >= detailContentBottom() && y < canvasBottom()) {
+            int footerRight = width - 14 - (ClientQuestProgress.isDailyToday(selected.id())
+                    ? JournalDetailRenderer.dailyBlockWidth(font) : 0);
             if (editMode && JournalDetailRenderer.addButtonAt(displayedRewards(), detailsLeft,
-                    detailContentBottom(), x, y)) {
+                    detailContentBottom(), footerRight, x, y)) {
                 openRewardsEditor();
                 return true;
             }
             var hit = JournalDetailRenderer.cardAt(font, selected, displayedRewards(), detailsLeft,
-                    detailContentBottom(), width - 14, x, y);
+                    detailContentBottom(), footerRight, x, y);
             if (hit != null) {
                 minecraft.setScreen(LootTablePopupScreen.inspect(this, hit.reward()));
                 return true;
@@ -7865,6 +8052,10 @@ public final class QuestScreen extends AnimatedQuestScreen {
                         || !runtimeVisible(element)) continue;
                 int index = rewardIndexAt(element, x, y);
                 var rewards = displayedRewards();
+                if (editMode && index == rewards.size()) {
+                    openRewardsEditor();
+                    return true;
+                }
                 if (index >= 0 && index < rewards.size()) {
                     minecraft.setScreen(LootTablePopupScreen.inspect(this, rewards.get(index)));
                     return true;
@@ -7885,6 +8076,14 @@ public final class QuestScreen extends AnimatedQuestScreen {
             var element = layout.elements().get(target);
             if (element.kind().equals("item_display")) {
                 String value = effectiveElement(element).value();
+                List<ItemStack> tagged = value.startsWith("#") ? QuestIcons.tagStacks(value) : List.of();
+                if (!tagged.isEmpty()) {
+                    ItemStack preview = tagged.get(tagItemIndex(value, tagged.size()));
+                    String item = BuiltInRegistries.ITEM.getKey(preview.getItem()).toString();
+                    minecraft.setScreen(new QuestRewardPopupScreen(this,
+                            new QuestDefinition.Reward("item", item, 1)));
+                    return true;
+                }
                 minecraft.setScreen(new QuestRewardPopupScreen(this,
                         new QuestDefinition.Reward("item", value, 1)));
                 return true;
@@ -7909,6 +8108,14 @@ public final class QuestScreen extends AnimatedQuestScreen {
             List<QuestDefinition.Reward> rewards = displayedRewards();
             if (rewardIndex >= 0 && rewardIndex < rewards.size()) {
                 minecraft.setScreen(LootTablePopupScreen.inspect(this, rewards.get(rewardIndex)));
+                return true;
+            }
+        }
+        if (button == 0 && editMode && target != null && layout.elements().containsKey(target)
+                && layout.elements().get(target).kind().equals("quest_rewards")) {
+            var element = layout.elements().get(target);
+            if (rewardIndexAt(element, x, y) == displayedRewards().size()) {
+                openRewardsEditor();
                 return true;
             }
         }
@@ -8047,7 +8254,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
             return true;
         }
         if (button == 1 && canAuthor() && (editMode || "system:edit".equals(target))) {
-            editMode = true;
+            setEditMode(true);
             contextMenu((int) x, (int) y, target);
             return true;
         }
@@ -8104,6 +8311,8 @@ public final class QuestScreen extends AnimatedQuestScreen {
         if (localY < heading || localY - heading < 0 || column >= columns || row < 0) return -1;
         if (localX - column * columnStep >= cardWidth || (localY - heading) % rowStep >= cardHeight) return -1;
         int index = row * columns + column;
+        if (editMode && index == rewards.size())
+            return rewards.size();
         return index < rewards.size() ? index : -1;
     }
 
@@ -8722,6 +8931,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
         if (id == null || id.isBlank() || actionPending != null) return;
         actionMessage = null;
         pendingClaim = null;
+        pendingClaimNeighborId = "";
         if (claim) {
             var view = ClientQuestProgress.view(id);
             if (view == null || !view.status().equals("complete")) {
@@ -8730,6 +8940,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
                 return;
             }
             QuestDefinition quest = ClientQuestDefinitions.find(id);
+            pendingClaimNeighborId = nearestClaimNeighbor(id);
             actionPending = ClientQuestProgress.action(id, true);
             pendingClaim = new PendingClaim(actionPending, quest == null ? "" : QuestText.title(quest).getString(),
                     id, Map.of(id, view.rewards()));
@@ -8737,6 +8948,25 @@ public final class QuestScreen extends AnimatedQuestScreen {
             actionPending = ClientQuestProgress.action(id, false);
         }
         init();
+    }
+
+    private void selectNeighborAfterClaim(String claimedId) {
+        String neighbor = pendingClaimNeighborId;
+        pendingClaimNeighborId = "";
+        if (neighbor.isBlank() || neighbor.equals(claimedId)) {
+            selectedId = "";
+            selected = null;
+        } else {
+            selectedId = neighbor;
+            selected = ClientQuestDefinitions.find(neighbor);
+            revealSelectedPage = true;
+            revealTaskRow = neighbor;
+            rememberSelectedQuest(neighbor);
+        }
+        selectedTaskIds.clear();
+        selectedLayoutIds.clear();
+        selectedLayoutId = null;
+        detailScroll = detailTargetScroll = 0;
     }
 
     private void runClaimAll() {

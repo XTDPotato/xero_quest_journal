@@ -1,10 +1,36 @@
 // Changes in this file apply only to the unobfuscated 26.x source copies.
+ext.replaceModernMethod = { String source, String signature, String replacement ->
+    int start = source.indexOf(signature)
+    if (start < 0) return source
+    int open = source.indexOf("{", start + signature.length())
+    if (open < 0) throw new GradleException("Could not find method body for ${signature}")
+    int depth = 0
+    int end = -1
+    boolean quoted = false
+    boolean escaped = false
+    for (int index = open; index < source.length(); index++) {
+        char current = source.charAt(index)
+        if (quoted) {
+            if (escaped) escaped = false
+            else if (current == '\\') escaped = true
+            else if (current == '"') quoted = false
+        } else if (current == '"') quoted = true
+        else if (current == '{') depth++
+        else if (current == '}' && --depth == 0) { end = index; break }
+    }
+    if (end < 0) throw new GradleException("Unclosed method body for ${signature}")
+    source.substring(0, start) + replacement + source.substring(end + 1)
+}
+
 ext.adaptModernMinecraftSource = { String relative, String text ->
     text = text.replace("ResourceLocation", "Identifier")
             .replace("net.minecraft.world.level.saveddata.SavedData", "xtdpotato.xero_quest_journal.modern.ModernSavedData")
             .replaceAll(/\bextends SavedData\b/, "extends ModernSavedData")
             .replace(".getAllKeys()", ".keySet()")
             .replace(".getDataStorage().save()", ".getDataStorage().saveAndJoin()")
+            .replaceAll(/BuiltInRegistries\.ITEM\.get\(/, "BuiltInRegistries.ITEM.getValue(")
+            .replaceAll(/\.getInventory\(\)\.items\b/, ".getInventory().getNonEquipmentItems()")
+            .replaceAll(/\b(player|p|author)\.server\b/, '$1.level().getServer()')
     // NBT scalar accessors now return Optional. Zero-argument Component.getString and
     // the two-argument Brigadier accessors must keep their original meaning.
     if (text.contains("net.minecraft.nbt.") || text.contains("getPersistentData()")
@@ -45,12 +71,178 @@ ext.adaptModernMinecraftSource = { String relative, String text ->
                 .replace('return data; }),\n                "xero_control_state")', "return data; })")
     }
     if (relative.endsWith("QuestStructures.java")) {
-        text = text.replace("player.server.overworld().getDataStorage().computeIfAbsent(new SavedData.Factory<>(Sessions::new,",
-                "ModernSavedData.get(player.server, KEY, Sessions::new,")
-                .replace("server.overworld().getDataStorage().computeIfAbsent(new SavedData.Factory<>(Sessions::new,",
+        text = text.replaceAll(
+                /player(?:\.server|\.level\(\)\.getServer\(\))\.overworld\(\)\.getDataStorage\(\)\.computeIfAbsent\(new (?:SavedData\.)?Factory<>\(Sessions::new,/,
+                "ModernSavedData.get(player.level().getServer(), KEY, Sessions::new,")
+                .replaceAll(
+                        /server\.overworld\(\)\.getDataStorage\(\)\.computeIfAbsent\(new (?:SavedData\.)?Factory<>\(Sessions::new,/,
                         "ModernSavedData.get(server, KEY, Sessions::new,")
-                .replace("return data; }, null), KEY)", "return data; })")
-                .replace("return data; }), KEY)", "return data; })")
+                .replaceAll(/return data; \}, null\), KEY\);/, "return data; });")
+                .replaceAll(/return data; \}\), KEY\);/, "return data; })")
     }
+
+    if (relative.endsWith("UiCompositor.java") || relative.endsWith("CategoryIconRenderer.java"))
+        return ""
+    if (relative.endsWith("QuestReiPlugin.java"))
+        return ""
+
+    text = text.replace("import net.minecraft.client.gui.GuiGraphics;",
+            "import xtdpotato.xero_quest_journal.client.ModernGuiGraphics;")
+            .replaceAll(/\bGuiGraphics\b/, "ModernGuiGraphics")
+            .replaceAll(/net\.minecraft\.client\.gui\.ModernGuiGraphics\b/,
+                    "xtdpotato.xero_quest_journal.client.ModernGuiGraphics")
+            .replaceAll(/@Override\s+(?=(?:public|protected)\s+(?:final\s+)?void\s+renderBackground\(ModernGuiGraphics)/, "")
+
+    if (text.contains("void renderBackground(ModernGuiGraphics graphics,")) {
+        String extractedBackground = """
+
+    @Override
+    public void extractBackground(net.minecraft.client.gui.GuiGraphicsExtractor extractor,
+                                  int mouseX, int mouseY, float partialTick) {
+        renderBackground(new xtdpotato.xero_quest_journal.client.ModernGuiGraphics(extractor),
+                mouseX, mouseY, partialTick);
+    }
+"""
+        int end = text.lastIndexOf("}")
+        text = text.substring(0, end) + extractedBackground + text.substring(end)
+    }
+
+    if (relative.endsWith("AnimatedQuestScreen.java")) {
+        String extractedRender = """
+    public final void extractRenderState(net.minecraft.client.gui.GuiGraphicsExtractor extractor,
+                                         int x, int y, float delta) {
+        long now = System.nanoTime();
+        if (!entered) {
+            entered = true;
+            motion.target(true, now, animationMillis());
+        }
+        motion.advance(now, animationMillis());
+        ModernGuiGraphics graphics = new ModernGuiGraphics(extractor);
+        if (isModalScreen()) {
+            renderModalBackground(graphics, delta);
+            graphics.fill(0, 0, width, height, popupScrimColor());
+        }
+        float scale = closing ? (float) motion.position()
+                : .88F + .12F * (float) motion.eased();
+        graphics.pose().pushPose();
+        graphics.pose().translate(width / 2.0, height / 2.0, 0);
+        graphics.pose().scale(scale, scale, 1);
+        graphics.pose().translate(-width / 2.0, -height / 2.0, 0);
+        renderContents(graphics, x, y, delta);
+        graphics.pose().popPose();
+    }"""
+        text = replaceModernMethod(text,
+                "public final void render(ModernGuiGraphics graphics, int x, int y, float delta)",
+                extractedRender)
+        text = text.replace("renderable.render(graphics,",
+                "renderable.extractRenderState(graphics.raw(),")
+    }
+
+    if (text.contains("void renderWidget(ModernGuiGraphics graphics,")) {
+        boolean isAbstractButton = relative.endsWith("StyledButton.java")
+        text = text.replaceAll(
+                /@Override\s+(protected|public)\s+void renderWidget\(ModernGuiGraphics graphics,\s*/,
+                isAbstractButton
+                        ? '@Override protected void extractContents(net.minecraft.client.gui.GuiGraphicsExtractor extractor, '
+                        : '@Override $1 void extractWidgetRenderState(net.minecraft.client.gui.GuiGraphicsExtractor extractor, ')
+        text = text.replaceAll(
+                /(extractWidgetRenderState|extractContents)\(net\.minecraft\.client\.gui\.GuiGraphicsExtractor extractor, ([^)]+)\) \{/,
+                '$1(net.minecraft.client.gui.GuiGraphicsExtractor extractor, $2) {\n        ModernGuiGraphics graphics = new ModernGuiGraphics(extractor);')
+        text = text.replaceAll(/super\.renderWidget\(graphics,\s*([^,]+),\s*([^,]+),\s*([^)]+)\)/,
+                "super.extractWidgetRenderState(extractor, \$1, \$2, \$3)")
+    }
+    if (relative.endsWith("StyledButton.java")) {
+        text = text.replace("button -> onPress.run()", "button -> onPress.onPress(button)")
+                .replaceAll(/@Override\s+public void onPress\(\)/, "public void onPress()")
+        text = replaceModernMethod(text, "public void onPress()",
+                """public void onPress() {
+        onPress(new net.minecraft.client.input.KeyEvent(org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER, 0, 0));
+    }
+    @Override public void onPress(net.minecraft.client.input.InputWithModifiers input) {
+        if (active && actionMotionKey != null) motion.click();
+        super.onPress(input);
+    }""")
+    }
+
+    if (!text.contains("boolean mouseClicked(net.minecraft.client.input.MouseButtonEvent event"))
+    text = text.replaceAll(/(?m)(?:@Override\s+)?(public|protected)\s+boolean\s+mouseClicked\(double\s+(\w+),\s*double\s+(\w+),\s*int\s+(\w+)\)\s*\{/,
+            { full, access, x, y, button ->
+                "${access} boolean mouseClicked(double ${x}, double ${y}, int ${button}) { return mouseClicked(new net.minecraft.client.input.MouseButtonEvent(${x}, ${y}, new net.minecraft.client.input.MouseButtonInfo(${button}, 0)), false); }\n@Override ${access} boolean mouseClicked(net.minecraft.client.input.MouseButtonEvent event, boolean eventDoubleClick) {\n        double ${x} = event.x(); double ${y} = event.y(); int ${button} = event.button();"
+            })
+    if (!text.contains("boolean mouseReleased(net.minecraft.client.input.MouseButtonEvent event"))
+    text = text.replaceAll(/(?m)(?:@Override\s+)?(public|protected)\s+boolean\s+mouseReleased\(double\s+(\w+),\s*double\s+(\w+),\s*int\s+(\w+)\)\s*\{/,
+            { full, access, x, y, button ->
+                "${access} boolean mouseReleased(double ${x}, double ${y}, int ${button}) { return mouseReleased(new net.minecraft.client.input.MouseButtonEvent(${x}, ${y}, ${button}, 0)); }\n@Override ${access} boolean mouseReleased(net.minecraft.client.input.MouseButtonEvent event) {\n        double ${x} = event.x(); double ${y} = event.y(); int ${button} = event.button();"
+            })
+    if (!text.contains("boolean mouseDragged(net.minecraft.client.input.MouseButtonEvent event"))
+    text = text.replaceAll(/(?m)(?:@Override\s+)?(public|protected)\s+boolean\s+mouseDragged\(double\s+(\w+),\s*double\s+(\w+),\s*int\s+(\w+),\s*double\s+(\w+),\s*double\s+(\w+)\)\s*\{/,
+            { full, access, x, y, button, dx, dy ->
+                "${access} boolean mouseDragged(double ${x}, double ${y}, int ${button}, double ${dx}, double ${dy}) { return mouseDragged(new net.minecraft.client.input.MouseButtonEvent(${x}, ${y}, ${button}, 0), ${dx}, ${dy}); }\n@Override ${access} boolean mouseDragged(net.minecraft.client.input.MouseButtonEvent event, double ${dx}, double ${dy}) {\n        double ${x} = event.x(); double ${y} = event.y(); int ${button} = event.button();"
+            })
+    if (!text.contains("boolean keyPressed(net.minecraft.client.input.KeyEvent event"))
+    text = text.replaceAll(/(?m)(?:@Override\s+)?(public|protected)\s+boolean\s+keyPressed\(int\s+(\w+),\s*int\s+(\w+),\s*int\s+(\w+)\)\s*\{/,
+            { full, access, key, scan, modifiers ->
+                "${access} boolean keyPressed(int ${key}, int ${scan}, int ${modifiers}) { return keyPressed(new net.minecraft.client.input.KeyEvent(${key}, ${scan}, ${modifiers})); }\n@Override ${access} boolean keyPressed(net.minecraft.client.input.KeyEvent event) {\n        int ${key} = event.key(); int ${scan} = event.scancode(); int ${modifiers} = event.modifiers();"
+            })
+    if (!text.contains("boolean charTyped(net.minecraft.client.input.CharacterEvent event"))
+    text = text.replaceAll(/(?m)(?:@Override\s+)?(public|protected)\s+boolean\s+charTyped\(char\s+(\w+),\s*int\s+(\w+)\)\s*\{/,
+            { full, access, codePoint, modifiers ->
+                "${access} boolean charTyped(char ${codePoint}, int ${modifiers}) { return charTyped(new net.minecraft.client.input.CharacterEvent(${codePoint})); }\n@Override ${access} boolean charTyped(net.minecraft.client.input.CharacterEvent event) {\n        char ${codePoint} = (char) event.codepoint(); int ${modifiers} = 0;"
+            })
+    if (!text.contains("boolean keyReleased(net.minecraft.client.input.KeyEvent event"))
+    text = text.replaceAll(/(?m)(?:@Override\s+)?(public|protected)\s+boolean\s+keyReleased\(int\s+(\w+),\s*int\s+(\w+),\s*int\s+(\w+)\)\s*\{/,
+            { full, access, key, scan, modifiers ->
+                "${access} boolean keyReleased(int ${key}, int ${scan}, int ${modifiers}) { return keyReleased(new net.minecraft.client.input.KeyEvent(${key}, ${scan}, ${modifiers})); }\n@Override ${access} boolean keyReleased(net.minecraft.client.input.KeyEvent event) {\n        int ${key} = event.key(); int ${scan} = event.scancode(); int ${modifiers} = event.modifiers();"
+            })
+    text = text.replace("import net.minecraft.client.gui.navigation.CommonInputs;", "")
+            .replace("CommonInputs.selected(key)",
+                    "(key == org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER || key == org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE)")
+            .replace("net.minecraft.Util", "net.minecraft.util.Util")
+            .replace("net.minecraft.client.gui.ModernGuiGraphics",
+                    "xtdpotato.xero_quest_journal.client.ModernGuiGraphics")
+            .replace("net.minecraft.client.Minecraft.ON_OSX", "false")
+            .replace("Minecraft.ON_OSX", "false")
+            .replaceAll(/super\.mouseClicked\(([^,]+),\s*([^,]+),\s*([^)]+)\)/,
+                    "super.mouseClicked(event, eventDoubleClick)")
+            .replaceAll(/super\.mouseReleased\(([^,]+),\s*([^,]+),\s*([^)]+)\)/,
+                    "super.mouseReleased(event)")
+            .replaceAll(/super\.mouseDragged\(([^,]+),\s*([^,]+),\s*([^,]+),\s*([^,]+),\s*([^)]+)\)/,
+                    "super.mouseDragged(event, \$4, \$5)")
+            .replaceAll(/super\.keyPressed\(([^,]+),\s*([^,]+),\s*([^)]+)\)/,
+                    "super.keyPressed(event)")
+            .replaceAll(/super\.keyReleased\(([^,]+),\s*([^,]+),\s*([^)]+)\)/,
+                    "super.keyReleased(event)")
+            .replaceAll(/super\.charTyped\(([^,]+),\s*([^)]+)\)/,
+                    "super.charTyped(event)")
+            .replaceAll(/child\.mouseClicked\(([^,]+),\s*([^,]+),\s*([^)]+)\)/,
+                    "child.mouseClicked(new net.minecraft.client.input.MouseButtonEvent(\$1, \$2, new net.minecraft.client.input.MouseButtonInfo(\$3, event.modifiers())), eventDoubleClick)")
+            .replaceAll(/new net\.minecraft\.client\.input\.MouseButtonInfo\(new net\.minecraft\.client\.input\.MouseButtonInfo\(([^,]+),\s*([^)]+)\)\)/,
+                    "new net.minecraft.client.input.MouseButtonInfo(\$1, \$2)")
+            .replaceAll(/new net\.minecraft\.client\.input\.MouseButtonInfo\(new net\.minecraft\.client\.input\.MouseButtonInfo\(([^,]+),\s*([^)]+)\)\)/,
+                    "new net.minecraft.client.input.MouseButtonInfo(\$1, \$2)")
+            .replaceAll(/(?:com\.mojang\.blaze3d\.systems\.)?RenderSystem\.clear\([^;]*\);/, "")
+            .replaceAll(/\.hasPermissions\(2\)/,
+                    ".permissions().hasPermission(net.minecraft.server.permissions.Permissions.COMMANDS_GAMEMASTER)")
+            .replaceAll(/\b(player|author|p)\.getServer\(\)/, '$1.level().getServer()')
+            .replaceAll(/\.dimension\(\)\.location\(\)/, ".dimension().identifier()")
+            .replaceAll(/Screen\.hasControlDown\(\)/,
+                    "org.lwjgl.glfw.GLFW.glfwGetKey(Minecraft.getInstance().getWindow().getWindow(), org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_CONTROL) == org.lwjgl.glfw.GLFW.GLFW_PRESS")
+            .replaceAll(/net\.minecraft\.client\.Minecraft game, int width, int height\)/,
+                    "int width, int height)")
+            .replaceAll(/super\.resize\(game, width, height\)/, "super.resize(width, height)")
+            .replaceAll(/new net\.minecraft\.client\.input\.MouseButtonEvent\(([^,]+),\s*([^,]+),\s*([^,]+),\s*0\)/,
+                    "new net.minecraft.client.input.MouseButtonEvent(\$1, \$2, new net.minecraft.client.input.MouseButtonInfo(\$3, 0))")
+
+    text = text.replace("com.mojang.blaze3d.platform.GlStateManager",
+            "com.mojang.blaze3d.opengl.GlStateManager")
+            .replace("graphics.flush();", "")
+            .replace("g.flush();", "")
+            .replaceAll(/(?:com\.mojang\.blaze3d\.systems\.)?RenderSystem\.(?:enableDepthTest|disableDepthTest|enableBlend|defaultBlendFunc|disableScissor)\(\);/, "")
+            .replaceAll(/\.pose\(\)\.last\(\)\.pose\(\)/, "new org.joml.Matrix4f()")
+    if (relative.endsWith("FabricClientAccess.java"))
+        text = text.replace("net.minecraft.client.renderer.ShaderInstance", "Object")
+    if (relative.endsWith("XeroQuestJournalFabricClient.java"))
+        text = text.replace("import net.fabricmc.fabric.api.client.rendering.v1.CoreShaderRegistrationCallback;\n", "")
+                .replaceAll(/        CoreShaderRegistrationCallback\.EVENT\.register\([\s\S]*?FabricClientAccess::categoryShader\)\);\r?\n/, "")
     return text
 }
