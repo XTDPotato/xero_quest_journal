@@ -75,5 +75,7 @@ SHA256:
 2016a4013dbce11c90256f2ad450fc5a837654080ef9a69c6e760f8d038f64fe  xero_quest_journal-forge-1.20.1-0.2.3.jar
 adb4c8d3eb77ac7f4d8cfef130c89bcf69f745e0f5bc735c1dfe8a8a747dc1b5  xero_quest_journal-fabric-1.20.1-0.2.3.jar
 ec5e8a166d67dd1dd03011c7a43af2faab7d81e9ec5f973ab9cb3225f55cac39  xero_quest_journal-fabric-1.21.1-0.2.3.jar
-3242405b1f2460021a1207111a65ff794c1c929d39ce7c79b26eb17efad140b0  xero_quest_journal-supported-builds-0.2.3.zip
 ```
+
+`SHA256SUMS.txt` attached to the release is the source of truth for all four JARs and the
+supported-builds ZIP.
