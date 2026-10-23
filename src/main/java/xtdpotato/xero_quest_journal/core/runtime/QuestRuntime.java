@@ -55,6 +55,8 @@ public final class QuestRuntime {
     @SubscribeEvent
     public static void tick(ServerTickEvent.Post event) {
         QuestStructureGuidance.tick(event.getServer());
+        if (event.getServer().getTickCount() % 200 == 0)
+            xtdpotato.xero_quest_journal.core.io.QuestGenerator.tickDailyAnecdotes(event.getServer());
         if (event.getServer().getTickCount() % 20 == 0)
             xtdpotato.xero_quest_journal.core.QuestTemplateStore.refresh();
         if (event.getServer().getTickCount() % 10 != 0) return;
@@ -346,6 +348,7 @@ public final class QuestRuntime {
         boolean focusMode = !QuestFocus.group(player).isBlank();
         boolean wasTracked = data.tracked(player.getUUID()).contains(quest.id());
         if (!data.complete(player.getUUID(), quest, rewards)) return false;
+        AnecdoteRuntime.completeGeneratedQuest(player, quest.id());
         data.removeTracked(player.getUUID(), quest.id());
         applyCompletionActions(player, quest.triggers());
         if (focusMode) {

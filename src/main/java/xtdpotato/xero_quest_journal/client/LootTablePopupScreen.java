@@ -43,10 +43,10 @@ public final class LootTablePopupScreen extends AnimatedQuestScreen {
     public static Screen inspect(Screen parent, QuestDefinition.Reward reward) {
         if (reward == null) return parent;
         if (reward.type().equals("loot")) {
-            var table = ClientQuestDefinitions.lootTable(reward.item());
+            var table = QuestRewards.lootTable(reward.item());
             if (table != null)
                 return new LootTablePopupScreen(parent, table.name(), table.displayIcon(), table.mode(),
-                        table.rolls(), table.entries());
+                        table.rolls(), table.display().entries());
         }
         if (reward.type().equals("loot_choice")) {
             var rewards = QuestRewards.choices(reward);

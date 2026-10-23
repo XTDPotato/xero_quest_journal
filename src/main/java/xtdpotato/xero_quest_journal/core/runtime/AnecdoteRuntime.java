@@ -92,6 +92,12 @@ public final class AnecdoteRuntime {
         return true;
     }
 
+    public static void completeGeneratedQuest(ServerPlayer player, String questId) {
+        requireServer(player);
+        var reference = AnecdoteStore.generatedRecord(questId);
+        if (reference != null) completeRecord(player, reference.entryId(), reference.recordId());
+    }
+
     public static void markRewardsRead(ServerPlayer player) {
         requireServer(player);
         var data = QuestProgressData.get(player.getServer());

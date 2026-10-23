@@ -26,6 +26,12 @@ final class ConditionDetailScreen extends AnimatedQuestScreen {
     private int panelHeight() { return Math.min(330, height - 32); }
     private int left() { return (width - panelWidth()) / 2; }
     private int top() { return (height - panelHeight()) / 2; }
+    private int conditionTop() { return top() + 78; }
+    private boolean itemCondition() {
+        return trigger.type().startsWith("item") && !trigger.item().isBlank();
+    }
+    private int cardWidth() { return Math.round(RewardCardRenderer.WIDTH * 1.5F); }
+    private int cardHeight() { return RewardCardRenderer.scaledHeight(1.5F); }
 
     @Override protected boolean isModalScreen() { return true; }
     @Override protected Viewport popupBounds() {
@@ -48,12 +54,14 @@ final class ConditionDetailScreen extends AnimatedQuestScreen {
         QuestIcons.render(g, icon(), x + 18, y + 13, 26);
         g.drawString(font, Component.translatable("screen.xero_quest_journal.conditions.detail." + title),
                 x + 56, y + 17, 0xFFF5D99A, false);
-        int line = y + 78;
-        if (trigger.type().startsWith("item") && !trigger.item().isBlank()) {
+        int line = conditionTop();
+        if (itemCondition()) {
             ItemStack stack = item();
             if (!stack.isEmpty()) {
+                boolean hovered = mx >= x + 18 && mx < x + 18 + cardWidth()
+                        && my >= line && my < line + cardHeight();
                 RewardCardRenderer.render(g, font, trigger.item(), trigger.count(), x + 18, line,
-                        1.5F, 1, false, false);
+                        1.5F, 1, false, hovered);
                 g.drawString(font, stack.getHoverName(), x + 92, line + 12, 0xFFF0EEE8, false);
                 g.drawString(font, Component.translatable("screen.xero_quest_journal.journey.condition_count",
                         trigger.count()), x + 92, line + 34, 0xFFB8C3D0, false);
@@ -74,6 +82,26 @@ final class ConditionDetailScreen extends AnimatedQuestScreen {
             g.drawWordWrap(font, capacity.message(), x + 18, line + 82, w - 36,
                     capacity.impossible() ? 0xFFFF8F83 : 0xFFE8C774);
         super.renderContents(g, mx, my, delta);
+    }
+
+    @Override public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (inputBlocked()) return true;
+        if (super.mouseClicked(mouseX, mouseY, button)) return true;
+        if (button != 0 || !itemCondition()) return false;
+        if (mouseX < left() + 18 || mouseX >= left() + 18 + cardWidth()
+                || mouseY < conditionTop() || mouseY >= conditionTop() + cardHeight()) return false;
+        if (trigger.item().startsWith("#")) {
+            var tagged = QuestIcons.tagStacks(trigger.item());
+            if (!tagged.isEmpty()) {
+                minecraft.setScreen(new QuestTagItemsScreen(this, trigger.item(), tagged));
+                return true;
+            }
+        }
+        ItemStack stack = item();
+        if (stack.isEmpty()) return false;
+        minecraft.setScreen(new QuestRewardPopupScreen(this,
+                new QuestDefinition.Reward("item", trigger.item(), trigger.count())));
+        return true;
     }
 
     private String icon() {

@@ -32,6 +32,7 @@ import xtdpotato.xero_quest_journal.XeroQuestJournal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -56,7 +57,14 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public final class QuestGenerator {
     private record Planned(String id, String namespace, String category, String chapter,
-                           JsonObject json, List<String> parentCandidates, int spotlightScore) {}
+                           JsonObject json, List<String> parentCandidates, int spotlightScore,
+                           String groupId) {
+        private Planned(String id, String namespace, String category, String chapter,
+                        JsonObject json, List<String> parentCandidates, int spotlightScore) {
+            this(id, namespace, category, chapter, json, parentCandidates, spotlightScore,
+                    "auto_" + clean(namespace));
+        }
+    }
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
     private static final int INFINITE = Integer.MAX_VALUE / 4;
@@ -141,34 +149,116 @@ public final class QuestGenerator {
         }
     }
 
-    /** {@code filter} is a namespace or blank; {@code multiplier} scales every reward amount. */
+    /** A difficulty tier is multiplied by the corresponding XP/item multiplier. */
     public enum GenerationMode { CATALOG, PROGRESS, STRUCTURE, BOTH }
-    public record GenerationOptions(int taskMultiplier, int rewardMultiplier, boolean bonusExperience,
+    public record TierItemReward(int tier, String item, int count, int weight) {
+        public TierItemReward(int tier, String item, int count) {
+            this(tier, item, count, 1);
+        }
+        public TierItemReward {
+            tier = Math.clamp(tier, 1, 6);
+            item = item == null ? "minecraft:iron_ingot" : item.strip();
+            if (!item.matches("[a-z0-9_.-]+:[a-z0-9_./-]+"))
+                item = "minecraft:iron_ingot";
+            count = Math.clamp(count, 1, 64);
+            weight = Math.clamp(weight, 1, 1_000_000);
+        }
+    }
+    public record GenerationOptions(int taskMultiplier, int rewardMultiplier, int experienceMultiplier,
+                                    String experienceUnit, boolean bonusExperience,
                                     boolean itemRewards, boolean advancements, boolean itemTasks,
-                                    boolean combatTasks, boolean structureTasks) {
+                                    boolean combatTasks, boolean structureTasks,
+                                    List<TierItemReward> tierItemRewards) {
+        public GenerationOptions(int taskMultiplier, int rewardMultiplier, boolean bonusExperience,
+                                 boolean itemRewards, boolean advancements, boolean itemTasks,
+                                 boolean combatTasks, boolean structureTasks) {
+            this(taskMultiplier, rewardMultiplier, rewardMultiplier, "auto", bonusExperience, itemRewards,
+                    advancements, itemTasks, combatTasks, structureTasks, defaultTierItemRewards());
+        }
+        public GenerationOptions(int taskMultiplier, int rewardMultiplier, int experienceMultiplier,
+                                 boolean bonusExperience, boolean itemRewards, boolean advancements,
+                                 boolean itemTasks, boolean combatTasks, boolean structureTasks) {
+            this(taskMultiplier, rewardMultiplier, experienceMultiplier, "auto", bonusExperience,
+                    itemRewards, advancements, itemTasks, combatTasks, structureTasks, defaultTierItemRewards());
+        }
+        public GenerationOptions(int taskMultiplier, int rewardMultiplier, int experienceMultiplier,
+                                 String experienceUnit, boolean bonusExperience, boolean itemRewards,
+                                 boolean advancements, boolean itemTasks, boolean combatTasks,
+                                 boolean structureTasks) {
+            this(taskMultiplier, rewardMultiplier, experienceMultiplier, experienceUnit, bonusExperience,
+                    itemRewards, advancements, itemTasks, combatTasks, structureTasks, defaultTierItemRewards());
+        }
         public GenerationOptions {
             taskMultiplier = Math.clamp(taskMultiplier, 1, 64);
             rewardMultiplier = Math.clamp(rewardMultiplier, 1, 64);
+            experienceMultiplier = Math.clamp(experienceMultiplier, 1, 64);
+            experienceUnit = switch (experienceUnit == null ? "auto" : experienceUnit) {
+                case "points", "levels" -> experienceUnit;
+                default -> "auto";
+            };
+            tierItemRewards = tierItemRewards == null ? defaultTierItemRewards()
+                    : tierItemRewards.stream().filter(java.util.Objects::nonNull).limit(128).toList();
         }
         public static GenerationOptions defaults() {
-            return new GenerationOptions(1, 1, true, true, true, true, true, true);
+            return new GenerationOptions(1, 1, 1, "auto", true, true, true, true, true, true,
+                    defaultTierItemRewards());
+        }
+        private static List<TierItemReward> defaultTierItemRewards() {
+            return List.of(
+                    new TierItemReward(1, "minecraft:coal", 1, 1),
+                    new TierItemReward(1, "minecraft:raw_copper", 1, 1),
+                    new TierItemReward(1, "minecraft:iron_nugget", 4, 1),
+                    new TierItemReward(2, "minecraft:raw_iron", 1, 1),
+                    new TierItemReward(2, "minecraft:lapis_lazuli", 1, 1),
+                    new TierItemReward(2, "minecraft:gold_nugget", 4, 1),
+                    new TierItemReward(2, "minecraft:copper_ingot", 1, 1),
+                    new TierItemReward(3, "minecraft:raw_gold", 1, 30),
+                    new TierItemReward(3, "minecraft:redstone", 2, 30),
+                    new TierItemReward(3, "minecraft:iron_ingot", 1, 30),
+                    new TierItemReward(3, "minecraft:diamond", 1, 10),
+                    new TierItemReward(4, "minecraft:gold_ingot", 1, 30),
+                    new TierItemReward(4, "minecraft:diamond", 1, 30),
+                    new TierItemReward(4, "minecraft:amethyst_shard", 2, 30),
+                    new TierItemReward(4, "minecraft:netherite_scrap", 1, 10),
+                    new TierItemReward(5, "minecraft:diamond", 3, 80),
+                    new TierItemReward(5, "minecraft:emerald", 2, 80),
+                    new TierItemReward(5, "minecraft:amethyst_shard", 4, 80),
+                    new TierItemReward(5, "minecraft:netherite_scrap", 1, 30),
+                    new TierItemReward(5, "minecraft:ancient_debris", 1, 30),
+                    new TierItemReward(6, "minecraft:diamond", 5, 25),
+                    new TierItemReward(6, "minecraft:emerald", 4, 25),
+                    new TierItemReward(6, "minecraft:amethyst_shard", 8, 20),
+                    new TierItemReward(6, "minecraft:netherite_scrap", 1, 25),
+                    new TierItemReward(6, "minecraft:netherite_ingot", 1, 10));
         }
     }
-    private record Settings(String filter, RewardMode mode, int multiplier, GenerationMode generation,
+    private record Settings(Set<String> namespaces, RewardMode mode, int multiplier, GenerationMode generation,
                             boolean relatedRecipes, GenerationOptions options) {
         Settings(String filter, RewardMode mode, int multiplier) {
-            this(filter, mode, multiplier, GenerationMode.CATALOG, true, GenerationOptions.defaults());
+            this(filterSet(filter), mode, multiplier, GenerationMode.CATALOG, true, GenerationOptions.defaults());
         }
         Settings(String filter, RewardMode mode, int multiplier, GenerationMode generation,
                  boolean relatedRecipes) {
-            this(filter, mode, multiplier, generation, relatedRecipes, GenerationOptions.defaults());
+            this(filterSet(filter), mode, multiplier, generation, relatedRecipes, GenerationOptions.defaults());
+        }
+        Settings {
+            namespaces = namespaces == null ? Set.of() : Set.copyOf(namespaces);
         }
         int taskCount(int base) {
             return Math.max(1, Math.min(1_000_000, base * options.taskMultiplier()));
         }
     }
 
+    private static Set<String> filterSet(String filter) {
+        if (filter == null || filter.isBlank() || filter.equalsIgnoreCase("all")) return Set.of();
+        return Arrays.stream(filter.split(","))
+                .map(value -> value.strip().toLowerCase(Locale.ROOT))
+                .filter(value -> value.matches("[a-z0-9_.-]{1,128}"))
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+    }
+
     private static final AtomicBoolean RUNNING = new AtomicBoolean();
+    private static final AtomicBoolean DAILY_ANECDOTES_RUNNING = new AtomicBoolean();
     private static final ExecutorService WORKER = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "Xero Quest Generator");
         thread.setDaemon(true);
@@ -197,7 +287,7 @@ public final class QuestGenerator {
                 for (var quest : QuestRepository.all()) {
                     String group = QuestRepository.groupOf(quest.id());
                     if (!group.startsWith("auto_")) continue;
-                    String owner = group.substring(5);
+                    String owner = groupNamespace(group);
                     if (!filter.isBlank() && !owner.equals(filter)) continue;
                     Path file = QuestRepository.fileOf(quest.id());
                     if (file == null || !file.getFileName().toString().equals(quest.id() + ".json")) continue;
@@ -213,7 +303,7 @@ public final class QuestGenerator {
                 Set<String> chapters = new HashSet<>();
                 for (var group : QuestRepository.groups()) {
                     if (!group.id().startsWith("auto_")) continue;
-                    if (!filter.isBlank() && !group.id().equals("auto_" + filter)) continue;
+                    if (!filter.isBlank() && !groupNamespace(group.id()).equals(filter)) continue;
                     boolean hasManual = QuestRepository.all().stream()
                             .anyMatch(q -> QuestRepository.groupOf(q.id()).equals(group.id()) && !tasks.contains(q.id()));
                     boolean hasManualChapter = QuestRepository.chapters().stream()
@@ -240,6 +330,11 @@ public final class QuestGenerator {
         return group.startsWith("auto_") && CHAPTERS.stream().anyMatch(key -> id.equals(group + "_" + key));
     }
 
+    private static String groupNamespace(String groupId) {
+        if (groupId.startsWith("auto_structures_")) return groupId.substring("auto_structures_".length());
+        return groupId.startsWith("auto_") ? groupId.substring("auto_".length()) : groupId;
+    }
+
     /**
      * Starts generation in the background for one namespace, or for all when blank. Only the data
      * copy (advancements, recipes) runs on the calling server thread. Namespaces are then processed
@@ -259,10 +354,21 @@ public final class QuestGenerator {
     public static boolean start(MinecraftServer server, String namespace, RewardMode mode, int multiplier,
                                 GenerationMode generation, boolean relatedRecipes, GenerationOptions options,
                                 Reporter reporter) {
+        String target = namespace == null ? "" : namespace.strip().toLowerCase(Locale.ROOT);
+        return startMany(server, filterSet(target), mode, multiplier, generation, relatedRecipes, options, reporter);
+    }
+
+    /** Starts one generation run across the selected namespaces as one connected plan. */
+    public static boolean startMany(MinecraftServer server, Set<String> namespaces, RewardMode mode, int multiplier,
+                                    GenerationMode generation, boolean relatedRecipes, GenerationOptions options,
+                                    Reporter reporter) {
         if (server == null || !server.isSameThread()) throw new IllegalArgumentException("Generation requires server thread");
         if (!RUNNING.compareAndSet(false, true)) return false;
-        String target = namespace == null ? "" : namespace.strip().toLowerCase(Locale.ROOT);
-        Settings settings = new Settings(target.equals("all") ? "" : target, mode == null ? RewardMode.TIER : mode,
+        Set<String> target = namespaces == null ? Set.of() : namespaces.stream()
+                .map(value -> value == null ? "" : value.strip().toLowerCase(Locale.ROOT))
+                .filter(value -> value.matches("[a-z0-9_.-]{1,128}"))
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+        Settings settings = new Settings(target, mode == null ? RewardMode.TIER : mode,
                 options == null ? Math.max(1, Math.min(64, multiplier))
                         : options.rewardMultiplier(), generation, relatedRecipes,
                 options == null ? new GenerationOptions(1, multiplier, true, true, true, true, true, true)
@@ -373,6 +479,370 @@ public final class QuestGenerator {
             }
         }
         return List.copyOf(result);
+    }
+
+    /** Called from the server tick; only commits one deterministic batch for each elapsed world day. */
+    public static void tickDailyAnecdotes(MinecraftServer server) {
+        if (server == null || !server.isSameThread()
+                || !DAILY_ANECDOTES_RUNNING.compareAndSet(false, true)
+                || !RUNNING.compareAndSet(false, true)) {
+            DAILY_ANECDOTES_RUNNING.set(false);
+            return;
+        }
+        var state = xtdpotato.xero_quest_journal.core.runtime.AnecdoteGenerationData.get(server);
+        long day = Math.floorDiv(server.overworld().getDayTime(), 24_000L);
+        if (!state.enabled() || day <= state.lastProcessedDay()) {
+            RUNNING.set(false);
+            DAILY_ANECDOTES_RUNNING.set(false);
+            return;
+        }
+        try {
+            var structures = structureSnapshot(server).stream()
+                    .filter(value -> matches(state.namespaces(), value.id()))
+                    .sorted(Comparator.comparing(value -> value.id().toString() + "|" + value.dimension())).toList();
+            var lootItems = lootTableItems(server).stream()
+                    .map(item -> BuiltInRegistries.ITEM.getKey(item)).filter(java.util.Objects::nonNull)
+                    .map(ResourceLocation::toString).sorted().toList();
+            List<String> existing = xtdpotato.xero_quest_journal.core.io.AnecdoteStore.all().stream()
+                    .map(xtdpotato.xero_quest_journal.core.model.AnecdoteDefinition::id).toList();
+            String worldKey = Integer.toUnsignedString(server.getWorldPath(
+                    net.minecraft.world.level.storage.LevelResource.ROOT).toAbsolutePath().normalize()
+                    .toString().hashCode(), 36);
+            var random = new java.util.Random(server.overworld().getSeed()
+                    ^ (day * 0x9E3779B97F4A7C15L) ^ worldKey.hashCode());
+            var candidates = structures.stream()
+                    .filter(value -> !existing.contains(dailyAnecdoteId(worldKey, value.id())))
+                    .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
+            java.util.Collections.shuffle(candidates, random);
+            int count = Math.min(candidates.size(), 1 + random.nextInt(4));
+            var newStructures = List.copyOf(candidates.subList(0, count));
+            var nextPending = newStructures.stream().map(value -> dailyAnecdoteId(worldKey, value.id())).toList();
+            var previousPending = state.pendingFollowups();
+            var options = state.options();
+            WORKER.execute(() -> {
+                try {
+                    writeDailyAnecdoteBatch(server, day, worldKey, previousPending, newStructures,
+                            nextPending, lootItems, options);
+                } catch (Exception failure) {
+                    XeroQuestJournal.LOGGER.error("Daily anecdote generation failed for game day {}", day, failure);
+                    server.execute(() -> {
+                        RUNNING.set(false);
+                        DAILY_ANECDOTES_RUNNING.set(false);
+                    });
+                }
+            });
+        } catch (RuntimeException failure) {
+            RUNNING.set(false);
+            DAILY_ANECDOTES_RUNNING.set(false);
+            XeroQuestJournal.LOGGER.error("Unable to prepare daily anecdote generation", failure);
+        }
+    }
+
+    private static String dailyAnecdoteId(String worldKey, ResourceLocation structure) {
+        String identity = worldKey + "_" + structure.getNamespace() + "_" + structure.getPath();
+        String base = clean("auto_anecdote_" + identity);
+        if (base.length() <= 64) return base;
+        String hash = Integer.toUnsignedString(identity.hashCode(), 36);
+        return base.substring(0, 63 - hash.length()) + "_" + hash;
+    }
+
+    private static String dailyQuestId(String prefix, String worldKey, long day, ResourceLocation structure,
+                                       String stage) {
+        String identity = worldKey + "_" + day + "_" + structure.getNamespace() + "_"
+                + structure.getPath() + "_" + stage;
+        String base = clean(prefix + "_" + identity);
+        if (base.length() <= 64) return base;
+        String hash = Integer.toUnsignedString(identity.hashCode(), 36);
+        return base.substring(0, 63 - hash.length()) + "_" + hash;
+    }
+
+    private static void writeDailyAnecdoteBatch(MinecraftServer server, long day, String worldKey,
+                                                List<String> previousPending, List<StructureData> newStructures,
+                                                List<String> nextPending, List<String> lootItems,
+                                                GenerationOptions options) throws Exception {
+        var writes = new LinkedHashMap<Path, String>();
+        var expected = new LinkedHashMap<Path, String>();
+        var deletions = new LinkedHashMap<Path, String>();
+        var chapterAdditions = new LinkedHashMap<String, Map<String, List<String>>>();
+        var pendingIds = new ArrayList<String>();
+        var definitions = new LinkedHashMap<String,
+                xtdpotato.xero_quest_journal.core.model.AnecdoteDefinition>();
+        xtdpotato.xero_quest_journal.core.io.AnecdoteStore.all()
+                .forEach(entry -> definitions.put(entry.id(), entry));
+        int anecdoteOrder = definitions.values().stream()
+                .mapToInt(xtdpotato.xero_quest_journal.core.model.AnecdoteDefinition::order)
+                .max().orElse(-1) + 1;
+
+        for (String entryId : previousPending) {
+            var entry = definitions.get(entryId);
+            if (entry == null || entry.records().size() != 1) continue;
+            var arrival = entry.records().getFirst();
+            var arrivalQuest = QuestRepository.find(arrival.generatedQuestId());
+            if (arrivalQuest == null) continue;
+            QuestLocationTarget target = structureTarget(arrivalQuest);
+            if (target == null) continue;
+            String questId = dailyQuestId("auto_anecdote_followup", worldKey, day,
+                    target.structure(), "followup");
+            var trigger = followupTrigger(target.structure(), lootItems);
+            boolean village = trigger.type().equals("block_interact");
+            String followTitle = village
+                    ? Component.translatable("generate.xero_quest_journal.anecdote.ring_bell.title").getString()
+                    : Component.translatable("generate.xero_quest_journal.anecdote.find_item.title",
+                    itemDescription(trigger.item())).getString();
+            String followBody = village
+                    ? Component.translatable("generate.xero_quest_journal.anecdote.ring_bell.body").getString()
+                    : Component.translatable("generate.xero_quest_journal.anecdote.find_item.body",
+                    itemDescription(trigger.item())).getString();
+            var followRecord = new xtdpotato.xero_quest_journal.core.model.AnecdoteDefinition.Record(
+                    "followup", followTitle, followBody, trigger.type().equals("item_acquire")
+                    ? trigger.item() : "minecraft:bell", questId);
+            var extended = new ArrayList<>(entry.records());
+            extended.add(followRecord);
+            var updatedEntry = entry.withRecords(extended);
+            Path entryFile = xtdpotato.xero_quest_journal.core.io.AnecdoteStore.fileFor(entry.id());
+            stageExisting(entryFile, GSON.toJson(updatedEntry), writes, expected);
+
+            String namespace = target.structure().getNamespace();
+            String groupId = structureGroupId(namespace);
+            var json = quest(questId, Component.literal(followTitle), Component.literal(followBody),
+                    "world", trigger.type().equals("item_acquire") ? trigger.item() : "minecraft:bell");
+            json.add("triggers", trigger(trigger.type(), trigger.item(), trigger.count()));
+            json.add("parents", GSON.toJsonTree(List.of(arrivalQuest.id())));
+            json.add("generatedParents", GSON.toJsonTree(List.of(arrivalQuest.id())));
+            json.addProperty("generatedBy", "xero_quest_journal");
+            json.addProperty("generatedNamespace", namespace);
+            json.addProperty("generatedMode", "daily_anecdote");
+            json.addProperty("generatedDifficultyTier", village ? 2 : 1);
+            var taskRewards = rewards(village ? 2 : 1, new Settings(Set.of(namespace), RewardMode.TIER,
+                    options.rewardMultiplier(), GenerationMode.BOTH, true, options));
+            applyGeneratedRewardOptions(taskRewards, new Settings(Set.of(namespace), RewardMode.TIER,
+                    options.rewardMultiplier(), GenerationMode.BOTH, true, options), village ? 2 : 1);
+            json.add("rewards", taskRewards);
+            json.add("generatedRewards", taskRewards.deepCopy());
+            json.add("generatedTriggers", json.get("triggers").deepCopy());
+            GSON.fromJson(json, xtdpotato.xero_quest_journal.core.model.QuestDefinition.class);
+            stageNew(taskFile(new Planned(questId, namespace, "story", "7_exploration", json,
+                    List.of(arrivalQuest.id()), 0, groupId)), GSON.toJson(json), writes);
+            chapterAdditions.computeIfAbsent(groupId, ignored -> new LinkedHashMap<>())
+                    .computeIfAbsent("7_exploration", ignored -> new ArrayList<>()).add(questId);
+        }
+
+        for (var structure : newStructures) {
+            String entryId = dailyAnecdoteId(worldKey, structure.id());
+            String arrivalQuestId = dailyQuestId("auto_anecdote_visit", worldKey, day, structure.id(), "arrival");
+            String structureName = Component.translatableWithFallback("structure."
+                    + structure.id().getNamespace() + "." + structure.id().getPath().replace('/', '.'),
+                    structure.id().toString().replace('_', ' ')).getString();
+            String title = Component.translatable("generate.xero_quest_journal.anecdote.arrival.title",
+                    structureName).getString();
+            String body = Component.translatable("generate.xero_quest_journal.anecdote.arrival.body",
+                    structureName).getString();
+            var entry = new xtdpotato.xero_quest_journal.core.model.AnecdoteDefinition(entryId, title,
+                    structureName, "minecraft:compass", title,
+                    List.of(new xtdpotato.xero_quest_journal.core.model.AnecdoteDefinition.Record(
+                            "arrival", title, body, "minecraft:compass", arrivalQuestId)),
+                    false, false, anecdoteOrder++, List.of(new xtdpotato.xero_quest_journal.core.model.QuestDefinition.Reward(
+                    "experience", "", 2)));
+            definitions.put(entryId, entry);
+            stageNew(xtdpotato.xero_quest_journal.core.io.AnecdoteStore.fileFor(entryId), GSON.toJson(entry), writes);
+
+            String groupId = structureGroupId(structure.id().getNamespace());
+            var json = quest(arrivalQuestId, Component.literal(title), Component.literal(body),
+                    "world", "minecraft:compass");
+            json.add("triggers", trigger("location", "structure|" + structure.dimension() + "|"
+                    + structure.id(), 1));
+            json.addProperty("generatedBy", "xero_quest_journal");
+            json.addProperty("generatedNamespace", structure.id().getNamespace());
+            json.addProperty("generatedMode", "daily_anecdote");
+            json.addProperty("generatedDifficultyTier", 2);
+            var controls = new ArrayList<>(xtdpotato.xero_quest_journal.core.QuestTemplateStore.defaultElements());
+            var locate = new xtdpotato.xero_quest_journal.core.model.TriggerGraph(List.of(
+                    new xtdpotato.xero_quest_journal.core.model.TriggerGraph.Node("click", "event", 0, 0,
+                            Map.of("event", "click", "cooldown", "20")),
+                    new xtdpotato.xero_quest_journal.core.model.TriggerGraph.Node("locate", "locate_structure", 180, 0,
+                            Map.of("target", structure.id().toString(), "dimension", structure.dimension(),
+                                    "radius", "100", "storeVariable", "globe.located_structure"))),
+                    List.of(new xtdpotato.xero_quest_journal.core.model.TriggerGraph.Edge("click", "locate", "next")));
+            controls.add(new xtdpotato.xero_quest_journal.core.model.QuestTemplate.Element("locate", "button",
+                    Component.translatable("generate.xero_quest_journal.story.locate").getString(), 0, 0, 160, 24,
+                    Map.of("eventGraph", GSON.toJson(locate)), "body"));
+            var template = new xtdpotato.xero_quest_journal.core.model.QuestTemplate(
+                    "daily_anecdote_visit", title, body, "world", "minecraft:compass",
+                    "minecraft:oak_log", 1, "", 1, "manual", "", controls);
+            json.add("presentation", GSON.toJsonTree(template.presentation(arrivalQuestId)));
+            var arrivalRewards = rewards(2, new Settings(Set.of(structure.id().getNamespace()),
+                    RewardMode.TIER, options.rewardMultiplier(), GenerationMode.BOTH, true, options));
+            applyGeneratedRewardOptions(arrivalRewards, new Settings(Set.of(structure.id().getNamespace()),
+                    RewardMode.TIER, options.rewardMultiplier(), GenerationMode.BOTH, true, options), 2);
+            json.add("rewards", arrivalRewards);
+            json.add("generatedRewards", arrivalRewards.deepCopy());
+            json.add("generatedTriggers", json.get("triggers").deepCopy());
+            GSON.fromJson(json, xtdpotato.xero_quest_journal.core.model.QuestDefinition.class);
+            stageNew(taskFile(new Planned(arrivalQuestId, structure.id().getNamespace(), "story",
+                    "7_exploration", json, List.of(), 0, groupId)), GSON.toJson(json), writes);
+            chapterAdditions.computeIfAbsent(groupId, ignored -> new LinkedHashMap<>())
+                    .computeIfAbsent("7_exploration", ignored -> new ArrayList<>()).add(arrivalQuestId);
+            pendingIds.add(entryId);
+        }
+
+        for (var entry : chapterAdditions.entrySet()) {
+            String groupId = entry.getKey();
+            Path directory = groupDirectoryById(groupId);
+            Path manifest = directory.resolve("group_manifest.json");
+            if (!Files.exists(manifest) && QuestRepository.groups().stream().noneMatch(g -> g.id().equals(groupId))) {
+                var group = new JsonObject();
+                group.addProperty("id", groupId);
+                group.addProperty("uid", UUID.randomUUID().toString());
+                group.addProperty("name", Component.translatable("generate.xero_quest_journal.group_structures",
+                        modName(groupNamespace(groupId))).getString());
+                group.addProperty("icon", "minecraft:compass");
+                group.addProperty("type", "active");
+                stageNew(manifest, GSON.toJson(group), writes);
+            }
+            writes.putAll(stageChapters(directory, groupId, entry.getValue(), expected));
+        }
+
+        if (!writes.isEmpty()) {
+            var before = new LinkedHashMap<Path, String>();
+            for (Path file : writes.keySet()) {
+                Path safe = file.toAbsolutePath().normalize();
+                if (!safe.startsWith(QuestRepository.root()) && !safe.startsWith(
+                        xtdpotato.xero_quest_journal.core.io.AnecdoteStore.root()))
+                    throw new java.io.IOException("Generated anecdote path escaped storage");
+                before.put(safe, Files.exists(safe) ? Files.readString(safe) : null);
+                for (Path cursor = safe; cursor != null; cursor = cursor.getParent())
+                    if (Files.isSymbolicLink(cursor)) throw new java.io.IOException("Symbolic link in generated anecdote path");
+            }
+            var written = new ArrayList<Path>();
+            try {
+                for (var write : writes.entrySet()) {
+                    Path file = write.getKey().toAbsolutePath().normalize();
+                    String expectedSource = expected.get(file);
+                    if (expectedSource != null && (!Files.exists(file) || !Files.readString(file).equals(expectedSource)))
+                        throw new java.io.IOException("Generated anecdote changed during write");
+                    if (expectedSource == null && Files.exists(file))
+                        throw new java.io.IOException("Generated anecdote target already exists");
+                    AtomicFiles.write(file, write.getValue(), expectedSource != null);
+                    written.add(file);
+                }
+                var scan = QuestRepository.scan();
+                if (!scan.problems().isEmpty()) throw new IllegalStateException("Invalid daily anecdote batch: " + scan.problems());
+                var loaded = server.submit(() -> {
+                    if (QuestRepository.revision() != scan.revisionAtStart()) {
+                        QuestRepository.reload();
+                        return QuestRepository.errors().isEmpty();
+                    }
+                    return QuestRepository.apply(scan);
+                }).get(2, TimeUnit.MINUTES);
+                if (!loaded) throw new IllegalStateException("Daily anecdote tasks failed to load");
+                server.submit(() -> {
+                    xtdpotato.xero_quest_journal.core.io.AnecdoteStore.refresh();
+                    var state = xtdpotato.xero_quest_journal.core.runtime.AnecdoteGenerationData.get(server);
+                    state.commitDay(day, pendingIds);
+                    RUNNING.set(false);
+                    DAILY_ANECDOTES_RUNNING.set(false);
+                    return null;
+                }).get(30, TimeUnit.SECONDS);
+            } catch (Exception failure) {
+                for (Path file : written) {
+                    String old = before.get(file);
+                    if (old == null) Files.deleteIfExists(file);
+                    else AtomicFiles.write(file, old, true);
+                }
+                throw failure;
+            }
+        } else {
+            server.submit(() -> {
+                xtdpotato.xero_quest_journal.core.runtime.AnecdoteGenerationData.get(server)
+                        .commitDay(day, pendingIds);
+                RUNNING.set(false);
+                DAILY_ANECDOTES_RUNNING.set(false);
+                return null;
+            }).get(30, TimeUnit.SECONDS);
+        }
+    }
+
+    private static void stageNew(Path file, String source, Map<Path, String> writes) throws Exception {
+        Path normalized = file.toAbsolutePath().normalize();
+        if (Files.exists(normalized) || writes.containsKey(normalized))
+            throw new java.io.IOException("Generated anecdote already exists: " + normalized);
+        writes.put(normalized, source);
+    }
+
+    private static void stageExisting(Path file, String source, Map<Path, String> writes,
+                                      Map<Path, String> expected) throws Exception {
+        Path normalized = file.toAbsolutePath().normalize();
+        if (writes.containsKey(normalized)) throw new java.io.IOException("Generated anecdote staged twice");
+        expected.put(normalized, Files.readString(normalized));
+        writes.put(normalized, source);
+    }
+
+    private record QuestLocationTarget(ResourceLocation structure, String dimension) {}
+
+    private static QuestLocationTarget structureTarget(xtdpotato.xero_quest_journal.core.model.QuestDefinition quest) {
+        for (var trigger : quest.triggers()) {
+            var target = structureTarget(trigger);
+            if (target != null) return target;
+        }
+        return null;
+    }
+
+    private static QuestLocationTarget structureTarget(xtdpotato.xero_quest_journal.core.model.QuestDefinition.Trigger trigger) {
+        if (trigger.type().equals("location") && trigger.item().startsWith("structure|")) {
+            String[] parts = trigger.item().split("\\|", -1);
+            if (parts.length == 3) {
+                ResourceLocation id = ResourceLocation.tryParse(parts[2]);
+                if (id != null) return new QuestLocationTarget(id, parts[1]);
+            }
+        }
+        for (var child : trigger.children()) {
+            var result = structureTarget(child);
+            if (result != null) return result;
+        }
+        return null;
+    }
+
+    private static xtdpotato.xero_quest_journal.core.model.QuestDefinition.Trigger followupTrigger(
+            ResourceLocation structure, List<String> lootItems) {
+        String path = structure.getPath();
+        if (path.contains("village"))
+            return new xtdpotato.xero_quest_journal.core.model.QuestDefinition.Trigger("block_interact",
+                    "minecraft:bell", 3);
+        String item = relatedStructureItem(structure, lootItems);
+        return new xtdpotato.xero_quest_journal.core.model.QuestDefinition.Trigger(
+                "item_acquire", item, 1);
+    }
+
+    private static String relatedStructureItem(ResourceLocation structure, List<String> lootItems) {
+        String path = structure.getPath();
+        String[] hints = path.split("[_./-]");
+        List<String> sameNamespace = lootItems.stream()
+                .filter(value -> value.startsWith(structure.getNamespace() + ":")).toList();
+        for (String hint : hints) if (hint.length() >= 4) {
+            String match = sameNamespace.stream().filter(value -> value.substring(value.indexOf(':') + 1)
+                    .contains(hint)).findFirst().orElse(null);
+            if (match != null) return match;
+        }
+        if (!sameNamespace.isEmpty()) return sameNamespace.get(Math.floorMod(structure.toString().hashCode(),
+                sameNamespace.size()));
+        return switch (path) {
+            case "ancient_city" -> "minecraft:echo_shard";
+            case "trial_chambers" -> "minecraft:trial_key";
+            case "shipwreck" -> "minecraft:map";
+            case "bastion_remnant" -> "minecraft:gold_ingot";
+            case "woodland_mansion" -> "minecraft:totem_of_undying";
+            case "desert_pyramid" -> "minecraft:bone";
+            case "igloo" -> "minecraft:golden_apple";
+            case "mineshaft" -> "minecraft:rail";
+            default -> "minecraft:compass";
+        };
+    }
+
+    private static String itemDescription(String item) {
+        ResourceLocation id = ResourceLocation.tryParse(item);
+        if (id != null && BuiltInRegistries.ITEM.containsKey(id))
+            return BuiltInRegistries.ITEM.get(id).getDescription().getString();
+        return item;
     }
 
     private static Set<String> modelRecipeOutputs(MinecraftServer server) {
@@ -717,7 +1187,7 @@ public final class QuestGenerator {
     private static void runStory(MinecraftServer server, Settings settings, Snapshot snapshot, Reporter reporter) throws Exception {
         var plan = new LinkedHashMap<String, Planned>();
         var allItems = new LinkedHashMap<String, Planned>();
-        var sourceSettings = new Settings("", RewardMode.RECIPE, settings.multiplier(),
+        var sourceSettings = new Settings(Set.of(), RewardMode.RECIPE, settings.multiplier(),
                 settings.generation(), settings.relatedRecipes(), settings.options());
         if (settings.generation() != GenerationMode.STRUCTURE && settings.options().itemTasks())
             planItems(snapshot.recipes(), snapshot.lootItems(), sourceSettings, snapshot.features(), Set.of(), allItems);
@@ -729,7 +1199,7 @@ public final class QuestGenerator {
         var wantedItems = new LinkedHashSet<String>();
         var originParents = new HashMap<String, String>();
         for (var advancement : snapshot.advancements()) {
-            if (!matches(settings.filter(), advancement.id()) || settings.generation() == GenerationMode.STRUCTURE) continue;
+            if (!matches(settings.namespaces(), advancement.id()) || settings.generation() == GenerationMode.STRUCTURE) continue;
             for (String item : advancement.items()) {
                 String id = baseId("auto_item", ResourceLocation.parse(item));
                 if (allItems.containsKey(id)) {
@@ -771,7 +1241,8 @@ public final class QuestGenerator {
             var task = plan.get(entry.getKey());
             if (task == null || !plan.containsKey(entry.getValue())) continue;
             var parents = new ArrayList<>(task.parentCandidates()); parents.add(entry.getValue());
-            plan.put(task.id(), new Planned(task.id(), task.namespace(), task.category(), task.chapter(), task.json(), parents, task.spotlightScore()));
+            plan.put(task.id(), new Planned(task.id(), task.namespace(), task.category(), task.chapter(),
+                    task.json(), parents, task.spotlightScore(), task.groupId()));
         }
         // Give recipe tasks support for their next operation instead of returning the task item.
         for (var task : plan.values()) if (task.category().equals("items")) {
@@ -797,12 +1268,13 @@ public final class QuestGenerator {
             task.json().addProperty("id", id);
             task.json().addProperty("rewardMode", "manual");
             story.put(id, new Planned(id, task.namespace(), "story", task.chapter(), task.json(),
-                    task.parentCandidates().stream().filter(renamed::containsKey).map(renamed::get).distinct().toList(), 0));
+                    task.parentCandidates().stream().filter(renamed::containsKey).map(renamed::get).distinct().toList(),
+                    0, task.groupId()));
         }
         if (settings.generation() != GenerationMode.PROGRESS && settings.options().structureTasks()) {
             var previous = new HashMap<String, String>();
             for (var structure : snapshot.structures()) {
-                if (!matches(settings.filter(), structure.id())) continue;
+                if (!matches(settings.namespaces(), structure.id())) continue;
                 String route = structure.id().getNamespace() + "|" + structure.dimension();
                 String id = baseId("auto_story_visit", structure.id());
                 String name = Component.translatableWithFallback("structure." + structure.id().getNamespace() + "."
@@ -824,31 +1296,50 @@ public final class QuestGenerator {
                 json.addProperty("generatedLocate", true);
                 json.addProperty("rewardMode", "manual");
                 var rewards = new JsonArray();
-                rewards.add(reward("item", "minecraft:bread", 4 * settings.multiplier()));
-                rewards.add(reward("item", "minecraft:torch", 8 * settings.multiplier()));
                 json.add("rewards", rewards);
+                json.addProperty("generatedDifficultyTier", 3);
                 String parent = previous.put(route, id);
                 if (parent == null && settings.generation() == GenerationMode.BOTH)
                     parent = snapshot.advancements().stream().filter(a -> a.id().getNamespace().equals(structure.id().getNamespace()))
                             .sorted(Comparator.comparingInt(AdvancementData::depth).reversed().thenComparing(a -> a.id().toString()))
                             .map(a -> renamed.get(baseId("auto_adv", a.id()))).filter(java.util.Objects::nonNull).findFirst().orElse(null);
                 story.put(id, new Planned(id, structure.id().getNamespace(), "story", "7_exploration", json,
-                        parent == null ? List.of() : List.of(parent), 0));
+                        parent == null ? List.of() : List.of(parent), 0, structureGroupId(structure.id().getNamespace())));
             }
         }
         if (story.isEmpty()) { reporter.send(Component.translatable("command.xero_quest_journal.generate_none"), false); return; }
         for (var task : story.values())
-            applyGeneratedRewardOptions(task.json().getAsJsonArray("rewards"), settings);
+            applyGeneratedRewardOptions(task.json().getAsJsonArray("rewards"), settings,
+                    generatedDifficultyTier(task.json()));
         // Stage the whole cross-mod graph before publishing, so forward dependencies are never discarded.
         var writes = new LinkedHashMap<Path, String>();
         var expectedExisting = new LinkedHashMap<Path, String>();
+        var deletions = new LinkedHashMap<Path, String>();
         var dependencies = new HashMap<String, List<String>>();
         QuestRepository.all().forEach(q -> dependencies.put(q.id(), q.parents()));
         story.values().forEach(task -> { if (!snapshot.existing().contains(task.id())) dependencies.put(task.id(), task.parentCandidates()); });
         var chapters = new LinkedHashMap<String, Map<String, List<String>>>();
         for (var task : story.values()) {
             Path file = taskFile(task);
+            chapters.computeIfAbsent(task.groupId(), ignored -> new LinkedHashMap<>())
+                    .computeIfAbsent(task.chapter(), ignored -> new ArrayList<>()).add(task.id());
             if (snapshot.existing().contains(task.id()) || Files.exists(file)) {
+                Path existingFile = QuestRepository.fileOf(task.id());
+                if (existingFile != null && !existingFile.equals(file)
+                        && !Files.isSymbolicLink(existingFile) && Files.exists(existingFile)) {
+                    String original = Files.readString(existingFile);
+                    var existing = JsonParser.parseString(original).getAsJsonObject();
+                    if (existing.has("generatedBy")
+                            && existing.get("generatedBy").getAsString().equals("xero_quest_journal")
+                            && task.groupId().startsWith("auto_structures_")) {
+                        if (Files.exists(file)) throw new java.io.IOException("Structure task target already exists");
+                        expectedExisting.put(existingFile.toAbsolutePath().normalize(), original);
+                        deletions.put(existingFile, original);
+                        writes.put(file, original);
+                        removeFromPreviousChapters(task.id(), existingFile, writes, expectedExisting);
+                        continue;
+                    }
+                }
                 if (!Files.isSymbolicLink(file) && Files.exists(file)) {
                     String original = Files.readString(file);
                     var existing = JsonParser.parseString(original).getAsJsonObject();
@@ -870,34 +1361,40 @@ public final class QuestGenerator {
             json.add("generatedTriggers", json.get("triggers").deepCopy());
             GSON.fromJson(json, xtdpotato.xero_quest_journal.core.model.QuestDefinition.class);
             writes.put(file, GSON.toJson(json));
-            chapters.computeIfAbsent(task.namespace(), ignored -> new LinkedHashMap<>()).computeIfAbsent(task.chapter(), ignored -> new ArrayList<>()).add(task.id());
         }
         synchronized (QuestRepository.class) {
-            for (String namespace : story.values().stream().map(Planned::namespace)
+            for (String groupId : story.values().stream().map(Planned::groupId)
                     .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new))) {
-                String groupId = "auto_" + clean(namespace);
-                Path manifest = groupDirectory(namespace).resolve("group_manifest.json");
+                Path directory = groupDirectoryById(groupId);
+                Path manifest = directory.resolve("group_manifest.json");
+                String groupName = groupName(groupId, story.values());
                 if (!Files.exists(manifest) && QuestRepository.groups().stream().noneMatch(g -> g.id().equals(groupId))) {
                     var group = new JsonObject();
                     group.addProperty("id", groupId);
                     group.addProperty("uid", UUID.randomUUID().toString());
-                    group.addProperty("name", modName(namespace));
-                    group.addProperty("icon", storyGroupIcon(namespace, story.values()));
+                    group.addProperty("name", groupName);
+                    group.addProperty("icon", storyGroupIcon(groupId, story.values()));
                     group.addProperty("type", "active");
                     writes.put(manifest, GSON.toJson(group));
                 } else if (Files.exists(manifest) && !Files.isSymbolicLink(manifest)) {
                     String original = Files.readString(manifest);
                     var group = JsonParser.parseString(original).getAsJsonObject();
+                    if (groupId.startsWith("auto_structures_")
+                            && (!group.has("name") || !groupName.equals(group.get("name").getAsString()))) {
+                        expectedExisting.put(manifest.toAbsolutePath().normalize(), original);
+                        group.addProperty("name", groupName);
+                        writes.put(manifest, GSON.toJson(group));
+                    }
                     if (group.has("icon") && group.get("icon").getAsString().equals("minecraft:book")) {
                         expectedExisting.put(manifest.toAbsolutePath().normalize(), original);
-                        group.addProperty("icon", storyGroupIcon(namespace, story.values()));
+                        group.addProperty("icon", storyGroupIcon(groupId, story.values()));
                         writes.put(manifest, GSON.toJson(group));
                     }
                 }
             }
             for (var entry : chapters.entrySet()) {
-                String groupId = "auto_" + clean(entry.getKey());
-                Path directory = groupDirectory(entry.getKey());
+                String groupId = entry.getKey();
+                Path directory = groupDirectoryById(groupId);
                 writes.putAll(stageChapters(directory, groupId, entry.getValue(), expectedExisting));
             }
             if (writes.isEmpty()) {
@@ -906,8 +1403,11 @@ public final class QuestGenerator {
             }
             reporter.send(Component.translatable("command.xero_quest_journal.generate_started",
                     writes.size(), chapters.size()), false);
-            var before = QuestAuthoringHistory.capture(writes.keySet());
+            var affectedFiles = new LinkedHashSet<Path>(writes.keySet());
+            affectedFiles.addAll(deletions.keySet());
+            var before = QuestAuthoringHistory.capture(affectedFiles);
             var written = new ArrayList<Path>();
+            var deleted = new ArrayList<Path>();
             try {
                 for (var entry : writes.entrySet()) {
                     Path path = entry.getKey();
@@ -919,12 +1419,24 @@ public final class QuestGenerator {
                     AtomicFiles.write(entry.getKey(), entry.getValue(), before.get(entry.getKey().toAbsolutePath().normalize()) != null);
                     written.add(entry.getKey());
                 }
+                for (var entry : deletions.entrySet()) {
+                    Path path = entry.getKey();
+                    if (Files.isSymbolicLink(path) || !Files.exists(path)
+                            || !Files.readString(path).equals(entry.getValue()))
+                        throw new java.io.IOException("Structure task changed during migration");
+                    Files.delete(path);
+                    deleted.add(path);
+                }
                 var validation = QuestRepository.scan();
                 if (!validation.problems().isEmpty()) throw new IllegalStateException("Invalid story plan: " + validation.problems());
             } catch (Exception failure) {
                 for (Path file : written) if (Files.readString(file).equals(writes.get(file))) {
                     String old = before.get(file.toAbsolutePath().normalize());
                     if (old == null) Files.deleteIfExists(file); else AtomicFiles.write(file, old, true);
+                }
+                for (Path file : deleted) {
+                    String old = before.get(file.toAbsolutePath().normalize());
+                    if (old != null && !Files.exists(file)) AtomicFiles.write(file, old, false);
                 }
                 throw failure;
             }
@@ -937,6 +1449,14 @@ public final class QuestGenerator {
             return QuestRepository.apply(scan);
         }).get(2, TimeUnit.MINUTES);
         if (!loaded) throw new IllegalStateException("Generated story catalog failed validation: " + QuestRepository.errors());
+        if (settings.generation() != GenerationMode.PROGRESS && settings.options().structureTasks()) {
+            long gameDay = Math.floorDiv(server.overworld().getDayTime(), 24000L);
+            server.submit(() -> {
+                xtdpotato.xero_quest_journal.core.runtime.AnecdoteGenerationData
+                        .get(server).configure(settings.namespaces(), settings.options(), gameDay);
+                return null;
+            }).get(30, TimeUnit.SECONDS);
+        }
         reporter.send(Component.translatable("command.xero_quest_journal.story_generated",
                 chapters.values().stream().flatMap(map -> map.values().stream()).mapToInt(List::size).sum()), false);
     }
@@ -966,12 +1486,16 @@ public final class QuestGenerator {
                 return result;
             }
         }
-        int tier = Math.max(1, Math.min(3, task.spotlightScore() >= 200 ? 3 : 1));
-        return rewards(tier, new Settings(settings.filter(), RewardMode.TIER, scale,
+        int tier = generatedDifficultyTier(task.json());
+        return rewards(tier, new Settings(settings.namespaces(), RewardMode.TIER, scale,
                 settings.generation(), settings.relatedRecipes(), settings.options()));
     }
 
     private static void applyGeneratedRewardOptions(JsonArray values, Settings settings) {
+        applyGeneratedRewardOptions(values, settings, 1);
+    }
+
+    private static void applyGeneratedRewardOptions(JsonArray values, Settings settings, int difficultyTier) {
         var retained = new JsonArray();
         for (var value : values) {
             if (!value.isJsonObject() || !value.getAsJsonObject().has("type")) {
@@ -979,25 +1503,72 @@ public final class QuestGenerator {
                 continue;
             }
             String type = value.getAsJsonObject().get("type").getAsString();
-            if (!settings.options().itemRewards() && Set.of("item", "loot_choice").contains(type)
-                    || !settings.options().bonusExperience() && type.equals("experience")) continue;
+            if (!settings.options().itemRewards() && Set.of("item", "loot", "loot_choice").contains(type)
+                    || !settings.options().bonusExperience() && Set.of("experience", "levels").contains(type)) continue;
             retained.add(value.deepCopy());
         }
         for (int index = values.size() - 1; index >= 0; index--) values.remove(index);
         retained.forEach(value -> values.add(value.deepCopy()));
+        if (settings.options().itemRewards() && settings.mode() != RewardMode.NONE) {
+            var tierEntries = settings.options().tierItemRewards().stream()
+                    .filter(configured -> configured.tier() == difficultyTier)
+                    .toList();
+            if (!tierEntries.isEmpty()) {
+                var entries = new ArrayList<xtdpotato.xero_quest_journal.core.model.LootDefinition.Entry>();
+                int entryIndex = 0;
+                for (TierItemReward configured : tierEntries) {
+                    entries.add(new xtdpotato.xero_quest_journal.core.model.LootDefinition.Entry(
+                            "tier-" + difficultyTier + "-" + entryIndex++, "item", configured.item(),
+                            Math.min(1_000_000, configured.count() * settings.options().rewardMultiplier()),
+                            configured.weight(), "always", true, "", ""));
+                }
+                int rolls = Math.min(128, (difficultyTier == 5 ? 2 : 1)
+                        * settings.options().rewardMultiplier());
+                var table = new xtdpotato.xero_quest_journal.core.model.LootDefinition(
+                        "generated_tier_" + difficultyTier,
+                        Component.translatable("generate.xero_quest_journal.tier_loot_name", difficultyTier).getString(),
+                        xtdpotato.xero_quest_journal.core.model.LootDefinition.Mode.RANDOM_WITH_REPLACEMENT,
+                        1, "", entries);
+                JsonObject added = reward("loot", "inline:" + GSON.toJson(table), rolls);
+                values.add(added);
+            }
+        }
         boolean hasExperience = false;
         for (var value : values) {
             if (value.isJsonObject() && value.getAsJsonObject().has("type")
-                    && value.getAsJsonObject().get("type").getAsString().equals("experience")) {
+                    && Set.of("experience", "levels").contains(value.getAsJsonObject().get("type").getAsString())) {
                 hasExperience = true;
                 break;
             }
         }
-        if (!hasExperience) {
-            int experience = settings.options().bonusExperience()
-                    ? Math.max(1, 20 * settings.multiplier()) : 1;
-            values.add(reward("experience", "", experience));
-        }
+        if (!hasExperience && settings.options().bonusExperience()
+                && settings.mode() != RewardMode.NONE && settings.mode() != RewardMode.OUTPUT)
+            values.add(experienceReward(difficultyTier, settings.options().experienceMultiplier(),
+                    settings.options().experienceUnit()));
+    }
+
+    private static int generatedDifficultyTier(JsonObject task) {
+        return task.has("generatedDifficultyTier")
+                ? Math.clamp(task.get("generatedDifficultyTier").getAsInt(), 1, 6) : 1;
+    }
+
+    private static JsonObject experienceReward(int tier, int multiplier, String unit) {
+        int difficulty = Math.clamp(tier, 1, 5);
+        int scale = Math.max(1, multiplier);
+        int[] amounts = {2, 3, 5, 10, 20};
+        boolean levels = "levels".equals(unit) || "auto".equals(unit) && difficulty >= 4;
+        int count = levels ? Math.max(1, difficulty - 2) : amounts[difficulty - 1];
+        return reward(levels ? "levels" : "experience", "",
+                count * scale);
+    }
+
+    private static int advancementRewardTier(AdvancementData data) {
+        if (data.depth() >= 20) return 6;
+        if (data.tier() >= 3) return data.depth() >= 12 ? 5 : 4;
+        if (data.tier() == 2) return data.depth() >= 10 ? 4 : data.depth() >= 4 ? 3 : 2;
+        if (data.depth() >= 12) return 3;
+        if (data.depth() >= 5) return 2;
+        return 1;
     }
 
     private static boolean repairEmptyStoryRewards(JsonObject existing, JsonObject planned) {
@@ -1016,8 +1587,11 @@ public final class QuestGenerator {
         return true;
     }
 
-    private static String storyGroupIcon(String namespace, java.util.Collection<Planned> tasks) {
-        String matchingTaskIcon = tasks.stream().filter(task -> task.namespace().equals(namespace))
+    private static String storyGroupIcon(String groupId, java.util.Collection<Planned> tasks) {
+        String namespace = groupId.startsWith("auto_structures_")
+                ? groupId.substring("auto_structures_".length())
+                : groupId.startsWith("auto_") ? groupId.substring(5) : groupId;
+        String matchingTaskIcon = tasks.stream().filter(task -> task.groupId().equals(groupId))
                 .map(task -> task.json().get("icon").getAsString())
                 .filter(icon -> namespace.equals(iconNamespace(icon)) && !icon.equals("minecraft:book"))
                 .findFirst().orElse("");
@@ -1029,7 +1603,7 @@ public final class QuestGenerator {
                     return id.toString();
             }
         }
-        return tasks.stream().filter(task -> task.namespace().equals(namespace))
+        return tasks.stream().filter(task -> task.groupId().equals(groupId))
                 .map(task -> task.json().get("icon").getAsString())
                 .filter(icon -> !icon.equals("minecraft:book"))
                 .findFirst().orElse("minecraft:compass");
@@ -1040,6 +1614,39 @@ public final class QuestGenerator {
             return ResourceLocation.parse(icon).getNamespace();
         } catch (RuntimeException invalid) {
             return "";
+        }
+    }
+
+    private static String structureGroupId(String namespace) {
+        return "auto_structures_" + clean(namespace);
+    }
+
+    private static String groupName(String groupId, java.util.Collection<Planned> tasks) {
+        if (!groupId.startsWith("auto_structures_")) {
+            return tasks.stream().filter(task -> task.groupId().equals(groupId)).findFirst()
+                    .map(task -> modName(task.namespace())).orElse(groupId);
+        }
+        String namespace = groupId.substring("auto_structures_".length());
+        return Component.translatable("generate.xero_quest_journal.group_structures", modName(namespace)).getString();
+    }
+
+    private static void removeFromPreviousChapters(String questId, Path previousFile,
+                                                   Map<Path, String> writes,
+                                                   Map<Path, String> expectedExisting) throws Exception {
+        Path groupDirectory = previousFile.getParent().getParent();
+        String previousGroup = groupDirectory.getFileName().toString();
+        for (var chapter : QuestRepository.chapters()) {
+            if (!chapter.groupId().equals(previousGroup) || !chapter.quests().contains(questId)) continue;
+            Path file = chapter.file();
+            if (Files.isSymbolicLink(file) || !Files.exists(file)) continue;
+            String original = Files.readString(file);
+            var json = JsonParser.parseString(original).getAsJsonObject();
+            JsonArray quests = json.has("quests") ? json.getAsJsonArray("quests") : new JsonArray();
+            var retained = new JsonArray();
+            quests.forEach(value -> { if (!value.getAsString().equals(questId)) retained.add(value); });
+            json.add("quests", retained);
+            expectedExisting.put(file.toAbsolutePath().normalize(), original);
+            writes.put(file, GSON.toJson(json));
         }
     }
 
@@ -1092,6 +1699,7 @@ public final class QuestGenerator {
         quest.addProperty("generatedTaskMultiplier", settings.options().taskMultiplier());
         quest.addProperty("generatedBonusExperience", settings.options().bonusExperience());
         quest.addProperty("generatedItemRewards", settings.options().itemRewards());
+        quest.addProperty("generatedExperienceMultiplier", settings.options().experienceMultiplier());
         quest.add("generatedRewards", quest.getAsJsonArray("rewards").deepCopy());
         if (quest.has("triggers")) quest.add("generatedTriggers", quest.get("triggers").deepCopy());
     }
@@ -1156,7 +1764,7 @@ public final class QuestGenerator {
         boolean changed = false;
         for (String key : List.of("rewards", "generatedRewards", "generatedRewardMode",
                 "generatedRewardMultiplier", "generatedTaskMultiplier", "generatedBonusExperience",
-                "generatedItemRewards")) {
+                "generatedItemRewards", "generatedExperienceMultiplier", "generatedDifficultyTier")) {
             if (!java.util.Objects.equals(existing.get(key), planned.get(key))) {
                 existing.add(key, planned.get(key).deepCopy());
                 changed = true;
@@ -1171,35 +1779,46 @@ public final class QuestGenerator {
         var first = current.getAsJsonArray().get(0);
         if (!first.isJsonObject() || !first.getAsJsonObject().has("type")
                 || !first.getAsJsonObject().get("type").getAsString().equals("experience")) return false;
-        for (int tier = 1; tier <= 3; tier++)
-            for (int scale = 1; scale <= 64; scale++)
-                if (current.equals(rewards(tier, new Settings("", RewardMode.TIER, scale)))) return true;
+        for (int tier = 1; tier <= 3; tier++) for (int scale = 1; scale <= 64; scale++) {
+            JsonArray oldRewards = new JsonArray();
+            oldRewards.add(reward("experience", "", (tier == 3 ? 150 : tier == 2 ? 60 : 20) * scale));
+            if (tier >= 2) oldRewards.add(reward("item", "minecraft:emerald", (tier == 3 ? 4 : 2) * scale));
+            if (tier == 3) oldRewards.add(reward("item", "minecraft:diamond", scale));
+            if (current.equals(oldRewards)) return true;
+            if (current.equals(rewards(tier, new Settings("", RewardMode.TIER, scale)))) return true;
+        }
         return false;
     }
 
     /** Existing group folder with the generated group ID, otherwise {@code groups/auto_<namespace>}. */
     private static Path groupDirectory(String namespace) {
         String groupId = "auto_" + clean(namespace);
+        return groupDirectoryById(groupId);
+    }
+
+    private static Path groupDirectoryById(String groupId) {
         return QuestRepository.groups().stream().filter(group -> group.id().equals(groupId))
                 .map(QuestRepository.Group::directory).findFirst()
                 .orElse(QuestRepository.root().resolve(groupId));
     }
 
     private static Path taskFile(Planned quest) {
-        return groupDirectory(quest.namespace()).resolve(quest.category()).resolve(quest.id() + ".json");
+        return groupDirectoryById(quest.groupId()).resolve(quest.category()).resolve(quest.id() + ".json");
     }
 
     private static void planAdvancements(List<AdvancementData> advancements, Settings settings, Set<String> existing,
                                          Map<String, Planned> planned) {
         for (var data : advancements) {
-            if (!matches(settings.filter(), data.id())) continue;
+            if (!matches(settings.namespaces(), data.id())) continue;
             String id = baseId("auto_adv", data.id());
             if (existing.contains(id) || planned.containsKey(id)) continue;
+            int difficulty = advancementRewardTier(data);
             JsonObject quest = quest(id, data.title(), data.description(),
                     data.id().getNamespace().equals("minecraft") ? "main" : "world", data.icon());
+            quest.addProperty("generatedDifficultyTier", difficulty);
             quest.add("triggers", trigger("advancement", data.id().toString(), 1));
-            JsonArray generatedRewards = rewards(data.tier(), settings);
-            applyGeneratedRewardOptions(generatedRewards, settings);
+            JsonArray generatedRewards = rewards(difficulty, settings);
+            applyGeneratedRewardOptions(generatedRewards, settings, difficulty);
             quest.add("rewards", generatedRewards);
             markGeneratedRewards(quest, settings);
             quest.addProperty("descriptionKey", "generate.xero_quest_journal.description.advancement");
@@ -1285,16 +1904,19 @@ public final class QuestGenerator {
                 .thenComparing(item -> BuiltInRegistries.ITEM.getKey(item).toString()));
         for (Item item : candidates) {
             ResourceLocation key = BuiltInRegistries.ITEM.getKey(item);
-            if (!matches(settings.filter(), key)) continue;
+            if (!matches(settings.namespaces(), key)) continue;
             String id = itemQuest.get(item);
             if (existing.contains(id) || planned.containsKey(id)) continue;
             int level = effectiveDepth(depth.getOrDefault(item, 0));
             int rarityTier = switch (new ItemStack(item).getRarity()) {
                 case UNCOMMON -> 2;
-                case RARE, EPIC -> 3;
+                case RARE -> 3;
+                case EPIC -> 4;
                 default -> 1;
             };
-            int tier = Math.max(rarityTier, level >= 5 ? 3 : level >= 3 ? 2 : 1);
+            int depthTier = level >= 14 ? 6 : level >= 10 ? 5 : level >= 7 ? 4
+                    : level >= 4 ? 3 : level >= 2 ? 2 : 1;
+            int tier = Math.max(rarityTier, depthTier);
             String chapter = level == 0 ? "2_gather" : level <= 2 ? "3_craft_basic"
                     : level <= 4 ? "4_craft_advanced" : "5_craft_expert";
             boolean craftable = recipes.containsKey(item);
@@ -1303,6 +1925,7 @@ public final class QuestGenerator {
                     + (craftable ? "craft" : lootItems.contains(item) ? "loot" : "operation");
             JsonObject quest = quest(id, Component.translatable(titleKey, item.getDescription()),
                     Component.translatable(descriptionKey), "world", key.toString());
+            quest.addProperty("generatedDifficultyTier", tier);
             quest.addProperty("titleKey", titleKey);
             quest.add("triggers", trigger("item_hold", key.toString(), settings.taskCount(1)));
             JsonArray itemRewards = settings.mode() == RewardMode.OUTPUT
@@ -1310,7 +1933,7 @@ public final class QuestGenerator {
                     : settings.mode() == RewardMode.RECIPE
                     ? recipeRewards(item, recipes, depth, itemQuest, settings.multiplier()) : null;
             JsonArray generatedRewards = itemRewards != null ? itemRewards : rewards(tier, settings);
-            applyGeneratedRewardOptions(generatedRewards, settings);
+            applyGeneratedRewardOptions(generatedRewards, settings, tier);
             quest.add("rewards", generatedRewards);
             markGeneratedRewards(quest, settings);
             planned.put(id, new Planned(id, key.getNamespace(), "items", chapter, quest,
@@ -1343,11 +1966,12 @@ public final class QuestGenerator {
         Map<String, TacticalRecipe> byIdentity = new HashMap<>();
         recipes.forEach(recipe -> byIdentity.putIfAbsent(recipe.identity(), recipe));
         for (TacticalTask task : tasks) {
-            if (!settings.filter().isBlank() && !task.namespace().equals(settings.filter())) continue;
+            if (!settings.namespaces().isEmpty() && !settings.namespaces().contains(task.namespace())) continue;
             if (existing.contains(task.id()) || planned.containsKey(task.id())) continue;
             JsonObject quest = quest(task.id(), Component.literal(task.title()),
                     Component.translatable("generate.xero_quest_journal.description.special_item"),
                     "world", task.target());
+            quest.addProperty("generatedDifficultyTier", task.tier());
             if (!task.titleKey().isBlank()) quest.addProperty("titleKey", task.titleKey());
             quest.add("triggers", trigger("item_acquire", task.target(), settings.taskCount(1)));
             JsonArray itemRewards = settings.mode() == RewardMode.OUTPUT
@@ -1357,7 +1981,7 @@ public final class QuestGenerator {
             if (itemRewards == null && settings.mode() == RewardMode.RECIPE)
                 itemRewards = outputRewards(task.target(), settings.multiplier());
             JsonArray generatedRewards = itemRewards == null ? rewards(task.tier(), settings) : itemRewards;
-            applyGeneratedRewardOptions(generatedRewards, settings);
+            applyGeneratedRewardOptions(generatedRewards, settings, task.tier());
             quest.add("rewards", generatedRewards);
             markGeneratedRewards(quest, settings);
             planned.put(task.id(), new Planned(task.id(), task.namespace(), "items",
@@ -1498,11 +2122,12 @@ public final class QuestGenerator {
                 .thenComparing(type -> BuiltInRegistries.ENTITY_TYPE.getKey(type).toString()));
         for (EntityType<?> type : hostile) {
             ResourceLocation key = BuiltInRegistries.ENTITY_TYPE.getKey(type);
-            if (!matches(settings.filter(), key)) continue;
+            if (!matches(settings.namespaces(), key)) continue;
             String id = baseId("auto_kill", key);
             if (existing.contains(id) || planned.containsKey(id)) continue;
             double health = maxHealth(type);
-            int tier = health >= 100 ? 3 : health >= 30 ? 2 : 1;
+            int tier = health >= 500 ? 6 : health >= 300 ? 5 : health >= 100 ? 4
+                    : health >= 50 ? 3 : health >= 30 ? 2 : 1;
             int count = settings.taskCount(tier == 3 ? 1 : tier == 2 ? 3 : 5);
             SpawnEggItem egg = SpawnEggItem.byId(type);
             String icon = egg != null ? BuiltInRegistries.ITEM.getKey(egg).toString() : "minecraft:iron_sword";
@@ -1510,10 +2135,11 @@ public final class QuestGenerator {
             JsonObject quest = quest(id, Component.translatable(titleKey, type.getDescription()),
                     Component.translatable("generate.xero_quest_journal.description."
                             + (tier == 3 ? "boss" : "combat")), "world", icon);
+            quest.addProperty("generatedDifficultyTier", tier);
             quest.addProperty("titleKey", titleKey);
             quest.add("triggers", trigger("kill", key.toString(), count));
             JsonArray generatedRewards = rewards(tier, settings);
-            applyGeneratedRewardOptions(generatedRewards, settings);
+            applyGeneratedRewardOptions(generatedRewards, settings, tier);
             quest.add("rewards", generatedRewards);
             markGeneratedRewards(quest, settings);
             planned.put(id, new Planned(id, key.getNamespace(), "combat", "6_combat", quest, List.of(),
@@ -1569,19 +2195,13 @@ public final class QuestGenerator {
         return triggers;
     }
 
-    /**
-     * Difficulty-scaled rewards: experience at every tier, emeralds and a diamond for harder tasks,
-     * all times the multiplier. {@code NONE} gives nothing.
-     */
+    /** Easy tasks award points; the hardest tiers award experience levels instead. */
     private static JsonArray rewards(int tier, Settings settings) {
         JsonArray rewards = new JsonArray();
         if (settings.mode() == RewardMode.NONE || settings.mode() == RewardMode.OUTPUT) return rewards;
-        int scale = settings.multiplier();
         if (settings.options().bonusExperience())
-            rewards.add(reward("experience", "", Math.max(1,
-                    (tier == 3 ? 150 : tier == 2 ? 60 : 20) * scale)));
-        if (tier >= 2) rewards.add(reward("item", "minecraft:emerald", (tier == 3 ? 4 : 2) * scale));
-        if (tier == 3) rewards.add(reward("item", "minecraft:diamond", scale));
+            rewards.add(experienceReward(tier, settings.options().experienceMultiplier(),
+                    settings.options().experienceUnit()));
         return rewards;
     }
 
@@ -1656,8 +2276,8 @@ public final class QuestGenerator {
                 : BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
     }
 
-    private static boolean matches(String filter, ResourceLocation key) {
-        return filter.isBlank() || key.getNamespace().equals(filter);
+    private static boolean matches(Set<String> namespaces, ResourceLocation key) {
+        return namespaces.isEmpty() || namespaces.contains(key.getNamespace());
     }
 
     private static String clean(String value) {

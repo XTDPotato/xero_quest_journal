@@ -3,6 +3,7 @@
   "id": "xero_quest_journal",
   "version": "${version}",
   "name": "Xero Quest Journal",
+  "icon": "assets/xero_quest_journal/textures/gui/anecdote_emblem.png",
   "license": "MIT",
   "environment": "*",
   "entrypoints": {

@@ -58,6 +58,7 @@ final class TrackingHudRegression {
     private static volatile String locatedQuestId = "";
     private static volatile String locatedPosition = "";
     private static boolean locatedMarkerVerified;
+    private static boolean ordinaryTrackedTaskOpened;
 
     private record Fixture(String name, String type, String style, String cover, String trackedImage) {
         String id() { return "tracking_hud_" + name; }
@@ -177,6 +178,17 @@ final class TrackingHudRegression {
                 if (!ClientQuestProgress.isTracked(fixture.id())
                         || ClientQuestProgress.trackedIds().size() != 1
                         || ClientQuestProgress.view(fixture.id()) == null) return false;
+                if (index == 1 && !ordinaryTrackedTaskOpened) {
+                    QuestUnlockToast.trackCurrent();
+                    require(game.screen instanceof QuestScreen,
+                            "Pressing V on a tracked task without a destination did not open the task screen");
+                    var selected = QuestScreen.class.getDeclaredField("selectedId");
+                    selected.setAccessible(true);
+                    require(selected.get(game.screen).equals(fixture.id()),
+                            "Pressing V opened a task other than the currently tracked task");
+                    game.setScreen(null);
+                    ordinaryTrackedTaskOpened = true;
+                }
                 if (index == 0 && !locatedMarkerVerified) {
                     QuestLocation location = QuestHudRenderer.locatedLocation(fixture.id());
                     if (location == null) return false;

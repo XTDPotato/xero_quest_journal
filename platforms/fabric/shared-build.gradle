@@ -164,6 +164,8 @@ tasks.register("prepareFabricSources") {
                     "new Factory<>(QuestProgressData::new, QuestProgressData::load, null)")
                     .replace("new Factory<>(MailboxData::new, MailboxData::load)",
                             "new Factory<>(MailboxData::new, MailboxData::load, null)")
+                    .replace("new Factory<>(AnecdoteGenerationData::new, AnecdoteGenerationData::load)",
+                            "new Factory<>(AnecdoteGenerationData::new, AnecdoteGenerationData::load, null)")
                     .replace('return data; }),', 'return data; }, null),')
                     .replace('return data; }), KEY', 'return data; }, null), KEY')
                     .replaceAll(/return data;\s*\}\),\s*"xero_control_state"/,

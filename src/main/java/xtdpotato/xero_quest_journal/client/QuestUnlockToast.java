@@ -75,7 +75,18 @@ public final class QuestUnlockToast {
     }
 
     public static void trackCurrent() {
-        QuestHudRenderer.replayTrackedCoordinateAnimation();
+        String id = QuestHudRenderer.trackedId();
+        if (id == null || id.isBlank()) return;
+        QuestDefinition quest = ClientQuestDefinitions.find(id);
+        if (quest == null) return;
+
+        var destination = QuestHudRenderer.location(quest);
+        if (destination != null) {
+            if (destination.kind().equals("coords") && destination.resolved())
+                QuestHudRenderer.playCoordinateTrackAnimation(id);
+            return;
+        }
+        Minecraft.getInstance().setScreen(QuestScreen.task(null, id));
     }
 
     private static float smooth(float value) {

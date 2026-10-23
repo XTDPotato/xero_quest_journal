@@ -203,6 +203,14 @@ tasks.register("prepareForgeSources") {
                         .replace("save(CompoundTag root, HolderLookup.Provider registries)",
                                 "save(CompoundTag root)")
             }
+            if (relative.endsWith("AnecdoteGenerationData.java")) {
+                text = text.replace("new Factory<>(AnecdoteGenerationData::new, AnecdoteGenerationData::load)",
+                        "AnecdoteGenerationData::load, AnecdoteGenerationData::new")
+                        .replace("load(CompoundTag tag, HolderLookup.Provider registries)",
+                                "load(CompoundTag tag)")
+                        .replace("save(CompoundTag tag, HolderLookup.Provider registries)",
+                                "save(CompoundTag tag)")
+            }
             if (relative.endsWith("QuestControlData.java")) {
                 text = text.replaceAll(/new Factory<>\(QuestControlData::new,\s*\(tag, registries\) -> \{([\s\S]*?)\}\),/,
                         'tag -> {$1}, QuestControlData::new,')
