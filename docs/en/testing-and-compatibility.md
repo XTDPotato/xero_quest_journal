@@ -14,7 +14,7 @@
 Each target has a distinct JAR, sharing business/UI source and resources through platform adaptation.
 The root build targets NeoForge 1.21.1.
 The 26.1-26.3 projects have partial Java 25/build/persistence work, with incomplete full migration.
-No 26.x installable artifacts are published in 0.2.5.
+No 26.x installable artifacts are published in 0.2.6.
 
 ## Reproduce Builds
 
@@ -65,9 +65,10 @@ The project has historical multi-loader functional tests from October 13 and 16,
 and focused October 18 checks for candidates/jigsaw, loot metadata, categories, journey editing
 and tooltip rendering. Those results belong to their dates and tested builds.
 
-The current [0.2.5 verification report](../release-verification-0.2.5.md) records this release's
-builds and focused daily-anecdote checks. The [0.2.4 report](../release-verification-0.2.4.md)
-preserves the previous release's focused task-workflow checks. The [0.2.3 report](../release-verification-0.2.3.md)
+The current [0.2.6 verification report](../release-verification-0.2.6.md) records this release's
+tooltip and experience-reward checks. The [0.2.5 report](../release-verification-0.2.5.md)
+preserves the previous release's daily-anecdote checks. The [0.2.4 report](../release-verification-0.2.4.md)
+preserves the earlier focused task-workflow checks. The [0.2.3 report](../release-verification-0.2.3.md)
 remains the source for that release's capture and inspection results.
 Subsequent generator, objective popup and actual backpack tests are recorded in the
 [October 19 fix report](../generator-and-objective-verification-2026-10-18.md).

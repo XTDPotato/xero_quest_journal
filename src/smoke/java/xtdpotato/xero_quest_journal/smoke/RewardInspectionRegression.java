@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
 import net.minecraft.client.gui.screens.Screen;
+import org.lwjgl.glfw.GLFW;
 import xtdpotato.xero_quest_journal.client.*;
 import xtdpotato.xero_quest_journal.core.io.*;
 import xtdpotato.xero_quest_journal.core.mailbox.*;
@@ -24,6 +25,8 @@ final class RewardInspectionRegression {
     private static QuestScreen journal;
     private static MailboxScreen mailbox;
     private static int stage, wait, inventory;
+    private static boolean itemTooltipHovered;
+    private static boolean experienceTooltipHovered;
     private static List<QuestDefinition.Reward> choices;
     private static QuestDefinition.Reward frozenChoice;
     private static QuestDefinition.Reward largeChoice;
@@ -97,6 +100,7 @@ final class RewardInspectionRegression {
                 if (ClientQuestProgress.view(TASK) == null || ClientMailbox.messages().stream().noneMatch(mail -> mail.id().equals(MAIL)))
                     return false;
                 if (ClientQuestDefinitions.find(TASK) == null || ClientQuestProgress.view(TASK).rewards().isEmpty()) return false;
+                verifyInlineLootTooltip();
                 journal = QuestScreen.task(null, TASK); game.setScreen(journal);
             }
             case 3 -> {
@@ -112,14 +116,42 @@ final class RewardInspectionRegression {
                     journal.init(game, journal.width, journal.height);
                     return false;
                 }
+                if (!itemTooltipHovered) {
+                    double x = (int) field(journal, "detailsLeft") + 20;
+                    double y = (int) call(journal, "detailContentBottom") + 30;
+                    moveCursor(game, x, y);
+                    itemTooltipHovered = true;
+                    wait = 8;
+                    return false;
+                }
+                capture(game, "claimed-task-item-tooltip-zh-1920");
                 taskClick(game, 0);
                 require(game.screen instanceof QuestRewardPopupScreen, "Claimed task item did not open");
                 require(!((net.minecraft.world.item.ItemStack) field(game.screen, "inspectedStack")).isEmpty(),
                         "Claimed task item lost its real icon/identity");
             }
             case 4 -> {
-                capture(game, "claimed-task-item-details-zh-1920");
-                game.screen.onClose(); require(game.screen == journal, "Task detail return failed");
+                if (!experienceTooltipHovered) {
+                    capture(game, "claimed-task-item-details-zh-1920");
+                    game.screen.onClose();
+                    require(game.screen == journal, "Task detail return failed");
+                    double x = (int) field(journal, "detailsLeft") + 10 + 38 + 10;
+                    double y = (int) call(journal, "detailContentBottom") + 30;
+                    moveCursor(game, x, y);
+                    experienceTooltipHovered = true;
+                    wait = 8;
+                    return false;
+                }
+                require(game.screen == journal, "Experience hover left the selected journal");
+                require(QuestText.rewardTooltip(new QuestDefinition.Reward("experience", "", 120))
+                                .getString().equals("经验点数 ×120")
+                                && QuestText.rewardTooltip(new QuestDefinition.Reward("levels", "", 2))
+                                .getString().equals("经验等级 ×2"),
+                        "Experience reward tooltips omitted their localized type or amount");
+                require(QuestRewardsScreen.icon("experience", "").equals("minecraft:experience_bottle")
+                                && QuestRewardsScreen.icon("levels", "").equals("minecraft:experience_bottle"),
+                        "Experience points/levels reward icon mapping is missing");
+                capture(game, "experience-reward-tooltip-zh-1920");
                 taskClick(game, 1);
                 require(game.screen instanceof QuestRewardPopupScreen, "Task XP did not open");
             }
@@ -337,8 +369,43 @@ final class RewardInspectionRegression {
     }
     private static void capture(Minecraft game, String name) throws Exception {
         try (var image = Screenshot.takeScreenshot(game.getMainRenderTarget())) {
+            require(image.getWidth() == 1920 && image.getHeight() == 1080,
+                    "Reward-inspection screenshot is not 1920x1080: " + name);
             image.writeToFile(Path.of("..", "build", "verification", name + ".png"));
         }
+    }
+    private static void moveCursor(Minecraft game, double x, double y) throws Exception {
+        double scale = game.getWindow().getGuiScale();
+        double windowX = x * scale;
+        double windowY = y * scale;
+        GLFW.glfwSetCursorPos(game.getWindow().getWindow(), windowX, windowY);
+        var mouse = game.mouseHandler;
+        for (String name : List.of("xpos", "ypos")) {
+            var field = mouse.getClass().getDeclaredField(name);
+            field.setAccessible(true);
+            field.setDouble(mouse, name.equals("xpos") ? windowX : windowY);
+        }
+    }
+    private static void verifyInlineLootTooltip() {
+        var table = new LootDefinition("tooltip_inline", "自动生成难度 1 奖励",
+                LootDefinition.Mode.RANDOM_WITH_REPLACEMENT, 1, "", List.of(
+                new LootDefinition.Entry("tier-1-1", "item", "minecraft:raw_iron", 1, 1,
+                        "always", true),
+                new LootDefinition.Entry("tier-1-3", "item", "minecraft:iron_nugget", 4, 1,
+                        "always", true)));
+        var task = new QuestDefinition("inline_loot_tooltip", "战利品提示检查", "",
+                "world", "", true, false, 0, null, "", "", "", "inline-loot-tooltip",
+                List.of(), List.of(new QuestDefinition.Trigger("confirm", "", 1)),
+                List.of(new QuestDefinition.Reward("loot", "inline:" + new Gson().toJson(table), 1)),
+                "default");
+        String tooltip = QuestText.tooltip(task).getString();
+        require(!tooltip.contains("inline:") && !tooltip.contains("\"weight\"")
+                        && !tooltip.contains("\"displayIcon\""),
+                "Inline loot tooltip leaked serialized JSON");
+        require(tooltip.contains(QuestIcons.localizedName("minecraft:iron_nugget"))
+                        && tooltip.contains("×4")
+                        && tooltip.contains(QuestIcons.localizedName("minecraft:raw_iron")),
+                "Inline loot tooltip omitted localized item names or counts");
     }
     private static void require(boolean value, String message) {
         if (!value) throw new AssertionError("Reward inspection stage " + stage + ": " + message);

@@ -3,7 +3,9 @@ package xtdpotato.xero_quest_journal.client;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.locale.Language;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceLocation;
+import xtdpotato.xero_quest_journal.core.model.LootDefinition;
 import xtdpotato.xero_quest_journal.core.model.QuestDefinition;
 import xtdpotato.xero_quest_journal.core.runtime.QuestLocation;
 
@@ -12,6 +14,22 @@ import java.util.Locale;
 
 public final class QuestText {
     private QuestText() {
+    }
+
+    public static Component rewardTooltip(QuestDefinition.Reward reward) {
+        if (reward == null) return Component.empty();
+        if (reward.type().equals("experience") || reward.type().equals("levels")) {
+            return Component.translatable("screen.xero_quest_journal.reward_type." + reward.type())
+                    .append(" ×" + reward.count())
+                    .withStyle(net.minecraft.ChatFormatting.GOLD);
+        }
+        if (reward.type().equals("item")) {
+            return Component.literal(localizedItemName(reward.item())
+                            + (reward.count() > 1 ? " ×" + reward.count() : ""))
+                    .withStyle(net.minecraft.ChatFormatting.GOLD);
+        }
+        return Component.translatable("screen.xero_quest_journal.reward_type." + reward.type())
+                .withStyle(net.minecraft.ChatFormatting.GOLD);
     }
 
     public static Component title(QuestDefinition quest) {
@@ -59,17 +77,24 @@ public final class QuestText {
             int shown = Math.min(6, rewards.size());
             for (int i = 0; i < shown; i++) {
                 var reward = rewards.get(i);
-                boolean stackReward = reward.type().equals("item") || reward.type().equals("loot_choice");
-                String name = stackReward
-                        ? QuestIcons.displayName(reward.item()).replaceAll(" \\([^)]*\\)$", "")
-                        : Component.translatable("screen.xero_quest_journal.reward_type." + reward.type()).getString();
-                if (!stackReward && !reward.item().isBlank()) name += ": " + reward.item();
-                String count = stackReward && reward.count() > 1 ? " ×" + reward.count() : "";
                 String quality = reward.quality().isBlank() || reward.quality().equals("auto") ? ""
                         : " · " + Component.translatable(
                                 "screen.xero_quest_journal.rewards.quality." + reward.quality()).getString();
-                result.append(Component.literal("\n- " + name + count + quality)
-                        .withStyle(net.minecraft.ChatFormatting.WHITE));
+                if (reward.type().equals("loot")) {
+                    appendLootReward(result, reward);
+                } else if (reward.type().equals("loot_choice")) {
+                    appendChoiceReward(result, reward);
+                } else {
+                    boolean item = reward.type().equals("item");
+                    String name = item ? localizedItemName(reward.item())
+                            : Component.translatable("screen.xero_quest_journal.reward_type."
+                                    + reward.type()).getString();
+                    if (!item && !reward.item().isBlank()) name += ": " + reward.item();
+                    String count = item && reward.count() > 1 ? " ×" + reward.count() : "";
+                    result.append(Component.literal("\n- ")
+                            .append(Component.literal(name).withStyle(net.minecraft.ChatFormatting.GOLD))
+                            .append(Component.literal(count + quality).withStyle(net.minecraft.ChatFormatting.WHITE)));
+                }
             }
             if (rewards.size() > shown)
                 result.append(Component.literal("\n")
@@ -78,6 +103,82 @@ public final class QuestText {
                         .withStyle(net.minecraft.ChatFormatting.GRAY));
         }
         return result;
+    }
+
+    private static void appendLootReward(MutableComponent tooltip, QuestDefinition.Reward reward) {
+        LootDefinition definition = null;
+        LootDefinition.Display display = null;
+        String target = reward.item();
+        if (target.startsWith("inline:")) {
+            try {
+                definition = new com.google.gson.Gson().fromJson(
+                        target.substring("inline:".length()), LootDefinition.class);
+            } catch (RuntimeException ignored) {
+                // Invalid legacy inline data falls back to a generic loot label.
+            }
+        } else {
+            display = ClientQuestDefinitions.lootTable(target);
+        }
+        List<? extends LootTooltipEntry> entries = definition != null
+                ? definition.entries().stream().map(entry -> (LootTooltipEntry) new LootTooltipEntry(
+                        entry.type(), entry.item(), entry.count(), entry.enabled())).toList()
+                : display == null ? List.of() : display.entries().stream()
+                .map(entry -> (LootTooltipEntry) new LootTooltipEntry(
+                        entry.type(), entry.item(), entry.count(), entry.enabled())).toList();
+        String tableName = definition != null ? definition.name()
+                : display == null ? "" : display.name();
+        tooltip.append(Component.literal("\n- ")
+                .append(Component.literal(tableName.isBlank()
+                                ? Component.translatable("screen.xero_quest_journal.reward_type.loot").getString()
+                                : tableName)
+                        .withStyle(net.minecraft.ChatFormatting.GOLD)));
+        int shown = 0;
+        for (LootTooltipEntry entry : entries) {
+            if (!entry.enabled() || shown >= 6) continue;
+            shown++;
+            long amount = (long) entry.count() * reward.count()
+                    * (definition == null ? display.rolls() : definition.rolls());
+            String name = entry.type().equals("item") ? localizedItemName(entry.item())
+                    : Component.translatable("screen.xero_quest_journal.loot.contents.type."
+                            + entry.type()).getString();
+            tooltip.append(Component.literal("\n  ")
+                    .append(Component.literal(name).withStyle(net.minecraft.ChatFormatting.GOLD))
+                    .append(Component.literal(amount > 1 ? " ×" + amount : "")
+                            .withStyle(net.minecraft.ChatFormatting.WHITE)));
+        }
+        if (entries.stream().filter(LootTooltipEntry::enabled).count() > shown) {
+            tooltip.append(Component.literal("\n  ")
+                    .append(Component.translatable("screen.xero_quest_journal.tooltip.more_rewards",
+                                    entries.stream().filter(LootTooltipEntry::enabled).count() - shown)
+                            .withStyle(net.minecraft.ChatFormatting.GRAY)));
+        }
+    }
+
+    private record LootTooltipEntry(String type, String item, int count, boolean enabled) {}
+
+    private static void appendChoiceReward(MutableComponent tooltip, QuestDefinition.Reward reward) {
+        List<QuestDefinition.Reward> choices =
+                xtdpotato.xero_quest_journal.core.runtime.QuestRewards.choices(reward);
+        String title = xtdpotato.xero_quest_journal.core.runtime.QuestRewards.choiceTitle(reward);
+        tooltip.append(Component.literal("\n- ")
+                .append(Component.literal(title.isBlank()
+                                ? Component.translatable("screen.xero_quest_journal.reward_type.loot_choice").getString()
+                                : title)
+                        .withStyle(net.minecraft.ChatFormatting.GOLD)));
+        for (var choice : choices.stream().limit(6).toList()) {
+            String name = choice.type().equals("item") ? localizedItemName(choice.item())
+                    : Component.translatable("screen.xero_quest_journal.reward_type." + choice.type()).getString();
+            tooltip.append(Component.literal("\n  ")
+                    .append(Component.literal(name).withStyle(net.minecraft.ChatFormatting.GOLD))
+                    .append(Component.literal(choice.count() > 1 ? " ×" + choice.count() : "")
+                            .withStyle(net.minecraft.ChatFormatting.WHITE)));
+        }
+    }
+
+    private static String localizedItemName(String item) {
+        String name = QuestIcons.localizedName(item);
+        if (!name.isBlank()) return name;
+        return QuestIcons.displayName(item).replaceAll(" \\([^)]*\\)$", "");
     }
 
     public static Component description(QuestDefinition quest) {
