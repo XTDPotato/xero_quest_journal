@@ -1,8 +1,8 @@
 # 版本与加载器矩阵
 
-**简体中文** | [English](en/testing-and-compatibility.md) · [0.2.5 验证](release-verification-0.2.5.md)
+**简体中文** | [English](en/testing-and-compatibility.md) · [0.2.6 验证](release-verification-0.2.6.md)
 
-当前发布版本为 **0.2.5**，四个已完成目标同步构建。
+当前发布版本为 **0.2.6**，四个已完成目标同步构建。
 26.1–26.3 工程的声明版本号也已更新，但不代表完整迁移完成，本次不发布这些安装包。
 
 仓库共享一个模组 ID（`xero_quest_journal`）、业务源码和资源目录。

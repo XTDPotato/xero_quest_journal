@@ -2684,12 +2684,24 @@ public final class QuestScreen extends AnimatedQuestScreen {
             return;
         var hit = JournalDetailRenderer.cardAt(font, selected, displayedRewards(), detailsLeft,
                 detailContentBottom(), width - 14, mouseX, mouseY);
-        if (hit == null || hit.bonus() || !hit.reward().type().equals("item")) return;
-        ItemStack stack = itemStack(hit.reward().item());
-        if (stack.isEmpty()) return;
-        stack.setCount(Math.max(1, Math.min(stack.getMaxStackSize(), hit.reward().count())));
-        graphics.renderTooltip(font, Screen.getTooltipFromItem(minecraft, stack),
-                java.util.Optional.empty(), mouseX, mouseY);
+        if (hit == null || hit.bonus()) return;
+        if (hit.reward().type().equals("experience") || hit.reward().type().equals("levels")) {
+            setTooltipForNextRenderPass(QuestText.rewardTooltip(hit.reward()));
+            return;
+        }
+        if (hit.reward().type().equals("item")) {
+            ItemStack stack = itemStack(hit.reward().item());
+            if (stack.isEmpty()) return;
+            stack.setCount(Math.max(1, Math.min(stack.getMaxStackSize(), hit.reward().count())));
+            var tooltip = Component.empty();
+            for (Component line : Screen.getTooltipFromItem(minecraft, stack)) {
+                if (!tooltip.getSiblings().isEmpty()) tooltip.append("\n");
+                tooltip.append(line.copy());
+            }
+            setTooltipForNextRenderPass(tooltip);
+        } else {
+            setTooltipForNextRenderPass(QuestText.rewardTooltip(hit.reward()));
+        }
     }
 
     private static void renderItemStack(GuiGraphics graphics, ItemStack original, int x, int y,
@@ -6040,10 +6052,14 @@ public final class QuestScreen extends AnimatedQuestScreen {
             if (nestedClip) g.enableScissor(scrollClip[0], scrollClip[1], scrollClip[2], scrollClip[3]);
             p.size(logicalDisplayWidth(element), logicalDisplayHeight(element));
             if (x + elementWidth + 32 < detailsLeft || x - 32 > canvasRight()
-                    || y + elementHeight + 32 < detailsTop() || y - 32 > detailContentBottom()) continue;
+                    || y + elementHeight + 32 < detailsTop() || y - 32 > detailContentBottom()) {
+                if (nestedClip) g.disableScissor();
+                continue;
+            }
             String visibility = element.attribute("visibility", "visible");
             boolean drawContent = visibility.equals("visible") && (editMode || runtimeVisible(element));
             if (!drawContent && !editMode) {
+                if (nestedClip) g.disableScissor();
                 continue;
             }
             float alpha = Math.max(0.0F, Math.min(1.0F,
