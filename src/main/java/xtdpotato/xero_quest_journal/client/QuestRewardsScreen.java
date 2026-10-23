@@ -10,6 +10,7 @@ import net.minecraft.Util;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.storage.LevelResource;
+import org.lwjgl.glfw.GLFW;
 import xtdpotato.xero_quest_journal.core.io.QuestAuthoring;
 import xtdpotato.xero_quest_journal.core.io.AtomicFiles;
 import xtdpotato.xero_quest_journal.core.io.QuestRepository;
@@ -44,6 +45,9 @@ public final class QuestRewardsScreen extends AnimatedQuestScreen {
     private java.util.function.Consumer<List<MailboxRuntime.Attachment>> mailSaved;
     private final List<Draft> rewards = new ArrayList<>();
     private String mode;
+    private boolean tableMode;
+    private int editingReward = -1;
+    private Draft editDraft;
     private int scroll;
     private final SmoothScroll motion = new SmoothScroll();
     private boolean listDragging, listMoved;
@@ -112,7 +116,9 @@ public final class QuestRewardsScreen extends AnimatedQuestScreen {
     }
 
     private int rowHeight = 48;
+    private int contentRows() { return tableMode ? (rewards.size() + 4) / 5 : rewards.size(); }
     private int rows() { return Math.max(1, (height - ROWS_TOP - 58) / rowHeight); }
+    private int maxScroll() { return Math.max(0, (contentRows() - rows()) * rowHeight); }
     private int panelWidth() { return Math.max(1, Math.min(1320, width - 40)); }
     private int left() { return (width - panelWidth()) / 2; }
     private Viewport rowsViewport() {
@@ -121,14 +127,16 @@ public final class QuestRewardsScreen extends AnimatedQuestScreen {
     @Override protected Viewport widgetViewport(AbstractWidget widget) {
         return rowWidgets.contains(widget) ? rowsViewport() : null;
     }
-    private int thumbHeight() { return Math.max(10, rows() * rowHeight * rows() / Math.max(1, rewards.size())); }
+    private int thumbHeight() {
+        return Math.max(10, rows() * rowHeight * rows() / Math.max(1, contentRows()));
+    }
     private int thumbTop() {
         return ROWS_TOP + (rows() * rowHeight - thumbHeight())
-                * scroll / Math.max(1, (rewards.size() - rows()) * rowHeight);
+                * scroll / Math.max(1, maxScroll());
     }
 
     private void scrollTo(double y) {
-        motion.jump((y - ROWS_TOP - thumbOffset) * Math.max(0, (rewards.size() - rows()) * rowHeight)
+        motion.jump((y - ROWS_TOP - thumbOffset) * maxScroll()
                 / Math.max(1, rows() * rowHeight - thumbHeight()));
         moveRows();
     }
@@ -138,20 +146,45 @@ public final class QuestRewardsScreen extends AnimatedQuestScreen {
         clearWidgets();
         rowWidgets.clear();
         styles = ButtonStyleSheet.load();
-        rowHeight = 132;
+        rowHeight = mailSaved != null ? 126 : tableMode
+                ? Math.max(48, Math.min(64, (panelWidth() - 28) / 5))
+                : 132;
         int x = left(), w = panelWidth();
-        motion.limit((rewards.size() - rows()) * rowHeight);
+        motion.limit(maxScroll());
         motion.jump(scroll);
         scroll = motion.pixels();
-        if (!customNode) addRenderableWidget(new StyledChoiceButton<>(x, 40, Math.max(80, w - 34), 22,
+        if (!customNode) addRenderableWidget(new StyledChoiceButton<>(x, 40, Math.max(80, w - 66), 22,
                 text("create.reward_mode"), List.of("default", "manual", "automatic"), mode,
-                value -> text("reward_mode." + value), value -> mode = value, styles, "rewards-mode")).active = pending == null;
+                value -> text("reward_mode." + value), value -> mode = value, styles, "rewards-mode"))
+                .active = pending == null;
+        if (mailSaved == null) {
+            var view = new EditorIconButton(x + w - 58, 40,
+                    text(tableMode ? "rewards.view_list" : "rewards.view_table"),
+                    () -> { tableMode = !tableMode; init(); },
+                    styles, "rewards-view-mode", tableMode ? "list" : "grid");
+            view.setTooltip(Tooltip.create(text(tableMode ? "rewards.view_list" : "rewards.view_table")));
+            addRenderableWidget(view).active = pending == null;
+        }
         button("rewards-add", "+", "add_rewards", x + w - 26, 40, 26, () -> {
             rewards.add(new Draft(new QuestDefinition.Reward("item", "minecraft:diamond", 1)));
-            scroll = Math.max(0, rewards.size() - rows()) * rowHeight;
+            scroll = maxScroll();
             init();
         }).active = pending == null && rewards.size() < 128;
-        for (int row = 0; row < rewards.size(); row++) {
+        if (tableMode) {
+            int cellWidth = Math.max(1, (w - 16) / 5);
+            int cellSize = Math.min(52, Math.max(36, cellWidth - 8));
+            for (int index = 0; index < rewards.size(); index++) {
+                int rewardIndex = index;
+                int column = index % 5, row = index / 5;
+                int bx = x + 8 + column * cellWidth + (cellWidth - cellSize) / 2;
+                int by = ROWS_TOP + row * rowHeight - scroll;
+                var tile = new StyledButton(bx, by, cellSize, cellSize, Component.empty(),
+                        ignored -> editReward(rewardIndex), styles, "rewards-tile-" + index, "toolbar-button");
+                tile.setTooltip(Tooltip.create(rewardTileTooltip(rewards.get(index))));
+                addRenderableWidget(tile);
+                rowWidgets.add(tile);
+            }
+        } else for (int row = 0; row < rewards.size(); row++) {
             int index = row;
             Draft draft = rewards.get(index);
             int y = ROWS_TOP + index * rowHeight - scroll;
@@ -160,8 +193,11 @@ public final class QuestRewardsScreen extends AnimatedQuestScreen {
             int typeWidth = Math.max(90, Math.min(260, actionLeft - x - 42));
             addRenderableWidget(new StyledChoiceButton<>(x + 34, y + 8, typeWidth, 22,
                     text("rewards.type"), itemsOnly ? List.of("item")
-                            : mailSaved != null ? QuestRewards.TYPES.stream().filter(type -> !type.equals("mail")).toList()
-                            : QuestRewards.TYPES, draft.type, value -> text("reward_type." + value),
+                    : mailSaved != null ? QuestRewards.TYPES.stream()
+                            .filter(type -> !type.equals("mail") && !type.equals("loot_choice")).toList()
+                            : QuestRewards.TYPES.stream().filter(type -> !type.equals("loot_choice")
+                            || draft.type.equals("loot_choice")).toList(),
+                    draft.type, value -> text("reward_type." + value),
                     value -> {
                         draft.type = value;
                         draft.item = defaultTarget(value);
@@ -179,12 +215,22 @@ public final class QuestRewardsScreen extends AnimatedQuestScreen {
                                 value -> draft.item = value)));
                 picker.active &= pending == null;
             } else if (draft.type.equals("loot")) {
-                button("rewards-pick-" + index, "...", "loot.title", actionLeft, y + 8, 24,
+                var lootMode = new StyledChoiceButton<>(x + 34, y + 64, Math.min(190, w / 3), 20,
+                        text("rewards.loot_mode"), List.of("default", "random", "choice"), draft.lootMode,
+                        value -> text("rewards.loot_mode." + value), value -> {
+                            draft.lootMode = value;
+                            init();
+                        }, styles, "rewards-loot-mode-" + index);
+                lootMode.active = pending == null;
+                lootMode.setTooltip(Tooltip.create(text("rewards.loot_mode_hint")));
+                addRenderableWidget(lootMode);
+                var pickLoot = button("rewards-pick-" + index, "...", "loot.title", actionLeft, y + 8, 24,
                         () -> minecraft.setScreen(new QuestLootScreen(this, draft.item,
                                 value -> {
                                     draft.item = value;
                                     init();
                                 })));
+                pickLoot.active &= pending == null;
             } else if (draft.type.equals("mail")) {
                 button("rewards-pick-" + index, "...", "mailbox.template_pick", actionLeft, y + 8, 24,
                         () -> {
@@ -321,6 +367,114 @@ public final class QuestRewardsScreen extends AnimatedQuestScreen {
                 text("cancel"), ignored -> onClose(), styles, "rewards-cancel");
         cancel.active = pending == null;
         addRenderableWidget(cancel);
+        if (editingReward >= 0 && editDraft != null) initRewardDialog();
+    }
+
+    private Component rewardTileTooltip(Draft draft) {
+        String target = draft.item.isBlank() ? QuestRewardsScreen.icon(draft.type, draft.item) : draft.item;
+        return Component.literal(QuestIcons.displayName(target) + " ×" + draft.count);
+    }
+
+    private void editReward(int index) {
+        if (pending != null || index < 0 || index >= rewards.size()) return;
+        editingReward = index;
+        editDraft = new Draft(rewards.get(index));
+        init();
+    }
+
+    private int dialogWidth() { return Math.min(560, width - 32); }
+    private int dialogHeight() { return Math.min(330, height - 32); }
+    private int dialogLeft() { return (width - dialogWidth()) / 2; }
+    private int dialogTop() { return (height - dialogHeight()) / 2; }
+
+    private void initRewardDialog() {
+        int x = dialogLeft() + 18, y = dialogTop() + 48, w = dialogWidth() - 36;
+        var type = new StyledChoiceButton<>(x, y, Math.min(220, w - 4), 22,
+                text("rewards.type"), itemsOnly ? List.of("item")
+                        : QuestRewards.TYPES.stream().filter(rewardType -> !rewardType.equals("loot_choice")
+                        || editDraft.type.equals("loot_choice")).toList(),
+                editDraft.type, value -> text("reward_type." + value), value -> {
+                    editDraft.type = value;
+                    editDraft.item = defaultTarget(value);
+                    editDraft.count = "1";
+                    init();
+                }, styles, "rewards-dialog-type");
+        addRenderableWidget(type);
+        y += 30;
+
+        if (editDraft.type.equals("item")) {
+            addRenderableWidget(new StyledButton(x, y, w - 94, 22,
+                    Component.literal(QuestIcons.displayName(editDraft.item)),
+                    ignored -> minecraft.setScreen(QuestScreen.pickResource(this, editDraft.item, true,
+                            value -> { editDraft.item = value; init(); })),
+                    styles, "rewards-dialog-item", "toolbar-button").leadingIcon(editDraft.item));
+            var count = dialogField(editDraft.count, x + w - 86, y, 86, 22, "create.reward_count");
+            count.setMaxLength(7);
+            count.setResponder(value -> editDraft.count = value);
+            addRenderableWidget(count);
+            y += 30;
+            var quality = new StyledChoiceButton<>(x, y, Math.min(180, w / 2 - 4), 20,
+                    text("rewards.quality"), QuestRewardQuality.VALUES, editDraft.quality,
+                    value -> text("rewards.quality." + (value.isBlank() ? "auto" : value)),
+                    value -> editDraft.quality = value, styles, "rewards-dialog-quality");
+            addRenderableWidget(quality);
+            if (!editDraft.background.isBlank()) {
+                var background = dialogField(editDraft.background, x + w / 2, y, w / 2, 20,
+                        "rewards.background");
+                background.setResponder(value -> editDraft.background = value);
+                addRenderableWidget(background);
+            }
+        } else if (editDraft.type.equals("loot")) {
+            var target = dialogField(editDraft.item, x, y, w - 38, 22, "rewards.target");
+            target.setEditable(false);
+            addRenderableWidget(target);
+            button("rewards-dialog-loot-pick", "...", "loot.title", x + w - 32, y, 32,
+                    () -> minecraft.setScreen(new QuestLootScreen(this, editDraft.item, value -> {
+                        editDraft.item = value;
+                        init();
+                    })));
+            y += 30;
+            var lootMode = new StyledChoiceButton<>(x, y, Math.min(220, w - 90), 20,
+                    text("rewards.loot_mode"), List.of("default", "random", "choice"), editDraft.lootMode,
+                    value -> text("rewards.loot_mode." + value),
+                    value -> editDraft.lootMode = value, styles, "rewards-dialog-loot-mode");
+            lootMode.setTooltip(Tooltip.create(text("rewards.loot_mode_hint")));
+            addRenderableWidget(lootMode);
+            var count = dialogField(editDraft.count, x + w - 82, y, 82, 20, "create.reward_count");
+            count.setResponder(value -> editDraft.count = value);
+            addRenderableWidget(count);
+        } else {
+            var target = dialogField(editDraft.item, x, y, w, 22, "rewards.target");
+            target.setResponder(value -> editDraft.item = value);
+            addRenderableWidget(target);
+            y += 30;
+            var count = dialogField(editDraft.count, x, y, 86, 20, "create.reward_count");
+            count.setResponder(value -> editDraft.count = value);
+            addRenderableWidget(count);
+        }
+        int footerY = dialogTop() + dialogHeight() - 32;
+        addRenderableWidget(new StyledButton(x, footerY, (w - 6) / 2, 22,
+                text("cancel"), ignored -> closeRewardDialog(), styles, "rewards-dialog-cancel"));
+        addRenderableWidget(new StyledButton(x + (w + 6) / 2, footerY, (w - 6) / 2, 22,
+                text("apply"), ignored -> {
+                    if (editingReward >= 0 && editingReward < rewards.size())
+                        rewards.set(editingReward, new Draft(editDraft));
+                    closeRewardDialog();
+                }, styles, "rewards-dialog-apply"));
+    }
+
+    private EditBox dialogField(String value, int x, int y, int w, int h, String label) {
+        var field = new SuggestedEditBox(this, font, x, y, w, h, text(label), "reward-dialog");
+        field.withoutMenu();
+        field.setMaxLength(8192);
+        field.setValue(value == null ? "" : value);
+        return field;
+    }
+
+    private void closeRewardDialog() {
+        editingReward = -1;
+        editDraft = null;
+        init();
     }
 
     private StyledButton button(String id, String symbol, String tooltip, int x, int y, int w, Runnable action) {
@@ -518,6 +672,7 @@ public final class QuestRewardsScreen extends AnimatedQuestScreen {
     @Override
     public boolean mouseScrolled(double x, double y, double horizontal, double vertical) {
         if (scrollChoicePopup(x, y, horizontal, vertical)) return true;
+        if (editingReward >= 0) return true;
         if (pending == null && rowsViewport().contains(x, y)) {
             motion.wheel(vertical * rowHeight);
             return true;
@@ -528,7 +683,14 @@ public final class QuestRewardsScreen extends AnimatedQuestScreen {
     @Override
     public boolean mouseClicked(double x, double y, int button) {
         if (clickChoicePopup(x, y, button)) return true;
-        if (button == 0 && pending == null && rewards.size() > rows()
+        if (editingReward >= 0) {
+            if (!dialogBounds().contains(x, y)) {
+                if (button == 0) closeRewardDialog();
+                return true;
+            }
+            return super.mouseClicked(x, y, button);
+        }
+        if (button == 0 && pending == null && contentRows() > rows()
                 && x >= left() + panelWidth() && x < left() + panelWidth() + 9
                 && y >= ROWS_TOP && y < ROWS_TOP + rows() * rowHeight) {
             scrollbarDragging = true;
@@ -551,6 +713,7 @@ public final class QuestRewardsScreen extends AnimatedQuestScreen {
     @Override
     public boolean mouseDragged(double x, double y, int button, double dx, double dy) {
         if (dragChoicePopup(x, y, button, dx, dy)) return true;
+        if (editingReward >= 0) return super.mouseDragged(x, y, button, dx, dy);
         if (button == 0 && listDragging) {
             listMoved |= Math.abs(y - listStartY) >= 4;
             if (listMoved) { motion.jump(listStartScroll + listStartY - y); moveRows(); }
@@ -566,6 +729,7 @@ public final class QuestRewardsScreen extends AnimatedQuestScreen {
     @Override
     public boolean mouseReleased(double x, double y, int button) {
         if (releaseChoicePopup(x, y, button)) return true;
+        if (editingReward >= 0) return super.mouseReleased(x, y, button);
         if (button == 0 && listDragging) {
             listDragging = false;
             if (!listMoved && rowsViewport().contains(x, y) && Math.abs(x - listStartX) < 4) {
@@ -591,9 +755,13 @@ public final class QuestRewardsScreen extends AnimatedQuestScreen {
         if (mailSaved == null) {
             int colorX = colorX(left, w), colorWidth = Math.max(60, left + w - 40 - colorX);
             g.enableScissor(rowsViewport().left(), rowsViewport().top(), rowsViewport().right(), rowsViewport().bottom());
-            for (int row = scroll / rowHeight; row < Math.min(rewards.size(), scroll / rowHeight + rows() + 1); row++) {
+            int first = tableMode ? scroll / rowHeight * 5 : scroll / rowHeight;
+            int end = Math.min(rewards.size(), tableMode
+                    ? (scroll / rowHeight + rows() + 1) * 5
+                    : scroll / rowHeight + rows() + 1);
+            for (int row = first; row < end; row++) {
                 var draft = rewards.get(row);
-                if (!draft.type.equals("item") || draft.background.isBlank()) continue;
+                if (tableMode || !draft.type.equals("item") || draft.background.isBlank()) continue;
                 int top = ROWS_TOP + row * rowHeight - scroll + 64;
                 int swatch = Math.max(8, Math.min(12, colorWidth - 4));
                 int color;
@@ -607,19 +775,41 @@ public final class QuestRewardsScreen extends AnimatedQuestScreen {
         g.drawString(font, title, left + 12, 12, RewardEditorTheme.TEXT);
         g.drawString(font, text(customNode ? "rewards.scope_graph" : "rewards.scope_task"),
                 left + 12, 72, RewardEditorTheme.MUTED);
-        g.drawString(font, text("rewards.target"), left + 34, ROWS_TOP - 17, RewardEditorTheme.MUTED);
-        g.drawString(font, text("create.count"), left + w - 142, ROWS_TOP - 17, RewardEditorTheme.MUTED);
+        if (!tableMode) {
+            g.drawString(font, text("rewards.target"), left + 34, ROWS_TOP - 17, RewardEditorTheme.MUTED);
+            g.drawString(font, text("create.count"), left + w - 142, ROWS_TOP - 17, RewardEditorTheme.MUTED);
+        }
         g.enableScissor(rowsViewport().left(), rowsViewport().top(), rowsViewport().right(), rowsViewport().bottom());
-        for (int row = scroll / rowHeight; row < Math.min(rewards.size(), scroll / rowHeight + rows() + 1); row++) {
-            var draft = rewards.get(row);
-            int rowY = ROWS_TOP + row * rowHeight - scroll;
-            g.drawString(font, Component.literal(String.format(java.util.Locale.ROOT, "%02d", row + 1)),
-                    left + 12, rowY + rowHeight - 16, RewardEditorTheme.MUTED);
+        if (tableMode) {
+            int cellWidth = Math.max(1, (w - 16) / 5);
+            int cellSize = Math.min(52, Math.max(36, cellWidth - 8));
+            int firstRow = scroll / rowHeight;
+            for (int row = firstRow; row < Math.min(contentRows(), firstRow + rows() + 1); row++) {
+                int rowY = ROWS_TOP + row * rowHeight - scroll;
+                for (int column = 0; column < 5; column++) {
+                    int index = row * 5 + column;
+                    if (index >= rewards.size()) break;
+                    Draft draft = rewards.get(index);
+                    int cellX = left + 8 + column * cellWidth + (cellWidth - cellSize) / 2;
+                    int iconSize = Math.min(24, cellSize - 8);
+                    QuestIcons.render(g, icon(draft.type, draft.item),
+                            cellX + (cellSize - iconSize) / 2, rowY + 5, iconSize);
+                    if (!draft.count.equals("1"))
+                        g.drawString(font, draft.count, cellX + cellSize - font.width(draft.count) - 3,
+                                rowY + cellSize - font.lineHeight, RewardEditorTheme.TEXT);
+                }
+            }
+        } else {
+            for (int row = scroll / rowHeight; row < Math.min(rewards.size(), scroll / rowHeight + rows() + 1); row++) {
+                int rowY = ROWS_TOP + row * rowHeight - scroll;
+                g.drawString(font, Component.literal(String.format(java.util.Locale.ROOT, "%02d", row + 1)),
+                        left + 12, rowY + rowHeight - 16, RewardEditorTheme.MUTED);
+            }
         }
         if (rewards.isEmpty()) g.drawString(font, text("rewards.empty"), left + 14, ROWS_TOP + 16,
                 RewardEditorTheme.MUTED);
         g.disableScissor();
-        if (rewards.size() > rows()) {
+        if (contentRows() > rows()) {
             int track = rows() * rowHeight;
             g.fill(left + w + 3, ROWS_TOP, left + w + 6, ROWS_TOP + track, 0xFF303741);
             g.fill(left + w + 3, thumbTop(), left + w + 6, thumbTop() + thumbHeight(), 0xFF9DB4D2);
@@ -640,16 +830,57 @@ public final class QuestRewardsScreen extends AnimatedQuestScreen {
         RewardEditorTheme.panel(g, left, 4, width, 84,
                 customNode ? RewardEditorTheme.GOLD : RewardEditorTheme.GREEN);
         var viewport = rowsViewport();
-        for (int row = scroll / rowHeight; row < Math.min(rewards.size(), scroll / rowHeight + rows() + 1); row++) {
+        int first = tableMode ? scroll / rowHeight * 5 : scroll / rowHeight;
+        int end = Math.min(rewards.size(), tableMode
+                ? (scroll / rowHeight + rows() + 1) * 5
+                : scroll / rowHeight + rows() + 1);
+        for (int row = first; row < end; row++) {
             int top = ROWS_TOP + row * rowHeight - scroll + 3;
+            int visualRow = tableMode ? row / 5 : row;
+            top = ROWS_TOP + visualRow * rowHeight - scroll + 3;
             if (top + rowHeight - 6 < viewport.top() || top > viewport.bottom()) continue;
             Draft draft = rewards.get(row);
-            RewardEditorTheme.entry(g, left, top, width, rowHeight - 6,
+            if (tableMode) {
+                int cellWidth = Math.max(1, (width - 16) / 5);
+                int cellSize = Math.min(52, Math.max(36, cellWidth - 8));
+                int cellX = left + 8 + row % 5 * cellWidth + (cellWidth - cellSize) / 2;
+                RewardEditorTheme.entry(g, cellX, top, cellSize, rowHeight - 6, draft.type, true, false);
+            } else RewardEditorTheme.entry(g, left, top, width, rowHeight - 6,
                     draft.type, true, false);
         }
     }
 
-    @Override public void onClose() { if (pending == null) closeTo(parent); }
+    private Viewport dialogBounds() {
+        return viewport(dialogLeft() - 4, dialogTop() - 4,
+                dialogLeft() + dialogWidth() + 4, dialogTop() + dialogHeight() + 4);
+    }
+    @Override protected Object popupKey() { return editingReward < 0 ? null : editDraft; }
+    @Override protected Viewport popupBounds() { return editingReward < 0 ? super.popupBounds() : dialogBounds(); }
+    @Override protected int popupScrimColor() { return 0x8013161D; }
+
+    @Override public void renderPopupBase(GuiGraphics g, int mouseX, int mouseY, float delta) {
+        renderContents(g, mouseX, mouseY, delta);
+    }
+    @Override protected void renderPopupSurface(GuiGraphics g, int mouseX, int mouseY, float delta) {
+        super.renderPopupSurface(g, mouseX, mouseY, delta);
+        g.fill(dialogLeft(), dialogTop(), dialogLeft() + dialogWidth(), dialogTop() + dialogHeight(), 0xFF242A32);
+        g.fill(dialogLeft(), dialogTop(), dialogLeft() + dialogWidth(), dialogTop() + 2, RewardEditorTheme.GREEN);
+        g.renderOutline(dialogLeft(), dialogTop(), dialogWidth(), dialogHeight(), 0xFF91A6B8);
+        g.drawString(font, text("rewards.edit_item"), dialogLeft() + 14, dialogTop() + 14,
+                RewardEditorTheme.TEXT);
+    }
+
+    @Override public boolean keyPressed(int key, int scan, int modifiers) {
+        if (editingReward >= 0 && key == GLFW.GLFW_KEY_ESCAPE) {
+            closeRewardDialog();
+            return true;
+        }
+        return super.keyPressed(key, scan, modifiers);
+    }
+    @Override public void onClose() {
+        if (editingReward >= 0) closeRewardDialog();
+        else if (pending == null) closeTo(parent);
+    }
     @Override public boolean isPauseScreen() { return false; }
 
     private static final class Draft {
@@ -664,9 +895,33 @@ public final class QuestRewardsScreen extends AnimatedQuestScreen {
         boolean hidePopup;
         boolean displayed = true;
         String claimMode = "default";
+        String lootMode = "default";
+        Draft(Draft other) {
+            type = other.type;
+            item = other.item;
+            count = other.count;
+            level = other.level;
+            quality = other.quality;
+            background = other.background;
+            particles = other.particles;
+            hidden = other.hidden;
+            hidePopup = other.hidePopup;
+            displayed = other.displayed;
+            claimMode = other.claimMode;
+            lootMode = other.lootMode;
+        }
         Draft(QuestDefinition.Reward reward) {
             type = reward.type();
             item = reward.item();
+            if (type.equals("loot")) {
+                if (item.startsWith("random:")) {
+                    lootMode = "random";
+                    item = item.substring("random:".length());
+                } else if (item.startsWith("choice:")) {
+                    lootMode = "choice";
+                    item = item.substring("choice:".length());
+                }
+            }
             count = Integer.toString(reward.count());
             quality = reward.quality().isBlank() ? "auto" : reward.quality();
             background = reward.background();
@@ -685,7 +940,7 @@ public final class QuestRewardsScreen extends AnimatedQuestScreen {
             String target = item.strip();
             if (type.equals("effect")) {
                 target = new RewardEffect(target, Integer.parseInt(level.strip()), particles).encoded();
-            }
+            } else if (type.equals("loot")) target = QuestRewards.lootTarget(target, lootMode);
             return new QuestDefinition.Reward(type, target, Integer.parseInt(count.strip()),
                     type.equals("item") ? quality : "", type.equals("item") ? background : "",
                     displayed, claimMode);

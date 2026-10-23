@@ -5,7 +5,7 @@
 A native Minecraft quest journal with visual authoring, chapter timelines, rewards,
 mail, anecdote records, and reusable structure previews.
 
-**Current mod version: 0.2.4.** The Chinese and English documentation
+**Current mod version: 0.2.5.** The Chinese and English documentation
 describe the same shared feature set. Images on this page are actual English client captures
 at **1920×1080**, taken after resource loading and interface transitions settle.
 Off-screen coordinate tracking uses a rotated `<` indicator to point toward the target.
@@ -18,16 +18,16 @@ Choose the JAR that matches both your Minecraft version and loader.
 
 | Minecraft | Loader | Java | Release file |
 | --- | --- | --- | --- |
-| 1.20.1 | Forge | 17 | `xero_quest_journal-forge-1.20.1-0.2.4.jar` |
-| 1.20.1 | Fabric + Fabric API | 17 | `xero_quest_journal-fabric-1.20.1-0.2.4.jar` |
-| 1.21.1 | NeoForge | 21 | `xero_quest_journal-neoforge-1.21.1-0.2.4.jar` |
-| 1.21.1 | Fabric + Fabric API | 21 | `xero_quest_journal-fabric-1.21.1-0.2.4.jar` |
+| 1.20.1 | Forge | 17 | `xero_quest_journal-forge-1.20.1-0.2.5.jar` |
+| 1.20.1 | Fabric + Fabric API | 17 | `xero_quest_journal-fabric-1.20.1-0.2.5.jar` |
+| 1.21.1 | NeoForge | 21 | `xero_quest_journal-neoforge-1.21.1-0.2.5.jar` |
+| 1.21.1 | Fabric + Fabric API | 21 | `xero_quest_journal-fabric-1.21.1-0.2.5.jar` |
 
-Version 0.2.4 adds mod-aware progression and locate-based story generation, per-reward visibility
-and claim behavior, reward source folder access, and improved item-tag previews and pickup notices.
-Current verification: [0.2.4 report](docs/release-verification-0.2.4.md).
+Version 0.2.5 adds daily generated structure anecdotes with next-day linked records, village bell
+objectives, persistent generation cursors, and configurable mod scopes and tiered rewards.
+Current verification: [0.2.5 report](docs/release-verification-0.2.5.md).
 
-[Download 0.2.4](https://github.com/XTDPotato/xero_quest_journal/releases/tag/v0.2.4).
+[Download 0.2.5](https://github.com/XTDPotato/xero_quest_journal/releases/tag/v0.2.5).
 The release also contains an organized bundle and `SHA256SUMS.txt`.
 Install one matching core JAR per instance. Multiplayer installations need matching client
 and server builds. Complete authoring currently targets a local integrated server.

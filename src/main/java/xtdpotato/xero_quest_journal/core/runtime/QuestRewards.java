@@ -28,7 +28,11 @@ public final class QuestRewards {
     public static boolean valid(QuestDefinition.Reward reward) {
         if (reward == null || !TYPES.contains(reward.type()) || reward.item().length() > 8192) return false;
         if (reward.type().equals("loot")) {
-            return QuestLootStore.find(reward.item()) != null && reward.count() <= 128;
+            try {
+                return lootTable(reward.item()) != null && reward.count() <= 128;
+            } catch (RuntimeException invalid) {
+                return false;
+            }
         }
         if (reward.type().equals("loot_choice")) {
             return !choices(reward).isEmpty();
@@ -71,7 +75,7 @@ public final class QuestRewards {
         List<QuestDefinition.Reward> result = new ArrayList<>();
         for (var reward : rewards) {
             if (reward.type().equals("loot")) {
-                LootDefinition table = QuestLootStore.find(reward.item());
+                LootDefinition table = lootTable(reward.item());
                 if (table == null) throw new IllegalArgumentException("Missing loot table");
                 for (var resolved : resolve(table, player, reward.count()))
                     result.add(withSettings(resolved, reward));
@@ -126,9 +130,44 @@ public final class QuestRewards {
                 pick -= entry.weight();
             }
             result.add(selected.reward());
-            pool.remove(selected);
+            if (table.mode() != LootDefinition.Mode.RANDOM_WITH_REPLACEMENT) pool.remove(selected);
         }
         return result;
+    }
+
+    public static LootDefinition lootTable(String target) {
+        if (target == null) return null;
+        LootDefinition.Mode override = null;
+        String source = target;
+        if (source.startsWith("choice:")) {
+            override = LootDefinition.Mode.CHOICE;
+            source = source.substring("choice:".length());
+        } else if (source.startsWith("random:")) {
+            override = LootDefinition.Mode.RANDOM;
+            source = source.substring("random:".length());
+        }
+        LootDefinition table;
+        if (!source.startsWith("inline:")) {
+            table = QuestLootStore.find(source);
+        } else {
+            String encoded = source.substring("inline:".length());
+            if (encoded.length() > 7000) return null;
+            table = GSON.fromJson(encoded, LootDefinition.class);
+        }
+        if (table == null) return null;
+        if (override != null) table = new LootDefinition(table.id(), table.name(), override,
+                table.rolls(), table.choiceTitle(), table.entries(), table.displayIcon());
+        QuestLootStore.validate(table);
+        return table;
+    }
+
+    public static String lootTarget(String target, String mode) {
+        String value = target == null ? "" : target;
+        return switch (mode == null ? "default" : mode) {
+            case "random" -> "random:" + value;
+            case "choice" -> "choice:" + value;
+            default -> value;
+        };
     }
 
     public static List<QuestDefinition.Reward> choices(QuestDefinition.Reward reward) {

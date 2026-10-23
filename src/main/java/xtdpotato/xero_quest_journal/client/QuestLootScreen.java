@@ -56,6 +56,7 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
     private long statusUntil;
     private boolean syncingWeightFields;
     private boolean multiSelect;
+    private boolean scrollEntriesToEnd;
     private int contextIndex = -1;
     private int pressedContextAction = -1;
     private int pressedTableIndex = -1;
@@ -302,6 +303,10 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
         addRenderableWidget(rollBox);
 
         entryMotion.limit(entryMaxScroll());
+        if (scrollEntriesToEnd) {
+            entryMotion.jump(entryMaxScroll());
+            scrollEntriesToEnd = false;
+        }
         List<Integer> filtered = filteredEntries();
         int firstEntry = firstVisibleEntry();
         renderedEntryStart = firstEntry;
@@ -570,7 +575,7 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
                 "item", "minecraft:diamond", 1, 1, "always", true)));
         equalizeEnabledWeights();
         entryMotion.limit(entryMaxScroll());
-        entryMotion.jump(entryMaxScroll());
+        scrollEntriesToEnd = true;
         init();
     }
 
@@ -654,6 +659,35 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
         contextIndex = index;
         contextX = (int) x;
         contextY = (int) y;
+    }
+
+    private void duplicateTable(int index) {
+        if (index < 0 || index >= tables.size()) return;
+        var source = tables.get(index);
+        String baseId = source.id().replaceAll("[^A-Za-z0-9._-]", "_");
+        if (baseId.length() > 112) baseId = baseId.substring(0, 112);
+        String newId = baseId + "_copy";
+        int suffix = 2;
+        while (QuestLootStore.find(newId) != null)
+            newId = baseId + "_copy_" + suffix++;
+        String copyName = source.name() + " " + text("loot.copy_suffix").getString();
+        var copy = new LootDefinition(newId, copyName, source.mode(), source.rolls(),
+                source.choiceTitle(), source.entries(), source.displayIcon());
+        var server = minecraft.getSingleplayerServer();
+        var author = server == null || minecraft.player == null ? null
+                : server.getPlayerList().getPlayer(minecraft.player.getUUID());
+        try {
+            QuestLootStore.save(author, copy);
+            reloadTables();
+            select(copy.id());
+            status = "loot.copied";
+            statusUntil = System.currentTimeMillis() + 2200;
+            init();
+        } catch (RuntimeException failure) {
+            error = author == null || !author.hasPermissions(2)
+                    ? "create.error.permission" : "loot.copy_error";
+            init();
+        }
     }
 
     private void confirmDelete() {
@@ -797,10 +831,10 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
         if (filtered.isEmpty()) g.drawString(font, entries.isEmpty() ? text("loot.empty") : text("loot.no_matches"),
                 x + 8, rowsViewportTop() + 12, 0xFFABB8C3);
 
-        int menuX = Math.clamp(contextX, 4, Math.max(4, width - 136));
-        int menuY = Math.clamp(contextY, 4, Math.max(4, height - 66));
+        int menuX = Math.clamp(contextX, 4, Math.max(4, width - 148));
+        int menuY = Math.clamp(contextY, 4, Math.max(4, height - 86));
         renderAnimatedMenu(g, "context", contextIndex < 0 ? null : contextIndex,
-                viewport(menuX, menuY, menuX + 132, menuY + 62), () -> renderContextMenu(g));
+                viewport(menuX, menuY, menuX + 144, menuY + 82), () -> renderContextMenu(g));
         if (error != null) {
             g.drawString(font, text(error), editorLeft(), height - 48, 0xFFFF7777);
         } else if (status != null && System.currentTimeMillis() <= statusUntil) {
@@ -834,20 +868,21 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
 
     private void renderContextMenu(GuiGraphics g) {
         if (contextIndex < 0) return;
-        int menuWidth = 132;
-        int menuHeight = 62;
+        int menuWidth = 144;
+        int menuHeight = 82;
         int x = Math.clamp(contextX, 4, Math.max(4, width - menuWidth - 4));
         int y = Math.clamp(contextY, 4, Math.max(4, height - menuHeight - 4));
         g.fill(x, y, x + menuWidth, y + menuHeight, 0xF0252B33);
         g.renderOutline(x, y, menuWidth, menuHeight, 0xFF9CB0BD);
-        g.drawString(font, text("loot.context.delete"), x + 8, y + 6, 0xFFFFC1B2);
-        g.drawString(font, text("loot.context.rename"), x + 8, y + 24, 0xFFEAF0F6);
-        g.drawString(font, text("loot.context.id"), x + 8, y + 42, 0xFFEAF0F6);
+        g.drawString(font, text("loot.context.delete"), x + 8, y + 3, 0xFFFFC1B2);
+        g.drawString(font, text("loot.context.rename"), x + 8, y + 22, 0xFFEAF0F6);
+        g.drawString(font, text("loot.context.id"), x + 8, y + 41, 0xFFEAF0F6);
+        g.drawString(font, text("loot.context.copy"), x + 8, y + 60, 0xFFEAF0F6);
     }
 
     private boolean handleContextClick(double mouseX, double mouseY) {
         if (contextIndex < 0) return false;
-        int menuWidth = 132, menuHeight = 62;
+        int menuWidth = 144, menuHeight = 82;
         int x = Math.clamp(contextX, 4, Math.max(4, width - menuWidth - 4));
         int y = Math.clamp(contextY, 4, Math.max(4, height - menuHeight - 4));
         if (mouseX >= x && mouseX < x + menuWidth && mouseY >= y && mouseY < y + menuHeight) {
@@ -860,7 +895,7 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
             } else if (action == 2 && idBox != null) {
                 idBox.setFocused(true);
                 setFocused(idBox);
-            }
+            } else if (action == 3) duplicateTable(tableIndex(selectedId));
         } else {
             contextIndex = -1;
         }
@@ -892,9 +927,9 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
         if (inputBlocked()) return true;
         if (contextIndex >= 0) {
             if (button == 0) {
-                int menuX = Math.clamp(contextX, 4, Math.max(4, width - 136));
-                int menuY = Math.clamp(contextY, 4, Math.max(4, height - 66));
-                if (x >= menuX && x < menuX + 132 && y >= menuY && y < menuY + 62)
+                int menuX = Math.clamp(contextX, 4, Math.max(4, width - 148));
+                int menuY = Math.clamp(contextY, 4, Math.max(4, height - 86));
+                if (x >= menuX && x < menuX + 144 && y >= menuY && y < menuY + 82)
                     pressedContextAction = (int) ((y - menuY) / 20);
                 else contextIndex = -1;
             }
@@ -922,9 +957,9 @@ public final class QuestLootScreen extends AnimatedQuestScreen {
         if (button == 0 && pressedContextAction >= 0) {
             int action = pressedContextAction;
             pressedContextAction = -1;
-            int menuX = Math.clamp(contextX, 4, Math.max(4, width - 136));
-            int menuY = Math.clamp(contextY, 4, Math.max(4, height - 66));
-            if (contextIndex >= 0 && x >= menuX && x < menuX + 132 && y >= menuY && y < menuY + 62
+            int menuX = Math.clamp(contextX, 4, Math.max(4, width - 148));
+            int menuY = Math.clamp(contextY, 4, Math.max(4, height - 86));
+            if (contextIndex >= 0 && x >= menuX && x < menuX + 144 && y >= menuY && y < menuY + 82
                     && action == (int) ((y - menuY) / 20))
                 handleContextClick(x, y);
             return true;

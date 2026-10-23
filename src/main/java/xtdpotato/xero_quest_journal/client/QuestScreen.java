@@ -413,8 +413,11 @@ public final class QuestScreen extends AnimatedQuestScreen {
         var screen = new QuestScreen(parent);
         screen.externalPicker = true;
         screen.iconPicker = new IconPicker(current, value -> {
-            changed.accept(value);
-            net.minecraft.client.Minecraft.getInstance().setScreen(parent);
+            var minecraft = net.minecraft.client.Minecraft.getInstance();
+            minecraft.execute(() -> {
+                minecraft.setScreen(parent);
+                changed.accept(value);
+            });
         }, itemOnly);
         screen.iconPicker.allowTags = itemOnly && allowTags;
         if (screen.iconPicker.allowTags && current != null && current.startsWith("#"))
@@ -592,6 +595,12 @@ public final class QuestScreen extends AnimatedQuestScreen {
         if (ClientEditMode.enabled() && isAdmin()) {
             nav("settings", "config.title", width - 90, headerControlY(), 22, 24, JournalNavButton.Kind.ICON, "settings",
                     () -> minecraft.setScreen(new QuestConfigScreen(this)));
+        }
+        if (editMode && canAuthor()) {
+            var loot = nav("loot-tables", "loot.title", width - 120, headerControlY(), 22, 24,
+                    JournalNavButton.Kind.ICON, "gift",
+                    () -> minecraft.setScreen(new QuestLootScreen(this)));
+            loot.setTooltip(Tooltip.create(text("loot.title")));
         }
         nav("close", "close", width - 34, headerControlY(), 22, 24, JournalNavButton.Kind.ICON, "close", this::onClose);
         if (hasClaimableTasks()) {
@@ -4980,22 +4989,29 @@ public final class QuestScreen extends AnimatedQuestScreen {
 
     private int elementHeight(LayoutEditorState.Element element) {
         String value = element.attribute("layout_height", Integer.toString(element.height()));
+        int configuredHeight;
         if (isMatchParent(value)) {
             String parent = layout.parentOf(element.id());
             if (parent != null && layout.elements().containsKey(parent)) {
                 var parentElement = layout.elements().get(parent);
                 if (isWrapContent(parentElement.attribute("layout_height", ""))) {
-                    return Math.max(1, element.height());
+                    configuredHeight = Math.max(1, element.height());
+                } else {
+                    configuredHeight = Math.max(1, elementHeight(parentElement) - paddingTop(parentElement)
+                            - paddingBottom(parentElement) - marginTop(element) - marginBottom(element));
                 }
-                return Math.max(1, elementHeight(parentElement) - paddingTop(parentElement)
-                        - paddingBottom(parentElement) - marginTop(element) - marginBottom(element));
+            } else {
+                configuredHeight = Math.max(1, layout.taskCanvas(element.quest()).height() - 6);
             }
-            return Math.max(1, layout.taskCanvas(element.quest()).height() - 6);
+        } else if (isWrapContent(value)) {
+            configuredHeight = wrapContentHeight(element);
+        } else {
+            configuredHeight = Math.max(1, parseDimensionSafe(value, element.height()));
         }
-        if (isWrapContent(value)) {
-            return wrapContentHeight(element);
-        }
-        return Math.max(1, parseDimensionSafe(value, element.height()));
+        // Reward cards need a heading and at least one full card row even when an older
+        // template saved a fixed or match-parent height that was only 32px.
+        return element.kind().equals("quest_rewards")
+                ? Math.max(configuredHeight, wrapContentHeight(element)) : configuredHeight;
     }
 
     private int wrapContentWidth(LayoutEditorState.Element element) {
@@ -5051,8 +5067,9 @@ public final class QuestScreen extends AnimatedQuestScreen {
         }
         if (element.kind().equals("quest_rewards")) {
             int columns = Math.max(1, (elementWidth(element) + 4) / RewardCardRenderer.COLUMN_STEP);
-            int count = displayedRewards().size();
-            return 14 + Math.max(1, (count + columns - 1) / columns) * RewardCardRenderer.ROW_STEP;
+            int count = displayedRewards().size() + (editMode ? 1 : 0);
+            int rows = Math.max(1, (count + columns - 1) / columns);
+            return 14 + (rows - 1) * RewardCardRenderer.ROW_STEP + RewardCardRenderer.HEIGHT;
         }
         if (isTextElement(element)) {
             float scale = Math.max(0.25F, Math.min(8F,
@@ -5105,7 +5122,8 @@ public final class QuestScreen extends AnimatedQuestScreen {
     }
 
     private int heightForWrapParent(LayoutEditorState.Element child) {
-        return isMatchParent(child.attribute("layout_height", "")) ? child.height() : elementHeight(child);
+        return child.kind().equals("quest_rewards") ? elementHeight(child)
+                : isMatchParent(child.attribute("layout_height", "")) ? child.height() : elementHeight(child);
     }
 
     private static boolean isMatchParent(String value) {
@@ -5199,10 +5217,14 @@ public final class QuestScreen extends AnimatedQuestScreen {
         int spacing = Math.max(0, parseInteger(parent.attribute("spacing", "4"), 4));
         boolean horizontal = parent.attribute("orientation", "vertical").equals("horizontal");
         String parentGravity = normalizeGravity(parent.attribute("gravity", "top|left"));
-        List<LayoutEditorState.Element> children = layout.elements().values().stream()
+        var childStream = layout.elements().values().stream()
                 .filter(child -> parentId.equals(layout.parentOf(child.id())))
-                .filter(child -> !child.attribute("visibility", "visible").equals("gone"))
-                .toList();
+                .filter(child -> !child.attribute("visibility", "visible").equals("gone"));
+        boolean verticalLinear = parent.kind().equals("linear")
+                && !parent.attribute("orientation", "vertical").equals("horizontal");
+        List<LayoutEditorState.Element> children = (verticalLinear
+                ? childStream.sorted(Comparator.comparing(child -> child.kind().equals("quest_rewards")))
+                : childStream).toList();
         int stackWidth = horizontal
                 ? children.stream().mapToInt(child -> marginLeft(child) + elementWidth(child)
                         + marginRight(child)).sum() + Math.max(0, children.size() - 1) * spacing
@@ -5731,6 +5753,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
     }
 
     private void renderTaskDetails(GuiGraphics graphics, int mouseX, int mouseY) {
+        arrangeRewardLayout();
         detailReveal.advance(System.nanoTime(), popupAnimationMillis());
         Runnable draw = () -> {
             graphics.fill(detailsLeft, detailsTop(), width - 16, canvasBottom(),
@@ -5761,6 +5784,25 @@ public final class QuestScreen extends AnimatedQuestScreen {
                     width - 14, canvasBottom(), 1, detailReveal.eased());
         }
         renderTaskRewardTooltip(graphics, mouseX, mouseY);
+    }
+
+    private void arrangeRewardLayout() {
+        if (selected == null || overviewMode || previewTemplate != null) return;
+        Set<String> parents = new LinkedHashSet<>();
+        for (var reward : layout.elements().values()) {
+            if (!reward.quest().equals(selectedId) || !reward.kind().equals("quest_rewards")) continue;
+            for (String parent = layout.parentOf(reward.id()); parent != null; parent = layout.parentOf(parent)) {
+                var container = layout.elements().get(parent);
+                if (container == null) break;
+                if (container.kind().equals("linear")
+                        && !container.attribute("orientation", "vertical").equals("horizontal"))
+                    parents.add(parent);
+            }
+        }
+        if (parents.isEmpty()) return;
+        var ordered = new ArrayList<>(parents);
+        ordered.sort(Comparator.comparingInt(layout::depth));
+        ordered.forEach(this::arrangeParent);
     }
 
     private void revealDetails() {

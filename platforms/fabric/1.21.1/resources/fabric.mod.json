@@ -3,6 +3,7 @@
   "id": "xero_quest_journal",
   "version": "${version}",
   "name": "Xero Quest Journal",
+  "icon": "assets/xero_quest_journal/textures/gui/anecdote_emblem.png",
   "description": "A configurable quest journal with a native quest UI.",
   "authors": [
     "xtdpotato"

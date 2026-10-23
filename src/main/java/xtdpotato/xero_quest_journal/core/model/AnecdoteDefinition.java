@@ -11,15 +11,21 @@ public record AnecdoteDefinition(String id, String title, String cardText, Strin
                                  AnecdoteRewardLayout rewardLayout) {
     public static final int MAX_RECORDS = 32;
 
-    public record Record(String id, String title, String body, String completedIcon) {
-        public Record(String id, String title, String body) { this(id, title, body, ""); }
+    public record Record(String id, String title, String body, String completedIcon,
+                         String generatedQuestId) {
+        public Record(String id, String title, String body) { this(id, title, body, "", ""); }
+        public Record(String id, String title, String body, String completedIcon) {
+            this(id, title, body, completedIcon, "");
+        }
         public Record {
             id = clean(id, 64);
             title = clean(title, 256);
             body = body == null ? "" : body.strip();
             completedIcon = completedIcon == null ? "" : completedIcon.strip();
+            generatedQuestId = generatedQuestId == null ? "" : generatedQuestId.strip();
             if (!id.matches("[a-z0-9_.-]{1,64}") || title.isBlank() || body.length() > 8192
-                    || completedIcon.length() > 2048)
+                    || completedIcon.length() > 2048
+                    || !generatedQuestId.isBlank() && !generatedQuestId.matches("[a-z0-9_.-]{1,64}"))
                 throw new IllegalArgumentException("Invalid anecdote record");
         }
     }

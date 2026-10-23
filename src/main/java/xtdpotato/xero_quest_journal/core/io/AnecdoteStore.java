@@ -15,10 +15,12 @@ import java.util.Map;
 
 /** Each chronicle entry has its own JSON file in the server config directory. */
 public final class AnecdoteStore {
+    public record RecordRef(String entryId, String recordId) {}
     private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().setPrettyPrinting().create();
     private static final Path ROOT = PlatformServices.configDir().resolve("xero_quest/anecdotes")
             .toAbsolutePath().normalize();
     private static Map<String, AnecdoteDefinition> entries = Map.of();
+    private static Map<String, RecordRef> generatedQuestRecords = Map.of();
     private static long revision;
 
     private AnecdoteStore() {}
@@ -44,7 +46,14 @@ public final class AnecdoteStore {
         } catch (Exception failure) {
             XeroQuestJournal.LOGGER.warn("Unable to read anecdote definitions from {}", ROOT, failure);
         }
+        var questRecords = new LinkedHashMap<String, RecordRef>();
+        for (var entry : next.values()) for (var record : entry.records()) {
+            if (!record.generatedQuestId().isBlank())
+                questRecords.putIfAbsent(record.generatedQuestId(),
+                        new RecordRef(entry.id(), record.id()));
+        }
         entries = Map.copyOf(next);
+        generatedQuestRecords = Map.copyOf(questRecords);
         revision++;
     }
 
@@ -58,6 +67,14 @@ public final class AnecdoteStore {
     }
 
     public static synchronized long revision() { return revision; }
+
+    public static synchronized RecordRef generatedRecord(String questId) {
+        return generatedQuestRecords.get(questId);
+    }
+
+    public static Path root() { return ROOT; }
+
+    public static Path fileFor(String id) { return file(id); }
 
     public static synchronized String nextId() {
         for (int index = 1; index <= 100_000; index++) {

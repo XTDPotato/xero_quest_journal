@@ -14,6 +14,7 @@ public record LootDefinition(String id, String name, Mode mode, int rolls, Strin
     }
     public enum Mode {
         RANDOM,
+        RANDOM_WITH_REPLACEMENT,
         CHOICE
     }
 
