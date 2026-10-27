@@ -53,11 +53,17 @@ foreach ($target in $targets) {
                 "client/QuestGenerateScreen", "client/TemplateGroupScreen", "client/NoticeGeometry",
                 "core/TemplateLibraryStore", "core/network/QuestGenerationNetwork", "core/network/TemplateLibraryNetwork",
                 "core/runtime/QuestStructureGuidance", "client/QuestRewardsScreen", "client/QuestTagItemsScreen",
+                "client/OptionalMapBridge",
                 "client/RecipeViewerBridge", "core/runtime/QuestRewards",
                 "core/runtime/AnecdoteGenerationData")) {
             if (!$jar.GetEntry("xtdpotato/xero_quest_journal/$class.class")) {
                 throw "Authoring changes are absent from $source"
             }
+        }
+        $journeyBridgeRequired = !($target.Loader -eq "fabric" -and $target.Minecraft -eq "1.20.1")
+        if ($journeyBridgeRequired -and
+                !$jar.GetEntry("xtdpotato/xero_quest_journal/client/JourneyMapWaypointBridge.class")) {
+            throw "JourneyMap bridge is absent from supported target $($target.Loader)/$($target.Minecraft)"
         }
         foreach ($icon in @("edit_exit", "select_tasks")) {
             if (!$jar.GetEntry("assets/xero_quest_journal/textures/gui/navigation/$icon.png")) {

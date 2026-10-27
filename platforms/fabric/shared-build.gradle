@@ -17,6 +17,11 @@ repositories {
     maven { name = "AliyunCentral"; url = "https://maven.aliyun.com/repository/central" }
     maven { name = "TencentCentral"; url = "https://mirrors.cloud.tencent.com/repository/maven-public" }
     maven { url = "https://maven.fabricmc.net/" }
+    maven {
+        name = "JourneyMapPublic"
+        url = "https://maven.blamejared.com"
+        metadataSources { mavenPom(); artifact() }
+    }
     mavenCentral()
     exclusiveContent {
         forRepository { maven { name = "XeroReiApi"; url = "https://maven.shedaniel.me" } }
@@ -44,6 +49,11 @@ dependencies {
         modCompileOnly("me.shedaniel:RoughlyEnoughItems-api-fabric:16.0.799") { transitive = false }
         compileOnly("me.shedaniel.cloth:basic-math:0.6.1") { transitive = false }
         modCompileOnly("dev.architectury:architectury-fabric:13.0.6") { transitive = false }
+    }
+    if (project.minecraft_version == "1.21.1") {
+        def journeyMapApiVersion = project.minecraft_version == "1.21.1"
+                ? "2.0.0-1.21.1" : "1.20.1-2.0.0"
+        compileOnly("info.journeymap:journeymap-api-common:${journeyMapApiVersion}") { transitive = false }
     }
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
     if (!project.minecraft_version.startsWith("26.")) mappings loom.officialMojangMappings()
@@ -100,6 +110,7 @@ tasks.register("prepareFabricSources") {
         inputs.files(fileTree("../smoke/java"))
     }
     outputs.dir(generatedSources)
+    outputs.upToDateWhen { false }
     doLast {
         def outputRoot = generatedSources.get().asFile
         delete(outputRoot)
@@ -107,7 +118,10 @@ tasks.register("prepareFabricSources") {
         if (modernMinecraft) roots << file("../1.21.1/java")
         if (includeSmoke) roots.addAll([file("../../../src/smoke/java"), file("../smoke/java")])
         roots.each { sourceRoot ->
-        fileTree(sourceRoot).matching { include "**/*.java" }.files.each { source ->
+        fileTree(sourceRoot).matching { include "**/*.java" }.files
+                .findAll { source -> project.projectDir.name == "1.21.1"
+                        || source.name != "JourneyMapWaypointBridge.java" }
+                .each { source ->
             def relative = sourceRoot.toPath().relativize(source.toPath()).toString().replace("\\", "/")
             if (modernMinecraft && relative in [
                     "xtdpotato/xero_quest_journal/client/UiCompositor.java",
@@ -118,6 +132,9 @@ tasks.register("prepareFabricSources") {
                     || relative.startsWith("xtdpotato/xero_quest_journal/platform/")
                     || relative.endsWith("XeroQuestClientModBus.java"))) return
             def text = source.getText("UTF-8")
+            if (relative == "xtdpotato/xero_quest_journal/client/OptionalMapBridge.java") {
+                text = text.replace("mapping.getKey()", "mapping.getDefaultKey()")
+            }
             text = text.replaceAll(/(?m)^import net\.neoforged\.(?:bus\.api|fml\.common|api\.distmarker)\.[^;]+;\r?\n/, "")
                     .replaceAll(/@EventBusSubscriber\([\s\S]*?\)\s*/, "")
                     .replaceAll(/@SubscribeEvent(?:\([^)]*\))?\s*/, "")

@@ -5,7 +5,7 @@
 A native Minecraft quest journal with visual authoring, chapter timelines, rewards,
 mail, anecdote records, and reusable structure previews.
 
-**Current mod version: 0.2.6.** The Chinese and English documentation
+**Current mod version: 0.2.7.** The Chinese and English documentation
 describe the same shared feature set. Images on this page are actual English client captures
 at **1920×1080**, taken after resource loading and interface transitions settle.
 Off-screen coordinate tracking uses a rotated `<` indicator to point toward the target.
@@ -18,16 +18,19 @@ Choose the JAR that matches both your Minecraft version and loader.
 
 | Minecraft | Loader | Java | Release file |
 | --- | --- | --- | --- |
-| 1.20.1 | Forge | 17 | `xero_quest_journal-forge-1.20.1-0.2.6.jar` |
-| 1.20.1 | Fabric + Fabric API | 17 | `xero_quest_journal-fabric-1.20.1-0.2.6.jar` |
-| 1.21.1 | NeoForge | 21 | `xero_quest_journal-neoforge-1.21.1-0.2.6.jar` |
-| 1.21.1 | Fabric + Fabric API | 21 | `xero_quest_journal-fabric-1.21.1-0.2.6.jar` |
+| 1.20.1 | Forge | 17 | `xero_quest_journal-forge-1.20.1-0.2.7.jar` |
+| 1.20.1 | Fabric + Fabric API | 17 | `xero_quest_journal-fabric-1.20.1-0.2.7.jar` |
+| 1.21.1 | NeoForge | 21 | `xero_quest_journal-neoforge-1.21.1-0.2.7.jar` |
+| 1.21.1 | Fabric + Fabric API | 21 | `xero_quest_journal-fabric-1.21.1-0.2.7.jar` |
 
-Version 0.2.6 fixes missing experience reward labels/tooltips, makes point/level counts visible on hover,
-prevents inline loot JSON from leaking into task tooltips, and fixes reward tooltip clipping.
-Current verification: [0.2.6 report](docs/release-verification-0.2.6.md).
+Version 0.2.7 repairs generated loot rewards and dimension progression gates, improves coordinate
+guidance over water and around occluding blocks, and adds `F` tracking plus animated `W/S` task
+navigation. Xaero World Map and JourneyMap can receive coordinate waypoints.
+Current verification: [0.2.7 report](docs/release-verification-0.2.7.md).
+JourneyMap waypoints are wired for NeoForge 1.21.1, Fabric 1.21.1 and Forge 1.20.1;
+Fabric 1.20.1 uses the generic tracking fallback.
 
-[Download 0.2.6](https://github.com/XTDPotato/xero_quest_journal/releases/tag/v0.2.6).
+[Download 0.2.7](https://github.com/XTDPotato/xero_quest_journal/releases/tag/v0.2.7).
 The release also contains an organized bundle and `SHA256SUMS.txt`.
 Install one matching core JAR per instance. Multiplayer installations need matching client
 and server builds. Complete authoring currently targets a local integrated server.

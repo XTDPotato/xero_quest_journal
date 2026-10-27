@@ -651,6 +651,11 @@ public final class QuestGenerator {
                     "world", "minecraft:compass");
             json.add("triggers", trigger("location", "structure|" + structure.dimension() + "|"
                     + structure.id(), 1));
+            String dimensionGate = dimensionGateQuestId(structure.dimension());
+            if (QuestRepository.find(dimensionGate) != null) {
+                json.add("parents", GSON.toJsonTree(List.of(dimensionGate)));
+                json.add("generatedParents", GSON.toJsonTree(List.of(dimensionGate)));
+            }
             json.addProperty("generatedBy", "xero_quest_journal");
             json.addProperty("generatedNamespace", structure.id().getNamespace());
             json.addProperty("generatedMode", "daily_anecdote");
@@ -1271,6 +1276,37 @@ public final class QuestGenerator {
                     task.parentCandidates().stream().filter(renamed::containsKey).map(renamed::get).distinct().toList(),
                     0, task.groupId()));
         }
+        if (settings.options().structureTasks()) {
+            var dimensions = snapshot.structures().stream()
+                    .filter(structure -> matches(settings.namespaces(), structure.id()))
+                    .map(StructureData::dimension).distinct().toList();
+            for (String dimension : dimensions) {
+                String advancement = dimensionProgressAdvancement(dimension);
+                if (advancement == null) continue;
+                var source = snapshot.advancements().stream()
+                        .filter(candidate -> candidate.id().toString().equals(advancement))
+                        .findFirst().orElse(null);
+                if (source == null) continue;
+                String gateId = dimensionGateQuestId(dimension);
+                if (story.containsKey(gateId) || QuestRepository.find(gateId) != null) continue;
+                var json = quest(gateId, source.title(), source.description(), "main", source.icon());
+                json.add("triggers", trigger("advancement", advancement, 1));
+                json.addProperty("generatedBy", "xero_quest_journal");
+                json.addProperty("generatedNamespace", "minecraft");
+                json.addProperty("generatedMode", "dimension_gate");
+                json.addProperty("generatedDimension", dimension);
+                var gateParents = dimension.equals("minecraft:the_end")
+                        ? List.of(dimensionGateQuestId("minecraft:the_nether")) : List.<String>of();
+                json.add("parents", GSON.toJsonTree(gateParents));
+                json.add("generatedParents", GSON.toJsonTree(gateParents));
+                var gateRewards = rewards(2, settings);
+                applyGeneratedRewardOptions(gateRewards, settings, 2);
+                json.add("rewards", gateRewards);
+                json.add("generatedRewards", gateRewards.deepCopy());
+                story.put(gateId, new Planned(gateId, "minecraft", "story", "7_exploration", json,
+                        gateParents, 0, structureGroupId("minecraft")));
+            }
+        }
         if (settings.generation() != GenerationMode.PROGRESS && settings.options().structureTasks()) {
             var previous = new HashMap<String, String>();
             for (var structure : snapshot.structures()) {
@@ -1299,6 +1335,10 @@ public final class QuestGenerator {
                 json.add("rewards", rewards);
                 json.addProperty("generatedDifficultyTier", 3);
                 String parent = previous.put(route, id);
+                if (parent == null) {
+                    String gate = dimensionGateQuestId(structure.dimension());
+                    if (story.containsKey(gate) || QuestRepository.find(gate) != null) parent = gate;
+                }
                 if (parent == null && settings.generation() == GenerationMode.BOTH)
                     parent = snapshot.advancements().stream().filter(a -> a.id().getNamespace().equals(structure.id().getNamespace()))
                             .sorted(Comparator.comparingInt(AdvancementData::depth).reversed().thenComparing(a -> a.id().toString()))
@@ -1344,6 +1384,7 @@ public final class QuestGenerator {
                     String original = Files.readString(file);
                     var existing = JsonParser.parseString(original).getAsJsonObject();
                     boolean changed = updateGeneratedTriggers(existing, task.json());
+                    changed |= repairMalformedGeneratedRewards(existing);
                     changed |= repairEmptyStoryRewards(existing, task.json());
                     if (changed) {
                         writes.put(file, GSON.toJson(existing));
@@ -1449,7 +1490,7 @@ public final class QuestGenerator {
             return QuestRepository.apply(scan);
         }).get(2, TimeUnit.MINUTES);
         if (!loaded) throw new IllegalStateException("Generated story catalog failed validation: " + QuestRepository.errors());
-        if (settings.generation() != GenerationMode.PROGRESS && settings.options().structureTasks()) {
+        if (settings.options().structureTasks()) {
             long gameDay = Math.floorDiv(server.overworld().getDayTime(), 24000L);
             server.submit(() -> {
                 xtdpotato.xero_quest_journal.core.runtime.AnecdoteGenerationData
@@ -1497,19 +1538,38 @@ public final class QuestGenerator {
 
     private static void applyGeneratedRewardOptions(JsonArray values, Settings settings, int difficultyTier) {
         var retained = new JsonArray();
+        var inlineTables = new HashMap<String, JsonObject>();
         for (var value : values) {
             if (!value.isJsonObject() || !value.getAsJsonObject().has("type")) {
                 retained.add(value.deepCopy());
                 continue;
             }
-            String type = value.getAsJsonObject().get("type").getAsString();
+            var normalized = value.getAsJsonObject().deepCopy();
+            String type = normalized.get("type").getAsString();
+            String item = normalized.has("item") && normalized.get("item").isJsonPrimitive()
+                    ? normalized.get("item").getAsString() : "";
+            if (type.equals("item") && isInlineLootTarget(item)) {
+                normalized.addProperty("type", "loot");
+                type = "loot";
+            }
+            if (type.equals("item") && item.isBlank()) continue;
             if (!settings.options().itemRewards() && Set.of("item", "loot", "loot_choice").contains(type)
                     || !settings.options().bonusExperience() && Set.of("experience", "levels").contains(type)) continue;
-            retained.add(value.deepCopy());
+            String tableId = type.equals("loot") ? inlineLootTableId(item) : "";
+            if (!tableId.isBlank()) {
+                JsonObject previous = inlineTables.putIfAbsent(tableId, normalized);
+                if (previous != null) {
+                    previous.addProperty("count", Math.min(128,
+                            rewardCount(previous) + rewardCount(normalized)));
+                    continue;
+                }
+            }
+            retained.add(normalized);
         }
         for (int index = values.size() - 1; index >= 0; index--) values.remove(index);
         retained.forEach(value -> values.add(value.deepCopy()));
-        if (settings.options().itemRewards() && settings.mode() != RewardMode.NONE) {
+        if (settings.options().itemRewards() && settings.mode() != RewardMode.NONE
+                && !hasGeneratedTierLoot(values, difficultyTier)) {
             var tierEntries = settings.options().tierItemRewards().stream()
                     .filter(configured -> configured.tier() == difficultyTier)
                     .toList();
@@ -1545,6 +1605,98 @@ public final class QuestGenerator {
                 && settings.mode() != RewardMode.NONE && settings.mode() != RewardMode.OUTPUT)
             values.add(experienceReward(difficultyTier, settings.options().experienceMultiplier(),
                     settings.options().experienceUnit()));
+    }
+
+    private static boolean isInlineLootTarget(String target) {
+        return target != null && (target.startsWith("inline:")
+                || target.startsWith("random:inline:") || target.startsWith("choice:inline:"));
+    }
+
+    private static int rewardCount(JsonObject reward) {
+        return reward.has("count") && reward.get("count").isJsonPrimitive()
+                ? Math.max(1, reward.get("count").getAsInt()) : 1;
+    }
+
+    private static String inlineLootTableId(String target) {
+        if (!isInlineLootTarget(target)) return "";
+        try {
+            String source = target.startsWith("random:inline:") ? target.substring("random:".length())
+                    : target.startsWith("choice:inline:") ? target.substring("choice:".length()) : target;
+            var table = GSON.fromJson(source.substring("inline:".length()),
+                    xtdpotato.xero_quest_journal.core.model.LootDefinition.class);
+            return table == null ? "" : table.id();
+        } catch (RuntimeException ignored) {
+            return "";
+        }
+    }
+
+    private static boolean hasGeneratedTierLoot(JsonArray rewards, int tier) {
+        String expectedId = "generated_tier_" + tier;
+        for (var value : rewards) {
+            if (!value.isJsonObject()) continue;
+            var reward = value.getAsJsonObject();
+            if (!reward.has("type") || !reward.get("type").getAsString().equals("loot")
+                    || !reward.has("item")) continue;
+            try {
+                String target = reward.get("item").getAsString();
+                if (target.startsWith("random:")) target = target.substring("random:".length());
+                else if (target.startsWith("choice:")) target = target.substring("choice:".length());
+                if (!target.startsWith("inline:")) continue;
+                var table = GSON.fromJson(target.substring("inline:".length()),
+                        xtdpotato.xero_quest_journal.core.model.LootDefinition.class);
+                if (table != null && table.id().equals(expectedId)) return true;
+            } catch (RuntimeException ignored) {
+            }
+        }
+        return false;
+    }
+
+    private static boolean repairMalformedGeneratedRewards(JsonObject existing) {
+        if (!existing.has("generatedBy")
+                || !existing.get("generatedBy").getAsString().equals("xero_quest_journal")) return false;
+        boolean changed = normalizeRewardArray(existing, "rewards");
+        changed |= normalizeRewardArray(existing, "generatedRewards");
+        return changed;
+    }
+
+    private static boolean normalizeRewardArray(JsonObject data, String key) {
+        if (!data.has(key) || !data.get(key).isJsonArray()) return false;
+        JsonArray original = data.getAsJsonArray(key);
+        JsonArray normalized = new JsonArray();
+        var inlineTables = new HashMap<String, JsonObject>();
+        boolean changed = false;
+        for (var value : original) {
+            if (!value.isJsonObject() || !value.getAsJsonObject().has("type")) {
+                normalized.add(value.deepCopy());
+                continue;
+            }
+            var reward = value.getAsJsonObject().deepCopy();
+            String type = reward.get("type").getAsString();
+            String item = reward.has("item") && reward.get("item").isJsonPrimitive()
+                    ? reward.get("item").getAsString() : "";
+            if (type.equals("item") && isInlineLootTarget(item)) {
+                reward.addProperty("type", "loot");
+                type = "loot";
+                changed = true;
+            }
+            if (type.equals("item") && item.isBlank()) {
+                changed = true;
+                continue;
+            }
+            String tableId = type.equals("loot") ? inlineLootTableId(item) : "";
+            if (!tableId.isBlank()) {
+                JsonObject previous = inlineTables.putIfAbsent(tableId, reward);
+                if (previous != null) {
+                    previous.addProperty("count", Math.min(128,
+                            rewardCount(previous) + rewardCount(reward)));
+                    changed = true;
+                    continue;
+                }
+            }
+            normalized.add(reward);
+        }
+        if (changed) data.add(key, normalized);
+        return changed;
     }
 
     private static int generatedDifficultyTier(JsonObject task) {
@@ -1619,6 +1771,19 @@ public final class QuestGenerator {
 
     private static String structureGroupId(String namespace) {
         return "auto_structures_" + clean(namespace);
+    }
+
+    public static String dimensionGateQuestId(String dimension) {
+        ResourceLocation id = ResourceLocation.tryParse(dimension);
+        return id == null ? "" : baseId("auto_dimension_gate", id);
+    }
+
+    private static String dimensionProgressAdvancement(String dimension) {
+        return switch (dimension) {
+            case "minecraft:the_nether" -> "minecraft:story/mine_diamond";
+            case "minecraft:the_end" -> "minecraft:nether/obtain_blaze_rod";
+            default -> null;
+        };
     }
 
     private static String groupName(String groupId, java.util.Collection<Planned> tasks) {

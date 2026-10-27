@@ -1068,6 +1068,7 @@
   "screen.xero_quest_journal.loot.group": "Choose reward #%s",
   "screen.xero_quest_journal.loot.claim": "Claim reward",
   "screen.xero_quest_journal.loot.title": "Loot tables",
+  "screen.xero_quest_journal.loot.inline_table": "Inline loot table",
   "screen.xero_quest_journal.loot.library": "Loot library",
   "screen.xero_quest_journal.loot.entry_section": "Loot entries",
   "screen.xero_quest_journal.loot.new": "New loot table",

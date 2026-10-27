@@ -118,11 +118,7 @@ public final class QuestConditions {
         }
         int value = switch (t.type()) {
             case "confirm" -> 0;
-            case "item_get", "item_hold" -> {
-                int inventoryCount = count(player, t.item());
-                yield inventoryCount >= t.count() ? inventoryCount
-                        : QuestCarriedInventory.count(player, t.item());
-            }
+            case "item_get", "item_hold" -> QuestCarriedInventory.count(player, t.item());
             case "item_submit" -> count(player, t.item());
             case "item_acquire", "kill", "block_break", "block_interact", "event", "stage" ->
                     QuestProgressData.get(player.getServer()).counter(player.getUUID(), key(quest, t));

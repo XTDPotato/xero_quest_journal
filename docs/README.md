@@ -2,7 +2,7 @@
 
 **简体中文** | [English](en/README.md) · [项目首页](../README.md) · [英文首页](../README.en.md)
 
-本文档对应 **0.2.6** 的共享功能。先按自己的目标选择入口，
+本文档对应 **0.2.7** 的共享功能。先按自己的目标选择入口，
 再阅读对应参考；截图展示实际客户端界面，验证结论按日期和范围单独记录。
 
 ## 安装与开始
@@ -12,10 +12,10 @@
 | 选择游戏版本、加载器和 Java | [版本矩阵](porting-matrix.md) |
 | 安装后第一次使用 | [玩家与作者指南](guide.md) |
 | 按界面找功能 | [中文 1080p 界面图鉴](interface-gallery.md) |
-| 查当前版本发布验证 | [0.2.6 验证记录](release-verification-0.2.6.md) |
+| 查当前版本发布验证 | [0.2.7 验证记录](release-verification-0.2.7.md) |
 | 调整拾取提示位置与避让小地图 | [通知设置与拾取提示](interface-gallery.md#14-设置与动画) |
 | 找命令、参数、权限 | [全部命令](commands.md) |
-| 核对当前构建与未通过项 | [0.2.6 验证记录](release-verification-0.2.6.md) |
+| 核对当前构建与未通过项 | [0.2.7 验证记录](release-verification-0.2.7.md) |
 | 检查生成任务、背包容量与条件弹窗 | [2026-10-19 修复验证](generator-and-objective-verification-2026-10-18.md) |
 
 已提供 Forge/Fabric 1.20.1、NeoForge/Fabric 1.21.1 四种安装包。

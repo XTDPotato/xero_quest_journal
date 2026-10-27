@@ -6,6 +6,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import xtdpotato.xero_quest_journal.core.model.QuestDefinition;
 import xtdpotato.xero_quest_journal.core.model.QuestListAccent;
+import xtdpotato.xero_quest_journal.core.model.QuestTrackingStyle;
 
 /** Top-left, type-accented banner for a newly unlocked task. */
 public final class QuestUnlockToast {
@@ -135,9 +136,20 @@ public final class QuestUnlockToast {
         var desired = HudOverlayLayout.atPercent(screenWidth, screenHeight,
                 Math.round(panelWidth * toastScale), panelHeight,
                 preferences.taskToastXPercent, preferences.taskToastYPercent, 8);
-        var panel = HudOverlayLayout.place(screenWidth, screenHeight,
-                desired,
-                HudOverlayLayout.cornerFromPercent(preferences.taskToastXPercent, preferences.taskToastYPercent), 8);
+        String trackedId = QuestHudRenderer.trackedId();
+        boolean overlaysTrackedTask = trackedId != null && !trackedId.isBlank();
+        HudOverlayLayout.Rect panel;
+        if (overlaysTrackedTask && QuestHudRenderer.hudRect() != null) {
+            var hud = QuestHudRenderer.hudRect();
+            panelWidth = Math.max(1, Math.min(panelWidth, Math.round(hud.width() / toastScale)));
+            int height = Math.min(panelHeight, Math.max(1, screenHeight - hud.y() - 8));
+            panel = new HudOverlayLayout.Rect(hud.x(), hud.y(),
+                    Math.round(panelWidth * toastScale), height);
+        } else {
+            panel = HudOverlayLayout.place(screenWidth, screenHeight, desired,
+                    HudOverlayLayout.cornerFromPercent(preferences.taskToastXPercent,
+                            preferences.taskToastYPercent), 8);
+        }
         int offsetX = panel.x() - initialLeft;
         int offsetY = panel.y() - initialTop;
         double panelCenterX = panel.x() + panel.width() / 2.0;
@@ -172,15 +184,15 @@ public final class QuestUnlockToast {
         graphics.pose().translate(centerX, centerY, 0);
         graphics.pose().scale(scale, scale, 1);
         graphics.pose().translate(-centerX, -centerY, 0);
-        drawDiamond(graphics, centerX, centerY, outer + 14, fade(accent, alpha * .38F));
-        drawDiamond(graphics, centerX, centerY, outer + 6, fade(accent, alpha * .75F));
-        drawDiamond(graphics, centerX, centerY, outer, fade(darken(accent), alpha));
-        drawDiamond(graphics, centerX, centerY, Math.round(outer * .70F), fade(accent, alpha));
-        drawDiamond(graphics, centerX, centerY, Math.max(6, Math.round(outer * .24F)),
-                fade(0xFFFFE879, alpha));
-        int markColor = fade(0xFF5A3712, alpha);
-        graphics.fill(centerX - 2, centerY - 7, centerX + 2, centerY + 4, markColor);
-        graphics.fill(centerX - 2, centerY + 7, centerX + 2, centerY + 11, markColor);
+        String questIcon = quest.icon();
+        if (!questIcon.isBlank() && QuestIcons.valid(questIcon)) {
+            QuestIcons.render(graphics, questIcon, centerX - outer / 2, centerY - outer / 2,
+                    outer, outer, alpha);
+        } else {
+            QuestTrackingIcons.render(graphics,
+                    QuestTrackingStyle.resolve(quest.trailingIcon().trackingStyle(), quest.type()),
+                    true, centerX - outer / 2, centerY - outer / 2, outer, alpha, reduced);
+        }
         // White flash over the emblem while it lands.
         float flash = reduced ? 0 : 1 - segment(enter, .05F, .35F);
         if (flash > 0) drawDiamond(graphics, centerX, centerY, outer + 4, fade(0xFFFFFFFF, alpha * flash * .55F));
@@ -198,13 +210,14 @@ public final class QuestUnlockToast {
         int textX = Math.max(x + geometry.textX(), iconRight + 14);
         int maxTextWidth = Math.max(1, Math.min(330,
                 Math.round((panelWidth - textX - 16) / textScale)));
-        int trailY = y + 40;
-        int trailEnd = Math.min(screenWidth - 14, textX + maxTextWidth);
+        int trailY = y + geometry.titleY() + Math.round(10 * textScale) + 3;
+        int trailStart = textX;
+        int trailEnd = Math.min(screenWidth - 14, trailStart + maxTextWidth);
         float grow = reduced ? 1 : easeOutCubic(segment(enter, .2F, .75F)) * (1 - exit * .6F);
-        int trailWidth = Math.round(Math.max(0, trailEnd - centerX - 14) * grow);
+        int trailWidth = Math.round(Math.max(0, trailEnd - trailStart) * grow);
         for (int i = 0; i < 24 && trailWidth > 0; i++) {
-            int left = centerX + 14 + trailWidth * i / 24;
-            int right = centerX + 14 + trailWidth * (i + 1) / 24;
+            int left = trailStart + trailWidth * i / 24;
+            int right = trailStart + trailWidth * (i + 1) / 24;
             float strength = (1 - i / 24F) * alpha;
             int color = fade(accent, strength * .72F);
             graphics.fill(left, trailY, Math.max(left + 1, right), trailY + 2, color);
@@ -213,7 +226,7 @@ public final class QuestUnlockToast {
         }
         if (!reduced && grow > 0 && grow < .98F) {
             // Bright head gliding at the growing end of the trail.
-            int head = centerX + 14 + trailWidth;
+            int head = trailStart + trailWidth;
             graphics.fill(head - 6, trailY - 1, head, trailY + 3, fade(0xFFFFF4D6, alpha * .5F));
             drawDiamond(graphics, head, trailY + 1, 6, fade(0xFFFFFFFF, alpha * .9F));
         }
@@ -227,7 +240,7 @@ public final class QuestUnlockToast {
         float labelIn = reduced ? 1 : easeOutCubic(segment(enter, .14F, .4F));
         float titleIn = reduced ? 1 : easeOutCubic(segment(enter, .24F, .42F));
         float hintIn = reduced ? 1 : easeOutCubic(segment(enter, .36F, .42F));
-        if (labelIn > 0) {
+        if (labelIn > 0 && !overlaysTrackedTask) {
             graphics.pose().pushPose();
             graphics.pose().translate(textX - Math.round((1 - labelIn) * 18), y + 4, 0);
             graphics.pose().scale(textScale, textScale, 1);

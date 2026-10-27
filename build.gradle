@@ -44,6 +44,7 @@ repositories {
     maven { name = "AliyunPublicMirror"; url = uri("https://maven.aliyun.com/repository/public") }
     maven { name = "TencentPublicMirror"; url = uri("https://mirrors.cloud.tencent.com/repository/maven-public") }
     maven { name = "NeoForged"; url = uri("https://maven.neoforged.net/releases") }
+    maven { name = "JourneyMapPublic"; url = uri("https://maven.blamejared.com") }
     mavenCentral()
     exclusiveContent {
         forRepository { maven { name = "XeroReiApi"; url = uri("https://maven.shedaniel.me") } }
@@ -400,6 +401,9 @@ dependencies {
     compileOnly("me.shedaniel:RoughlyEnoughItems-api-neoforge:16.0.799") { transitive = false }
     compileOnly("me.shedaniel.cloth:basic-math:0.6.1") { transitive = false }
     compileOnly("dev.architectury:architectury-neoforge:13.0.6") { transitive = false }
+    if (defaultBuild) {
+        compileOnly("info.journeymap:journeymap-api-common:2.0.0-1.21.1") { transitive = false }
+    }
     implementation "net.neoforged:neoforge:${project.neoforge_version}"
     implementation 'org.jsoup:jsoup:1.18.3'
     smokeImplementation 'org.jsoup:jsoup:1.18.3'

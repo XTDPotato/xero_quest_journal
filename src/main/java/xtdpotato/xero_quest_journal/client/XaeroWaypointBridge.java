@@ -24,6 +24,11 @@ final class XaeroWaypointBridge {
 
     private XaeroWaypointBridge() {}
 
+    static void refresh() {
+        lastSignature = "";
+        tick();
+    }
+
     static void tick() {
         Minecraft game = Minecraft.getInstance();
         if (game.player == null || game.level == null) {

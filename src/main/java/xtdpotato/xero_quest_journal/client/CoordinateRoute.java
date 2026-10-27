@@ -15,7 +15,10 @@ import xtdpotato.xero_quest_journal.core.runtime.QuestLocation;
 /** Bounded A* over caller-supplied walkable floor cells. */
 public final class CoordinateRoute {
     static final int MAX_EXPANDED = 4200;
-    private static final int[][] NEIGHBORS = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+    private static final int[][] NEIGHBORS = {
+            {1, 0}, {-1, 0}, {0, 1}, {0, -1},
+            {1, 1}, {1, -1}, {-1, 1}, {-1, -1}
+    };
 
     public record Cell(int x, int y, int z) {
         Vec3 center() { return new Vec3(x + .5, y, z + .5); }
@@ -79,11 +82,14 @@ public final class CoordinateRoute {
         double dx = Math.abs(cell.x() + .5 - target.x());
         double dz = Math.abs(cell.z() + .5 - target.z());
         double dy = Math.abs(cell.y() - target.y());
-        return Math.max(0, dx + dz + dy - Math.min(1.5, target.radius()) * Math.sqrt(3));
+        double diagonal = Math.min(dx, dz);
+        double horizontal = Math.max(dx, dz) + (Math.sqrt(2) - 1) * diagonal;
+        return Math.max(0, horizontal + dy - Math.min(1.5, target.radius()) * Math.sqrt(3));
     }
 
     private static double edgeCost(Cell from, Cell to) {
-        return 1 + Math.abs(from.y() - to.y());
+        return Math.hypot(from.x() - to.x(), from.z() - to.z())
+                + Math.abs(from.y() - to.y());
     }
 
     private static List<Cell> reconstruct(Map<Cell, Cell> previous, Cell last) {
@@ -94,6 +100,6 @@ public final class CoordinateRoute {
     }
 
     public static List<int[]> directions() {
-        return List.of(NEIGHBORS[0], NEIGHBORS[1], NEIGHBORS[2], NEIGHBORS[3]);
+        return List.of(NEIGHBORS);
     }
 }

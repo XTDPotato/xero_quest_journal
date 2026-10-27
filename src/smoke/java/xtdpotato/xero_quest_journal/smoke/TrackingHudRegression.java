@@ -240,7 +240,8 @@ final class TrackingHudRegression {
                     for (int routeIndex = 1; routeIndex < guidanceRoute.size(); routeIndex++) {
                         var previous = guidanceRoute.get(routeIndex - 1);
                         var next = guidanceRoute.get(routeIndex);
-                        require(Math.abs(previous.x() - next.x()) + Math.abs(previous.z() - next.z()) == 1
+                        require(Math.max(Math.abs(previous.x() - next.x()),
+                                        Math.abs(previous.z() - next.z())) == 1
                                         && Math.abs(previous.y() - next.y()) <= 3,
                                 "Coordinate guidance route stepped through a wall or skipped terrain");
                     }
@@ -350,23 +351,45 @@ final class TrackingHudRegression {
             for (int[] direction : CoordinateRoute.directions()) {
                 int x = cell.x() + direction[0], z = cell.z() + direction[1];
                 if (x < 0 || x > 4 || z < -2 || z > 2 || x == 2 && z == 0) continue;
+                if (direction[0] != 0 && direction[1] != 0
+                        && (cell.x() + direction[0] == 2 && cell.z() == 0
+                        || cell.x() == 2 && cell.z() + direction[1] == 0)) continue;
                 next.add(new CoordinateRoute.Cell(x, 64, z));
             }
             return next;
         }, 200);
-        require(route.reached() && route.cells().size() > 5
+        require(route.reached() && route.cells().size() >= 2
                         && route.cells().stream().noneMatch(cell -> cell.x() == 2 && cell.z() == 0),
                 "Coordinate guidance path cut through a wall instead of routing around it");
         for (int index = 1; index < route.cells().size(); index++) {
             var previous = route.cells().get(index - 1);
             var next = route.cells().get(index);
-            require(Math.abs(previous.x() - next.x()) + Math.abs(previous.z() - next.z()) == 1
+            require(Math.max(Math.abs(previous.x() - next.x()),
+                            Math.abs(previous.z() - next.z())) == 1
                             && Math.abs(previous.y() - next.y()) <= 1,
                     "Coordinate guidance route contains a non-walkable jump");
         }
+        var diagonalTarget = new QuestLocation("coords", "minecraft:overworld", "",
+                4.5, 64, 4.5, .5, true);
+        var diagonal = CoordinateRoute.find(new CoordinateRoute.Cell(0, 64, 0), diagonalTarget, cell -> {
+            var next = new java.util.ArrayList<CoordinateRoute.Cell>();
+            for (int[] direction : CoordinateRoute.directions())
+                if (cell.x() + direction[0] >= 0 && cell.x() + direction[0] <= 4
+                        && cell.z() + direction[1] >= 0 && cell.z() + direction[1] <= 4)
+                    next.add(new CoordinateRoute.Cell(cell.x() + direction[0], 64, cell.z() + direction[1]));
+            return next;
+        }, 200);
+        require(diagonal.reached() && diagonal.cells().size() <= 5,
+                "Open-terrain guidance did not prefer the shorter diagonal route");
         CoordinateTrackAnimation animation = new CoordinateTrackAnimation();
         require(new ClientPreferences().trackingMarkerScalePercent == 50,
                 "Coordinate marker default scale is not 50 percent");
+        require(QuestHudRenderer.markerDistanceScale(0) == .25F
+                        && QuestHudRenderer.markerDistanceScale(5) == .25F
+                        && QuestHudRenderer.markerDistanceScale(7.5) == .375F
+                        && QuestHudRenderer.markerDistanceScale(10) == .5F
+                        && QuestHudRenderer.markerDistanceScale(100) == .5F,
+                "Coordinate marker distance scaling does not match the 5/10 block thresholds");
         require(!QuestHudRenderer.beaconVisible(20) && QuestHudRenderer.beaconVisible(20.01)
                         && QuestHudRenderer.beaconVisible(80) && !QuestHudRenderer.beaconVisible(80.01),
                 "Beacon marker distance bounds are incorrect");

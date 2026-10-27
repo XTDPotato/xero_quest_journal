@@ -88,6 +88,15 @@ final class CarriedInventoryRegression {
         var unstackable = QuestHoldingCapacity.hint(player,
                 new QuestDefinition.Trigger("item_hold", "minecraft:iron_sword", 38));
         require(unstackable != null && unstackable.ordinaryCapacity() == 37, "Unstackable item capacity is incorrect");
+        player.getInventory().setItem(0, new ItemStack(Items.STICK, 16));
+        var ordinaryHold = new QuestDefinition("ordinary_hold_fixture", "普通背包持有测试", "", "world", "", true,
+                false, 0, null, "", "", "", "ordinary-hold-fixture", List.of(),
+                List.of(new QuestDefinition.Trigger("item_hold", "minecraft:stick", 32)), List.of(), "manual");
+        require(QuestCarriedInventory.count(player, "minecraft:stick") == 32
+                        && QuestConditions.progress(player, ordinaryHold).current() == 32
+                        && QuestConditions.plan(player, ordinaryHold, true).satisfied(),
+                "Ordinary inventory plus offhand failed to satisfy a hold objective");
+        player.getInventory().setItem(0, ItemStack.EMPTY);
         require(!QuestHoldingCapacity.impossible(player, List.of(new QuestDefinition.Trigger("any", "", 1,
                         List.of(HOLD, new QuestDefinition.Trigger("confirm", "", 1))))),
                 "An impossible optional branch blocked a completable condition");

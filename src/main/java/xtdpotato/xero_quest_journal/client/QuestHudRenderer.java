@@ -18,12 +18,18 @@ public final class QuestHudRenderer {
     private static final UiCompositor compositor = new UiCompositor();
     private static final CoordinateTrackAnimation markerAnimation = new CoordinateTrackAnimation();
     private static final java.util.Map<String, QuestLocation> locatedLocations = new java.util.LinkedHashMap<>();
+    private static List<CoordinateRoute.Cell> visibilityRoute = List.of();
+    private static java.util.Set<CoordinateRoute.Cell> visibleGuidanceCells = java.util.Set.of();
+    private static long visibilityTick = Long.MIN_VALUE;
+    private static net.minecraft.world.phys.Vec3 visibilityCameraPosition = net.minecraft.world.phys.Vec3.ZERO;
+    private static net.minecraft.world.phys.Vec3 visibilityCameraLook = net.minecraft.world.phys.Vec3.ZERO;
     private static final double BEACON_MIN_DISTANCE = 20;
     private static final double BEACON_MAX_DISTANCE = 80;
     private static final long STEP_ENTER_NANOS = 650_000_000L;
     private static final long STEP_SWEEP_NANOS = 1_300_000_000L;
     private static java.util.List<HudLine> snapshot = java.util.List.of();
     private static java.util.List<MapMarker> markerSnapshot = java.util.List.of();
+    private static HudOverlayLayout.Rect hudRect;
     private record HudLine(String trackingStyle, String trackingImage, float markerAlpha,
                            Component title, Component detail, Component bottom,
                            boolean completed, String distance, long stepStarted) {}
@@ -87,8 +93,19 @@ public final class QuestHudRenderer {
         return distance > BEACON_MIN_DISTANCE && distance <= BEACON_MAX_DISTANCE;
     }
 
+    public static float markerDistanceScale(double distance) {
+        if (distance <= 5) return .25F;
+        if (distance >= 10) return .5F;
+        return .25F + (float) (distance - 5) * .05F;
+    }
+
+    public static HudOverlayLayout.Rect hudRect() {
+        return hudRect;
+    }
+
     public static void render(GuiGraphics graphics) {
         var game = Minecraft.getInstance();
+        hudRect = null;
         if (game.player == null) {
             snapshot = java.util.List.of();
             markerSnapshot = java.util.List.of();
@@ -144,20 +161,19 @@ public final class QuestHudRenderer {
         }
         boolean keepBehind = game.screen instanceof AnimatedQuestScreen animated
                 && animated.showsTrackingHudBehind();
-        boolean visible = (!lines.isEmpty() || !markers.isEmpty())
-                && ClientPreferences.get().trackingHud && (game.screen == null || keepBehind)
-                && !QuestHudToastQueue.hasAny();
-        if (visible) {
+        boolean inventoryOpen = game.screen instanceof net.minecraft.client.gui.screens.inventory.AbstractContainerScreen<?>;
+        boolean hudEnabled = ClientPreferences.get().trackingHud
+                && (game.screen == null || keepBehind || inventoryOpen);
+        boolean visible = (!lines.isEmpty() || !markers.isEmpty()) && hudEnabled;
+        if (hudEnabled) {
             snapshot = java.util.List.copyOf(lines);
             markerSnapshot = java.util.List.copyOf(markers);
         }
         motion.target(visible, System.nanoTime(), AnimatedQuestScreen.animationMillis());
         if (motion.position() == 0) {
             compositor.close();
-            if (!visible) {
-                snapshot = java.util.List.of();
-                markerSnapshot = java.util.List.of();
-            }
+            if (!visible) snapshot = java.util.List.of();
+            if (hudEnabled && !markerSnapshot.isEmpty()) renderLocationMarkers(graphics, markerSnapshot, game);
             return;
         }
         Runnable draw = () -> {
@@ -176,16 +192,19 @@ public final class QuestHudRenderer {
                     desired,
                     HudOverlayLayout.cornerFromPercent(preferences.taskToastXPercent,
                             preferences.taskToastYPercent), 8);
+            hudRect = block;
             graphics.pose().pushPose();
             graphics.pose().translate(block.x(), block.y() - y, 0);
             for (var line : snapshot) {
                 int textX = 40;
                 int maxWidth = Math.max(1, Math.min(240, screenWidth - textX - 16));
+                float rowAlpha = QuestUnlockToast.isPresenting() ? .24F : 1F;
                 if (line.completed()) QuestStatusIcons.render(graphics, "claimed", 18, y, 16);
                 else if (!line.trackingImage().isBlank())
-                    QuestIcons.render(graphics, line.trackingImage(), 18, y, 16, 16, line.markerAlpha());
+                    QuestIcons.render(graphics, line.trackingImage(), 18, y, 16, 16,
+                            line.markerAlpha() * rowAlpha);
                 else QuestTrackingIcons.render(graphics, line.trackingStyle(), true, 18, y, 16,
-                        line.markerAlpha(), reduced);
+                        line.markerAlpha() * rowAlpha, reduced);
                 long sinceStep = line.stepStarted() == 0 || reduced ? Long.MAX_VALUE : now - line.stepStarted();
                 float enter = sinceStep >= STEP_ENTER_NANOS ? 1 : smooth(sinceStep / (float) STEP_ENTER_NANOS);
                 int shift = Math.round((1 - enter) * 12);
@@ -193,25 +212,26 @@ public final class QuestHudRenderer {
                         game.font.substrByWidth(line.title(), maxWidth));
                 int textWidth = Math.min(maxWidth, game.font.width(line.title()));
                 graphics.drawString(game.font, objective, textX + shift, y + 1,
-                        fade(line.completed() ? 0xFF79D69A : 0xFFFFFFFF, enter), true);
-                underline(graphics, textX, y + 12, textWidth + 8, enter,
+                        fade(line.completed() ? 0xFF79D69A : 0xFFFFFFFF, enter * rowAlpha), true);
+                underline(graphics, textX, y + 12, textWidth + 8, enter * rowAlpha,
                         sinceStep < STEP_SWEEP_NANOS ? sinceStep / (float) STEP_SWEEP_NANOS : -1);
                 if (!line.completed()) {
                     int infoX = textX;
                     if (!line.distance().isEmpty()) {
-                        graphics.drawString(game.font, line.distance(), infoX, y + 16, 0xFFFFE07A, true);
+                        graphics.drawString(game.font, line.distance(), infoX, y + 16,
+                                fade(0xFFFFE07A, rowAlpha), true);
                         infoX += game.font.width(line.distance()) + 6;
                     }
                     if (!line.detail().getString().isBlank()) {
                         graphics.drawString(game.font, Language.getInstance().getVisualOrder(
                                 game.font.substrByWidth(line.detail(), Math.max(1, maxWidth - (infoX - textX)))),
-                                infoX, y + 16, line.distance().isEmpty() ? 0xFFFFE07A : 0xFFD8DEE8, true);
+                                infoX, y + 16, fade(line.distance().isEmpty()
+                                        ? 0xFFFFE07A : 0xFFD8DEE8, rowAlpha), true);
                     }
                 }
                 y += line.completed() ? 24 : 34;
             }
             graphics.pose().popPose();
-            renderLocationMarkers(graphics, markerSnapshot, game);
         };
         if (motion.settled()) {
             compositor.close();
@@ -221,6 +241,7 @@ public final class QuestHudRenderer {
             compositor.band(graphics, game.getWindow().getGuiScaledWidth(), game.getWindow().getGuiScaledHeight(),
                     0, game.getWindow().getGuiScaledHeight(), -32 * (1 - motion.eased()), motion.eased());
         }
+        if (hudEnabled && !markerSnapshot.isEmpty()) renderLocationMarkers(graphics, markerSnapshot, game);
     }
 
     /** Thin gold rule under the objective that fades out to the right; {@code sweep} adds a moving glint. */
@@ -270,19 +291,22 @@ public final class QuestHudRenderer {
 
         for (MapMarker marker : markers) {
             QuestLocation target = marker.location();
+            var targetPosition = new net.minecraft.world.phys.Vec3(target.x(), target.y(), target.z());
+            if (!visibleFromCamera(game, camera, targetPosition)) continue;
             double dx = target.x() - game.player.getX();
             double dy = target.y() - game.player.getY();
             double dz = target.z() - game.player.getZ();
             double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
             renderCoordinateGuidance(graphics, marker.questId(), camera, width, height, game);
             var projection = QuestMarkerProjection.project(camera,
-                    new net.minecraft.world.phys.Vec3(target.x(), target.y(), target.z()),
+                    targetPosition,
                     width, height, game.options.fov().get());
             boolean onScreen = projection.onScreen();
             int markerX = projection.x(), markerY = projection.y();
             int baseSize = onScreen ? 34 : 30;
             int size = Math.max(8, Math.round(baseSize
-                    * ClientPreferences.get().trackingMarkerScalePercent / 100F));
+                    * ClientPreferences.get().trackingMarkerScalePercent / 100F
+                    * markerDistanceScale(distance)));
             int x = markerX - size / 2;
             int y = markerY - size / 2;
             if (onScreen && beaconVisible(distance))
@@ -330,12 +354,18 @@ public final class QuestHudRenderer {
         List<CoordinateRoute.Cell> route = CoordinateGuidance.route();
         if (route.size() < 2) return;
         int stride = Math.max(1, route.size() / 42);
+        refreshGuidanceVisibility(route, stride, camera, game);
         long now = System.nanoTime();
         int sample = 0;
         int offscreenSample = 0;
         QuestMarkerProjection.Marker previousOnScreen = null;
         for (int index = Math.max(1, stride); index < route.size(); index += stride) {
             var cell = route.get(index);
+            if (!visibleGuidanceCells.contains(cell)) {
+                previousOnScreen = null;
+                sample++;
+                continue;
+            }
             var point = cell.center().add(0, .12, 0);
             var projection = QuestMarkerProjection.project(camera, point, width, height, game.options.fov().get());
             if (projection.onScreen() && previousOnScreen != null) {
@@ -370,6 +400,37 @@ public final class QuestHudRenderer {
             drawGuidanceStar(graphics, screenX, screenY, radius, depthAlpha * pulse, major);
             sample++;
         }
+    }
+
+    private static void refreshGuidanceVisibility(List<CoordinateRoute.Cell> route, int stride,
+                                                 net.minecraft.client.Camera camera, Minecraft game) {
+        var cameraPosition = camera.getPosition();
+        var cameraLook = new net.minecraft.world.phys.Vec3(camera.getLookVector());
+        boolean changed = visibilityRoute != route
+                || visibilityTick != game.level.getGameTime()
+                || visibilityCameraPosition.distanceToSqr(cameraPosition) > .25
+                || visibilityCameraLook.dot(cameraLook) < .985;
+        if (!changed) return;
+        var visible = new java.util.HashSet<CoordinateRoute.Cell>();
+        for (int index = Math.max(1, stride); index < route.size(); index += stride) {
+            var cell = route.get(index);
+            if (visibleFromCamera(game, camera, cell.center().add(0, .12, 0))) visible.add(cell);
+        }
+        visibilityRoute = route;
+        visibleGuidanceCells = java.util.Set.copyOf(visible);
+        visibilityTick = game.level.getGameTime();
+        visibilityCameraPosition = cameraPosition;
+        visibilityCameraLook = cameraLook;
+    }
+
+    private static boolean visibleFromCamera(Minecraft game, net.minecraft.client.Camera camera,
+                                             net.minecraft.world.phys.Vec3 target) {
+        if (game.level == null || game.player == null) return false;
+        var hit = game.level.clip(new net.minecraft.world.level.ClipContext(
+                camera.getPosition(), target, net.minecraft.world.level.ClipContext.Block.VISUAL,
+                net.minecraft.world.level.ClipContext.Fluid.NONE, game.player));
+        return hit.getType() == net.minecraft.world.phys.HitResult.Type.MISS
+                || hit.getLocation().distanceTo(target) <= 1.25;
     }
 
     private static void drawGuidanceSegment(GuiGraphics graphics, int fromX, int fromY,

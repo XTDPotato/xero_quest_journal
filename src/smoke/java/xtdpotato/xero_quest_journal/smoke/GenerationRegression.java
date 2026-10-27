@@ -241,12 +241,28 @@ final class GenerationRegression {
                 check(tasks.stream().anyMatch(q -> q.triggers().stream()
                                 .anyMatch(trigger -> trigger.type().equals("item_hold") && trigger.count() == 2)),
                         "Advanced task amount multiplier was not applied to generated item goals");
+                for (var task : tasks) for (var reward : task.rewards()) {
+                    check(!reward.type().equals("item") || !reward.item().isBlank(),
+                            "Generated task contains an empty item reward: " + task.id());
+                    check(!reward.type().equals("item") || !reward.item().startsWith("inline:"),
+                            "Generated loot-table JSON was serialized as an item: " + task.id());
+                }
+                for (var task : tasks) {
+                    var inlineTableIds = task.rewards().stream().filter(reward -> reward.type().equals("loot"))
+                            .map(QuestDefinition.Reward::item).filter(item -> item.startsWith("inline:"))
+                            .map(item -> com.google.gson.JsonParser.parseString(item.substring("inline:".length()))
+                                    .getAsJsonObject().get("id").getAsString()).toList();
+                    check(inlineTableIds.stream().distinct().count() == inlineTableIds.size(),
+                            "Generated task repeats the same inline loot table: " + task.id());
+                }
                 var ids = new HashSet<String>(); tasks.forEach(q -> ids.add(q.id()));
                 for (var q : tasks) check(!q.parents().contains(q.id()) && q.parents().stream().allMatch(ids::contains), "Broken story prerequisite");
                 sources = new HashMap<>(); for (var q : tasks) sources.put(q.id(),QuestRepository.source(q.id()));
                 rewardRepairTask = tasks.stream().filter(q -> !q.rewards().isEmpty()).map(QuestDefinition::id)
                         .findFirst().orElseThrow();
                 work = server.submit(() -> {
+                    check(AnecdoteGenerationData.get(server).enabled(),
+                            "Progress-mode generation did not enable the daily anecdote scheduler");
                     try {
                         try (var paths = Files.walk(QuestRepository.root())) {
                             Path taskFile = paths.filter(path -> path.getFileName().toString()
@@ -272,7 +288,22 @@ final class GenerationRegression {
             }
             case 5 -> {
                 if (QuestGenerator.running()) return false;
-                for (var e : sources.entrySet()) check(e.getValue().equals(QuestRepository.source(e.getKey())), "Rerun replaced existing task");
+                for (var e : sources.entrySet()) {
+                    String current = QuestRepository.source(e.getKey());
+                    check(sameExceptGeneratedRewards(e.getValue(), current),
+                            "Rerun changed non-reward content for existing task " + e.getKey());
+                    if (!e.getValue().equals(current)) {
+                        var original = com.google.gson.JsonParser.parseString(e.getValue()).getAsJsonObject();
+                        boolean containedMalformedEntry = hasMalformedGeneratedRewardArray(
+                                original.has("rewards") && original.get("rewards").isJsonArray()
+                                        ? original.getAsJsonArray("rewards") : null)
+                                || hasMalformedGeneratedRewardArray(
+                                original.has("generatedRewards") && original.get("generatedRewards").isJsonArray()
+                                        ? original.getAsJsonArray("generatedRewards") : null);
+                        check(containedMalformedEntry,
+                                "Rerun changed reward content that did not need generated-reward repair");
+                    }
+                }
                 check(QuestRepository.find(rewardRepairTask).rewards().stream()
                                 .anyMatch(reward -> Set.of("experience", "levels").contains(reward.type())
                                         && reward.count() >= 1),
@@ -362,7 +393,8 @@ final class GenerationRegression {
                             .filter(entry -> entry.records().size() == 1)
                             .map(AnecdoteDefinition::id).toList();
                     check(dailyAnecdoteIds.size() >= 1 && dailyAnecdoteIds.size() <= 4,
-                            "Daily anecdote generation did not add 1-4 entries");
+                            "Daily anecdote generation did not add 1-4 entries; found "
+                                    + dailyAnecdoteIds.size() + " under " + AnecdoteStore.root());
                     for (String anecdoteId : dailyAnecdoteIds) {
                         var entry = AnecdoteStore.find(anecdoteId);
                         check(entry != null && entry.records().size() == 1,
@@ -372,6 +404,13 @@ final class GenerationRegression {
                                         trigger.type().equals("location")
                                                 && trigger.item().startsWith("structure|")),
                                 "Daily anecdote arrival task is not a structure destination task");
+                        String dimension = arrival.triggers().stream().filter(trigger ->
+                                        trigger.type().equals("location"))
+                                .map(trigger -> trigger.item().split("\\|", -1))
+                                .filter(parts -> parts.length == 3).map(parts -> parts[1]).findFirst().orElse("");
+                        if (dimension.equals("minecraft:the_nether") || dimension.equals("minecraft:the_end"))
+                            check(arrival.parents().contains(QuestGenerator.dimensionGateQuestId(dimension)),
+                                    "Daily anecdote exposes a destination before its dimension progression gate");
                     }
                     dailyAnecdotesFirstBatchChecked = true;
                     work = server.submit(() -> {
@@ -429,6 +468,23 @@ final class GenerationRegression {
                                 && chapter.id().equals(structureGroup + "_7_exploration")
                                 && chapter.quests().contains(village)),
                         "Village exploration missing from its dedicated journey row");
+                for (String dimension : List.of("minecraft:the_nether", "minecraft:the_end")) {
+                    String gateId = QuestGenerator.dimensionGateQuestId(dimension);
+                    var dimensionStructures = QuestRepository.all().stream().filter(task ->
+                            task.triggers().stream().anyMatch(trigger -> trigger.type().equals("location")
+                                    && trigger.item().startsWith("structure|" + dimension + "|"))).toList();
+                    if (!dimensionStructures.isEmpty()) {
+                        var gate = QuestRepository.find(gateId);
+                        check(gate != null && dimensionStructures.stream()
+                                        .allMatch(task -> dependsOn(task, gateId, new HashSet<>())),
+                                "Generated structures in " + dimension + " are not progression-gated");
+                        String expectedAdvancement = dimension.equals("minecraft:the_nether")
+                                ? "minecraft:story/mine_diamond" : "minecraft:nether/obtain_blaze_rod";
+                        check(gate.triggers().stream().anyMatch(trigger -> trigger.type().equals("advancement")
+                                        && trigger.item().equals(expectedAdvancement)),
+                                "Dimension progression gate does not require the expected advancement");
+                    }
+                }
                 check(q.presentation().controls().stream().anyMatch(c->c.graph().nodes().stream().anyMatch(n->n.type().equals("locate_structure"))),"Exploration missing locate action");
                 work=server.submit(()->{var p=server.getPlayerList().getPlayer(playerId); QuestRuntime.trigger(p,village,"unlock",true); return QuestRuntime.toggleTracking(p,village);});
                 started=System.nanoTime(); wait=10;
@@ -501,7 +557,7 @@ final class GenerationRegression {
             }
             case 24 -> {
                 capture(game,"notification-layout-editor-zh-1920");
-                Files.createDirectories(OUT); Files.writeString(OUT.resolve("generation-template-result.txt"),"PASS: first-world offer and cancel; persisted acknowledgement; reopen command; advancement recipe chain and useful rewards; idempotent generation; empty template group network catalog; long-press template reorder; auto-complete 16 logs without consumption; repeated move with animations and stable toolbar; daily 1-4 structure anecdotes, next-day linked follow-up records, village bell/item conditions, scheduler save/load and same-day idempotence; normal-world structure locate, arrival completion, network marker and shared cached coordinates; HUD minimum-scale/maximum-font row bounds; matching runtime/editor dimensions; movable minimap reservation; compact property scrolling, one-shot preview and saved position. All captured images are verified at 1920x1080.\n");
+                Files.createDirectories(OUT); Files.writeString(OUT.resolve("generation-template-result.txt"),"PASS: first-world offer and cancel; persisted acknowledgement; reopen command; advancement recipe chain and useful rewards; idempotent generation; empty template group network catalog; long-press template reorder; auto-complete 16 logs without consumption; repeated move with animations and stable toolbar; progress-mode daily anecdote scheduler enablement; daily 1-4 structure anecdotes, next-day linked follow-up records, village bell/item conditions, scheduler save/load and same-day idempotence; normal-world structure locate, arrival completion, network marker and shared cached coordinates; HUD minimum-scale/maximum-font row bounds; matching runtime/editor dimensions; movable minimap reservation; compact property scrolling, one-shot preview and saved position. All captured images are verified at 1920x1080.\n");
                 wait=2;
             }
         }
@@ -515,6 +571,42 @@ final class GenerationRegression {
     }
     private static StyledButton button(Screen s,String id){return s.children().stream().filter(StyledButton.class::isInstance).map(StyledButton.class::cast).filter(b->b.styleId().equals(id)).findFirst().orElseThrow(()->new AssertionError("Missing "+id));}
     private static void click(Screen s,StyledButton b){check(b.active,"Inactive "+b.styleId());s.mouseClicked(b.getX()+b.getWidth()/2.,b.getY()+b.getHeight()/2.,0);s.mouseReleased(b.getX()+b.getWidth()/2.,b.getY()+b.getHeight()/2.,0);}
+    private static boolean dependsOn(QuestDefinition quest,String target,Set<String> visited){
+        if(quest==null||!visited.add(quest.id()))return false;
+        if(quest.parents().contains(target))return true;
+        return quest.parents().stream().map(QuestRepository::find)
+                .anyMatch(parent->dependsOn(parent,target,visited));
+    }
+    private static boolean sameExceptGeneratedRewards(String first, String second) {
+        var left = com.google.gson.JsonParser.parseString(first).getAsJsonObject().deepCopy();
+        var right = com.google.gson.JsonParser.parseString(second).getAsJsonObject().deepCopy();
+        for (String key : List.of("rewards", "generatedRewards")) {
+            left.remove(key);
+            right.remove(key);
+        }
+        return left.equals(right);
+    }
+    private static boolean hasMalformedGeneratedRewardArray(com.google.gson.JsonArray rewards) {
+        if (rewards == null) return false;
+        var inlineTableIds = new HashSet<String>();
+        for (var value : rewards) {
+            if (!value.isJsonObject()) continue;
+            var reward = value.getAsJsonObject();
+            if (!reward.has("type") || !reward.has("item")) continue;
+            String type = reward.get("type").getAsString();
+            String item = reward.get("item").getAsString();
+            if (type.equals("item") && (item.isBlank() || item.startsWith("inline:"))) return true;
+            if (!type.equals("loot") || !item.startsWith("inline:")) continue;
+            try {
+                String tableId = com.google.gson.JsonParser.parseString(item.substring("inline:".length()))
+                        .getAsJsonObject().get("id").getAsString();
+                if (!inlineTableIds.add(tableId)) return true;
+            } catch (RuntimeException invalidInlineLoot) {
+                return true;
+            }
+        }
+        return false;
+    }
     private static java.lang.reflect.Field reflected(Object o,String n)throws Exception{for(Class<?> c=o.getClass();c!=null;c=c.getSuperclass())try{var f=c.getDeclaredField(n);f.setAccessible(true);return f;}catch(NoSuchFieldException e){}throw new NoSuchFieldException(n);}
     private static Object field(Object o,String n)throws Exception{return o instanceof Class<?> c ? staticField(c,n) : reflected(o,n).get(o);}
     private static Object staticField(Class<?> c,String n)throws Exception{var f=c.getDeclaredField(n);f.setAccessible(true);return f.get(null);}

@@ -24,7 +24,8 @@ final class GraphSearchPickupRegression {
     private static long searchStarted,searchInputNanos,firstEntryStarted;
     private static double edgePan;
     private static double[] releasedViewport;
-    private static final String GROUP="graph_search_group",ACQUIRE="notice_acquire",SUBMIT="notice_submit";
+    private static final String GROUP="graph_search_group",ACQUIRE="notice_acquire",
+            UNTRACKED_ACQUIRE="notice_untracked_acquire",SUBMIT="notice_submit";
     static boolean tick(Minecraft game)throws Exception {
         if(--wait>0)return false;
         if(game.screen instanceof AnimatedQuestScreen a && a.inputBlocked())return false;
@@ -43,7 +44,15 @@ final class GraphSearchPickupRegression {
                             AtomicFiles.write(root.resolve(id+".json"),gson.toJson(Map.of("id",id,"title","目标任务 "+i,"type","world","icon","minecraft:paper","defaultUnlocked",true,"triggers",List.of(Map.of("type","confirm","item","","count",1)))),false);
                         }
                         AtomicFiles.write(root.resolve("search.chapter.json"),gson.toJson(Map.of("id","graph_search_chapter","name","搜索测试章节","group",GROUP,"quests",ids)),false);
-                        for(String id:List.of(ACQUIRE,SUBMIT))AtomicFiles.write(QuestRepository.root().resolve(id+".json"),gson.toJson(Map.of("id",id,"title",id.equals(ACQUIRE)?"获取原木":"提交原木","type","world","trackable",true,"defaultUnlocked",true,"rewardMode","manual","triggers",List.of(Map.of("type",id.equals(ACQUIRE)?"item_acquire":"item_submit","item","minecraft:oak_log","count",id.equals(ACQUIRE)?80:16)))),false);
+                        for(String id:List.of(ACQUIRE,UNTRACKED_ACQUIRE,SUBMIT)) {
+                            String item = id.equals(UNTRACKED_ACQUIRE) ? "minecraft:diamond" : "minecraft:oak_log";
+                            String type = id.equals(SUBMIT) ? "item_submit" : "item_acquire";
+                            int count = id.equals(ACQUIRE) ? 80 : id.equals(UNTRACKED_ACQUIRE) ? 2 : 16;
+                            AtomicFiles.write(QuestRepository.root().resolve(id+".json"),gson.toJson(Map.of(
+                                    "id",id,"title",id.equals(ACQUIRE)?"获取原木":id.equals(UNTRACKED_ACQUIRE)?"获取钻石":"提交原木",
+                                    "type","world","trackable",true,"defaultUnlocked",true,"rewardMode","manual",
+                                    "triggers",List.of(Map.of("type",type,"item",item,"count",count)))),false);
+                        }
                         QuestRepository.reload();check(QuestRepository.errors().isEmpty(),"Invalid graph fixtures");return true;
                     }catch(Exception e){throw new RuntimeException(e);}
                 });
@@ -106,8 +115,15 @@ final class GraphSearchPickupRegression {
             }
             case 6 -> {
                 if(ItemPickupToast.newest()==null)return false;
-                check(ItemPickupToast.visibleCount()==1,"Unrelated pickup created a notice");
+                check(ItemPickupToast.visibleCount()==2,"Tracked and untracked pickup objectives were not both notified");
                 check(ItemPickupToast.newest().questId().equals(ACQUIRE) && ItemPickupToast.newest().current()==2,"Acquisition is not linked to task progress");
+                check(((Deque<?>)field(ItemPickupToast.class,"entries")).stream().anyMatch(entry -> {
+                    try {
+                        var notice = (QuestNetwork.ItemPickupNoticePayload) field(entry,"notice");
+                        return notice.questId().equals(UNTRACKED_ACQUIRE)
+                                && notice.current()==1 && notice.required()==2;
+                    } catch (Exception failure) { throw new IllegalStateException(failure); }
+                }),"Untracked acquisition did not show its matching task quantity");
                 var entries=(Deque<?>)field(ItemPickupToast.class,"entries");firstEntryStarted=(long)field(entries.peekFirst(),"startedAt");
                 work=server.submit(()->{try{var p=server.getPlayerList().getPlayer(uuid);
                     invoke(QuestConditionEvents.class,"acquired",new Class<?>[]{net.minecraft.server.level.ServerPlayer.class,ItemStack.class,int.class},p,new ItemStack(Items.OAK_LOG),1);return true;
@@ -116,7 +132,7 @@ final class GraphSearchPickupRegression {
             case 7 -> {
                 if(ItemPickupToast.newest().current()!=3)return false;
                 var entries=(Deque<?>)field(ItemPickupToast.class,"entries");
-                check(entries.size()==2 && (long)field(entries.peekFirst(),"startedAt")>firstEntryStarted,"New item notice reused old animation clock");wait=7;
+                check(entries.size()==3 && (long)field(entries.peekFirst(),"startedAt")>firstEntryStarted,"New item notice reused old animation clock");wait=7;
             }
             case 8 -> {
                 capture(game,"compact-task-item-notices-zh-1920");

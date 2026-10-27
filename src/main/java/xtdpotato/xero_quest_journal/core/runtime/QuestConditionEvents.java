@@ -42,17 +42,23 @@ public final class QuestConditionEvents {
     }
     private static void acquired(ServerPlayer player, ItemStack stack, int count) {
         if (count > 0) {
+            QuestCarriedInventory.invalidate(player);
             QuestConditions.recordItemAcquired(player, stack, count);
-            notifyTrackedPickup(player, stack, count);
+            notifyPickupObjective(player, stack, count);
         }
     }
 
-    private static void notifyTrackedPickup(ServerPlayer player, ItemStack stack, int count) {
+    private static void notifyPickupObjective(ServerPlayer player, ItemStack stack, int count) {
         if (count <= 0 || stack.isEmpty()) return;
         var data = QuestProgressData.get(player.getServer());
-        for (String id : QuestRuntime.tracked(player)) {
+        var candidates = new java.util.LinkedHashSet<>(QuestRuntime.tracked(player));
+        QuestRepository.all().stream().map(QuestDefinition::id).forEach(candidates::add);
+        for (String id : candidates) {
             QuestDefinition quest = QuestRepository.find(id);
-            if (quest == null || data.entry(player.getUUID(), quest) != null) continue;
+            if (quest == null || data.entry(player.getUUID(), quest) != null
+                    || !QuestFocus.allows(player, quest) || !QuestStructures.allowsProgress(player, quest)
+                    || !QuestRuntime.triggersEnabled(data, player, quest)
+                    || !QuestRuntime.unlocked(data, player, quest)) continue;
             QuestDefinition active = QuestSteps.current(data, player.getUUID(), quest);
             QuestDefinition.Trigger matched = matchingItemCondition(player, active, stack);
             if (matched == null) continue;
@@ -75,7 +81,7 @@ public final class QuestConditionEvents {
     private static QuestDefinition.Trigger matchingItemCondition(ServerPlayer player,
                                                                   QuestDefinition.Trigger trigger,
                                                                   ItemStack picked) {
-        if (java.util.List.of("item_get", "item_hold", "item_acquire", "item_submit").contains(trigger.type())
+        if (java.util.List.of("item_get", "item_hold", "item_acquire").contains(trigger.type())
                 && QuestConditions.matches(picked, trigger.item(), player.registryAccess())) return trigger;
         for (QuestDefinition.Trigger child : trigger.children()) {
             var match = matchingItemCondition(player, child, picked);

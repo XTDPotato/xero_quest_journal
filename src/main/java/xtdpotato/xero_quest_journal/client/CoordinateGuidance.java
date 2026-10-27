@@ -5,6 +5,7 @@ import java.util.List;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.tags.FluidTags;
 import net.minecraft.world.entity.Pose;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
@@ -86,10 +87,11 @@ public final class CoordinateGuidance {
         lastX = player.getX();
         lastY = player.getY();
         lastZ = player.getZ();
-        var start = findStart(game.level, player);
+        boolean underwater = player.isEyeInFluid(FluidTags.WATER);
+        var start = findStart(game.level, player, underwater);
         if (start == null) { route = List.of(); return; }
         route = CoordinateRoute.find(start, location,
-                from -> neighbors(game.level, player, from), CoordinateRoute.MAX_EXPANDED).cells();
+                from -> neighbors(game.level, player, from, underwater), CoordinateRoute.MAX_EXPANDED).cells();
     }
 
     private record QuestDefinitionRoute(QuestLocation location) {}
@@ -104,7 +106,8 @@ public final class CoordinateGuidance {
 
     private static double square(double value) { return value * value; }
 
-    private static CoordinateRoute.Cell findStart(Level level, net.minecraft.world.entity.player.Player player) {
+    private static CoordinateRoute.Cell findStart(Level level, net.minecraft.world.entity.player.Player player,
+                                                   boolean underwater) {
         int baseX = BlockPos.containing(player.getX(), player.getY(), player.getZ()).getX();
         int baseY = BlockPos.containing(player.getX(), player.getY(), player.getZ()).getY();
         int baseZ = BlockPos.containing(player.getX(), player.getY(), player.getZ()).getZ();
@@ -115,7 +118,7 @@ public final class CoordinateGuidance {
                 if (Math.max(Math.abs(dx), Math.abs(dz)) != radius) continue;
                 for (int dy = 1; dy >= -3; dy--) {
                     var candidate = new CoordinateRoute.Cell(baseX + dx, baseY + dy, baseZ + dz);
-                    if (!walkable(level, player, candidate)) continue;
+                    if (!walkable(level, player, candidate, underwater)) continue;
                     double distance = square(candidate.x() + .5 - player.getX())
                             + square(candidate.y() - player.getY())
                             + square(candidate.z() + .5 - player.getZ());
@@ -131,23 +134,29 @@ public final class CoordinateGuidance {
     }
 
     private static List<CoordinateRoute.Cell> neighbors(
-            Level level, net.minecraft.world.entity.player.Player player, CoordinateRoute.Cell current) {
-        var result = new ArrayList<CoordinateRoute.Cell>(4);
+            Level level, net.minecraft.world.entity.player.Player player, CoordinateRoute.Cell current,
+            boolean underwater) {
+        var result = new ArrayList<CoordinateRoute.Cell>(8);
         for (int[] direction : CoordinateRoute.directions()) {
             int x = current.x() + direction[0], z = current.z() + direction[1];
             for (int dy : new int[]{0, 1, -1, -2, -3}) {
                 var candidate = new CoordinateRoute.Cell(x, current.y() + dy, z);
-                if (walkable(level, player, candidate)) {
-                    result.add(candidate);
-                    break;
+                if (!walkable(level, player, candidate, underwater)) continue;
+                if (direction[0] != 0 && direction[1] != 0) {
+                    var sideX = new CoordinateRoute.Cell(current.x() + direction[0], current.y(), current.z());
+                    var sideZ = new CoordinateRoute.Cell(current.x(), current.y(), current.z() + direction[1]);
+                    if (!walkable(level, player, sideX, underwater)
+                            || !walkable(level, player, sideZ, underwater)) continue;
                 }
+                result.add(candidate);
+                break;
             }
         }
         return result;
     }
 
     private static boolean walkable(Level level, net.minecraft.world.entity.player.Player player,
-                                    CoordinateRoute.Cell cell) {
+                                    CoordinateRoute.Cell cell, boolean underwater) {
         BlockPos feet = new BlockPos(cell.x(), cell.y(), cell.z());
         BlockPos floor = feet.below();
         if (!loaded(level, floor) || !loaded(level, feet) || !loaded(level, feet.above())) return false;
@@ -155,10 +164,14 @@ public final class CoordinateGuidance {
             return false;
         var support = level.getBlockState(floor);
         var supportShape = support.getCollisionShape(level, floor, CollisionContext.of(player));
-        if (supportShape.isEmpty() || supportShape.max(Direction.Axis.Y) < .875
-                || !support.getFluidState().isEmpty()) return false;
-        if (!level.getBlockState(floor).getFluidState().isEmpty()
-                || !level.getBlockState(feet).getFluidState().isEmpty()) return false;
+        var footState = level.getBlockState(feet);
+        boolean solidFloor = !supportShape.isEmpty() && supportShape.max(Direction.Axis.Y) >= .875
+                && support.getFluidState().isEmpty();
+        boolean waterSurface = !underwater && support.getFluidState().is(FluidTags.WATER)
+                && footState.getFluidState().isEmpty()
+                && level.getBlockState(feet.above()).getFluidState().isEmpty();
+        boolean swimming = underwater && footState.getFluidState().is(FluidTags.WATER);
+        if (!solidFloor && !waterSurface && !swimming) return false;
 
         var dimensions = player.getDimensions(Pose.STANDING);
         double halfWidth = dimensions.width() * .5;

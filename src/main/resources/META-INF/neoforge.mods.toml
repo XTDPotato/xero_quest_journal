@@ -32,6 +32,13 @@ ordering="AFTER"
 side="CLIENT"
 
 [[dependencies.xero_quest_journal]]
+modId="journeymap"
+type="optional"
+versionRange="[5,)"
+ordering="AFTER"
+side="CLIENT"
+
+[[dependencies.xero_quest_journal]]
 modId="minecraft"
 type="required"
 versionRange="[1.21.1]"

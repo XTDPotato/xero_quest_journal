@@ -2,7 +2,7 @@
 
 [简体中文](../README.md) | **English** · [Project home](../../README.en.md)
 
-This documentation covers **0.2.6**. Start with a workflow,
+This documentation covers **0.2.7**. Start with a workflow,
 then use the detailed reference for fields, permissions and persistence.
 
 ## Start Here
@@ -12,7 +12,7 @@ then use the detailed reference for fields, permissions and persistence.
 | Pick a loader, Java version and JAR | [Compatibility and verification](testing-and-compatibility.md) |
 | First-time player or author workflow | [User guide](guide.md) |
 | Find a control by its appearance | [English 1080p interface gallery](interface-gallery.md) |
-| Review current release verification | [0.2.6 verification](../release-verification-0.2.6.md) |
+| Review current release verification | [0.2.7 verification](../release-verification-0.2.7.md) |
 | Position notices and avoid minimaps | [Notification settings and HUD notices](interface-gallery.md#settings-and-animation) |
 | Look up syntax and permissions | [All commands](commands.md) |
 | Review recipe generation and backpack capacity | [2026-10-19 fix verification](../generator-and-objective-verification-2026-10-18.md) |

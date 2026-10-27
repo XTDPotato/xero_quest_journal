@@ -172,6 +172,8 @@ public final class QuestScreen extends AnimatedQuestScreen {
     private StyledChoiceButton<String> chapterControl;
     private long progressRevision;
     private CompletableFuture<String> actionPending;
+    private String trackingActionQuestId = "";
+    private boolean trackingActionWasTracked;
     private String actionMessage;
     private String timedActionMessage;
     private long actionMessageStartedAt;
@@ -1893,6 +1895,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
         selectedTaskIds.add(target.id());
         selectedLayoutIds.clear();
         selectedLayoutId = null;
+        revealDetails();
         selectedId = target.id();
         selected = target;
         revealSelectedPage = false;
@@ -2899,11 +2902,15 @@ public final class QuestScreen extends AnimatedQuestScreen {
     private void toggleTrack() {
         if (selected != null && actionPending == null) {
             var view = ClientQuestProgress.view(selected.id());
-            if (view != null && view.completed() && !ClientQuestProgress.isTracked(selected.id())) {
+            boolean wasTracked = ClientQuestProgress.isTracked(selected.id());
+            if (!wasTracked && (view == null || !view.unlocked() || view.completed()
+                    || !selected.trackable() || !ClientQuestProgress.focusCanSelect(selected.id()))) {
                 actionMessage = "already_complete";
                 return;
             }
             actionMessage = null;
+            trackingActionQuestId = selected.id();
+            trackingActionWasTracked = wasTracked;
             actionPending = ClientQuestProgress.toggleTracking(selected.id());
             init();
         }
@@ -4104,8 +4111,11 @@ public final class QuestScreen extends AnimatedQuestScreen {
                         iconPicker.refreshPending = CompletableFuture.runAsync(QuestIcons::refreshChoices);
                         iconPicker.cachedChoices.clear();
                         iconPicker.boundValues.clear();
-                        iconPicker.sortedInput = null;
                         iconPicker.loadingChoices = null;
+                        iconPicker.loadingBySource.clear();
+                        iconPicker.filterRequest++;
+                        iconPicker.filteredChoices = List.of();
+                        iconPicker.filterPending = null;
                     }
                 }, styles, "icon-filter", JournalNavButton.Kind.ICON, "refresh");
         refresh.setTooltip(Tooltip.create(text("icon_picker.refresh")));
@@ -4163,51 +4173,100 @@ public final class QuestScreen extends AnimatedQuestScreen {
     }
 
     private void rebuildIconPickerResults(int x, int y, int w, int h) {
-        String normalizedSearch = iconPicker.search.strip().toLowerCase(Locale.ROOT);
         List<QuestIcons.IconChoice> available = readyIconChoices();
         if (available == null) {
             iconPicker.filteredChoices = List.of();
             updateIconPickerViewport();
             return;
         }
-        List<QuestIcons.IconChoice> sorted = sortIconChoices(available);
-        iconPicker.filteredChoices = normalizedSearch.isEmpty() ? sorted
-                : sorted.stream()
-                .filter(choice -> choice.matchesNormalized(normalizedSearch)).toList();
-        int totalRows = Math.max(1, (iconPicker.filteredChoices.size() + iconPicker.columns - 1)
-                / iconPicker.columns);
-        iconPicker.scroll.limit(Math.max(0, totalRows * 40 - 4
-                - (iconPicker.gridBottom - iconPicker.gridTop)));
+        long request = ++iconPicker.filterRequest;
+        IconSource source = iconPicker.source;
+        String normalizedSearch = iconPicker.search.strip().toLowerCase(Locale.ROOT);
+        String sort = iconPicker.sort;
+        boolean descending = iconPicker.descending;
+        int columns = iconPicker.columns;
+        int viewportHeight = iconPicker.gridBottom - iconPicker.gridTop;
+        iconPicker.filteredChoices = List.of();
         updateIconPickerViewport();
+        iconPicker.filterPending = CompletableFuture.supplyAsync(() -> {
+            List<QuestIcons.IconChoice> sorted = sortIconChoices(available, sort, descending);
+            return normalizedSearch.isEmpty() ? sorted : sorted.stream()
+                    .filter(choice -> choice.matchesNormalized(normalizedSearch)).toList();
+        }).thenApply(result -> new FilteredIconChoices(request, source, normalizedSearch, sort,
+                descending, columns, viewportHeight, result));
     }
 
     private List<QuestIcons.IconChoice> readyIconChoices() {
         List<QuestIcons.IconChoice> cached = iconPicker.cachedChoices.get(iconPicker.source);
         if (cached != null) return cached;
-        if (iconPicker.source == IconSource.INVENTORY || iconPicker.source == IconSource.LOCAL)
+        if (iconPicker.source == IconSource.INVENTORY)
             return iconChoices(iconPicker.source);
-        if (iconPicker.loadingChoices == null || iconPicker.loadingSource != iconPicker.source) {
-            IconSource source = iconPicker.source;
-            iconPicker.loadingSource = source;
-            iconPicker.loadingChoices = CompletableFuture.supplyAsync(() -> switch (source) {
+        IconSource source = iconPicker.source;
+        CompletableFuture<List<QuestIcons.IconChoice>> loading = iconPicker.loadingBySource.get(source);
+        if (loading == null) {
+            loading = CompletableFuture.supplyAsync(() -> switch (source) {
                 case ITEMS -> QuestIcons.itemChoices();
                 case TAGS -> QuestIcons.tagChoices();
                 case TEXTURES -> QuestIcons.textureChoices();
+                case LOCAL -> QuestIcons.localChoices();
                 default -> List.of();
             });
+            iconPicker.loadingBySource.put(source, loading);
+        }
+        iconPicker.loadingSource = source;
+        iconPicker.loadingChoices = loading;
+        if (!loading.isDone()) {
             return null;
         }
-        if (!iconPicker.loadingChoices.isDone()) return null;
         try {
-            List<QuestIcons.IconChoice> result = iconPicker.loadingChoices.join();
-            iconPicker.cachedChoices.put(iconPicker.source, result);
+            List<QuestIcons.IconChoice> result = loading.join();
+            iconPicker.cachedChoices.put(source, result);
+            iconPicker.loadingBySource.remove(source, loading);
             iconPicker.loadingChoices = null;
             return result;
         } catch (RuntimeException failure) {
+            iconPicker.loadingBySource.remove(source, loading);
             iconPicker.loadingChoices = null;
             error = "icon_picker.refresh_failed";
             return List.of();
         }
+    }
+
+    private static List<QuestIcons.IconChoice> sortIconChoices(List<QuestIcons.IconChoice> choices,
+                                                                String sort,
+                                                                boolean descending) {
+        Comparator<QuestIcons.IconChoice> comparator = switch (sort) {
+            case "name" -> Comparator.comparing(QuestIcons.IconChoice::displayName,
+                    (first, second) -> naturalCompareDirection(first, second, descending));
+            case "created", "modified" -> {
+                boolean creation = sort.equals("created");
+                Comparator<QuestIcons.IconChoice> time = (first, second) -> {
+                    long a = QuestIcons.fileTimestamp(first.value(), creation);
+                    long b = QuestIcons.fileTimestamp(second.value(), creation);
+                    if (a < 0 || b < 0) {
+                        if (a < 0 && b >= 0) return 1;
+                        if (b < 0 && a >= 0) return -1;
+                    }
+                    return Long.compare(a, b);
+                };
+                yield time.thenComparing(QuestIcons.IconChoice::value, QuestScreen::naturalCompare);
+            }
+            default -> Comparator.comparing(QuestIcons.IconChoice::value,
+                    (first, second) -> naturalCompareDirection(first, second, descending));
+        };
+        if (descending && !sort.equals("id") && !sort.equals("name")) {
+            comparator = (first, second) -> {
+                long a = QuestIcons.fileTimestamp(first.value(), sort.equals("created"));
+                long b = QuestIcons.fileTimestamp(second.value(), sort.equals("created"));
+                if (a < 0 || b < 0) {
+                    if (a < 0 && b >= 0) return 1;
+                    if (b < 0 && a >= 0) return -1;
+                }
+                int time = Long.compare(b, a);
+                return time == 0 ? naturalCompare(first.value(), second.value()) : time;
+            };
+        }
+        return choices.stream().sorted(comparator).toList();
     }
 
     private void updateIconPickerViewport() {
@@ -4236,47 +4295,6 @@ public final class QuestScreen extends AnimatedQuestScreen {
                 icon.setSelectionHighlighted(choice.value().equals(iconPicker.manual));
             }
         }
-    }
-
-    private List<QuestIcons.IconChoice> sortIconChoices(List<QuestIcons.IconChoice> choices) {
-        String sortKey = iconPicker.source + ":" + iconPicker.sort + ":" + iconPicker.descending;
-        if (iconPicker.sortedInput == choices && sortKey.equals(iconPicker.sortedKey)) return iconPicker.sortedChoices;
-        boolean reverse = iconPicker.descending;
-        Comparator<QuestIcons.IconChoice> comparator = switch (iconPicker.sort) {
-            case "name" -> Comparator.comparing(QuestIcons.IconChoice::displayName,
-                    (first, second) -> naturalCompareDirection(first, second, reverse));
-            case "created", "modified" -> {
-                boolean creation = iconPicker.sort.equals("created");
-                Comparator<QuestIcons.IconChoice> time = (first, second) -> {
-                    long a = QuestIcons.fileTimestamp(first.value(), creation);
-                    long b = QuestIcons.fileTimestamp(second.value(), creation);
-                    if (a < 0 || b < 0) {
-                        if (a < 0 && b >= 0) return 1;
-                        if (b < 0 && a >= 0) return -1;
-                    }
-                    return Long.compare(a, b);
-                };
-                yield time.thenComparing(QuestIcons.IconChoice::value, QuestScreen::naturalCompare);
-            }
-            default -> Comparator.comparing(QuestIcons.IconChoice::value,
-                    (first, second) -> naturalCompareDirection(first, second, reverse));
-        };
-        if (iconPicker.descending && !iconPicker.sort.equals("id") && !iconPicker.sort.equals("name")) {
-            comparator = (first, second) -> {
-                long a = QuestIcons.fileTimestamp(first.value(), iconPicker.sort.equals("created"));
-                long b = QuestIcons.fileTimestamp(second.value(), iconPicker.sort.equals("created"));
-                if (a < 0 || b < 0) {
-                    if (a < 0 && b >= 0) return 1;
-                    if (b < 0 && a >= 0) return -1;
-                }
-                int time = Long.compare(b, a);
-                return time == 0 ? naturalCompare(first.value(), second.value()) : time;
-            };
-        }
-        iconPicker.sortedInput = choices;
-        iconPicker.sortedKey = sortKey;
-        iconPicker.sortedChoices = choices.stream().sorted(comparator).toList();
-        return iconPicker.sortedChoices;
     }
 
     private static int naturalCompareDirection(String left, String right, boolean descending) {
@@ -5362,12 +5380,32 @@ public final class QuestScreen extends AnimatedQuestScreen {
                 }
                 iconPicker.refreshPending = null;
                 iconPicker.loadingChoices = null;
+                iconPicker.filterPending = null;
+                iconPicker.cachedChoices.clear();
                 init();
                 return;
             }
             if (iconPicker.refreshPending == null && iconPicker.loadingChoices != null && iconPicker.loadingChoices.isDone()) {
-                init();
-                return;
+                rebuildIconPickerResults(0, 0, width, height);
+            }
+            if (iconPicker.filterPending != null && iconPicker.filterPending.isDone()) {
+                try {
+                    FilteredIconChoices result = iconPicker.filterPending.join();
+                    if (result.request() == iconPicker.filterRequest
+                            && result.source() == iconPicker.source
+                            && result.search().equals(iconPicker.search.strip().toLowerCase(Locale.ROOT))
+                            && result.sort().equals(iconPicker.sort)
+                            && result.descending() == iconPicker.descending) {
+                        iconPicker.filteredChoices = result.choices();
+                        int totalRows = Math.max(1, (result.choices().size() + result.columns() - 1)
+                                / result.columns());
+                        iconPicker.scroll.limit(Math.max(0, totalRows * 40 - 4 - result.viewportHeight()));
+                        updateIconPickerViewport();
+                    }
+                } catch (RuntimeException failure) {
+                    error = "icon_picker.refresh_failed";
+                }
+                iconPicker.filterPending = null;
             }
         }
         if (historyPending != null) {
@@ -5518,6 +5556,10 @@ public final class QuestScreen extends AnimatedQuestScreen {
             }
             init();
         } else if (actionPending != null && actionPending.isDone() && minecraft.screen == this) {
+            String completedTrackingId = trackingActionQuestId;
+            boolean wasTracked = trackingActionWasTracked;
+            trackingActionQuestId = "";
+            trackingActionWasTracked = false;
             PendingClaim claim = pendingClaim != null && pendingClaim.request() == actionPending
                     ? pendingClaim : null;
             pendingClaim = null;
@@ -5531,6 +5573,18 @@ public final class QuestScreen extends AnimatedQuestScreen {
                 selectNeighborAfterClaim(claim.overflowId());
             ClientQuestProgress.tick();
             init();
+            if (!completedTrackingId.isBlank() && !wasTracked && actionMessage.equals("tracked")) {
+                QuestDefinition trackedQuest = ClientQuestDefinitions.find(completedTrackingId);
+                var location = trackedQuest == null ? null : QuestHudRenderer.location(trackedQuest);
+                boolean coordinateTarget = location != null && location.kind().equals("coords")
+                        && location.resolved();
+                if (coordinateTarget && OptionalMapBridge.hasSupportedMap()) {
+                    OptionalMapBridge.refreshWaypoints();
+                    OptionalMapBridge.openAfterClose(this);
+                }
+                closeTo(parent);
+                return;
+            }
             if ("choice_required".equals(actionMessage) && claim != null && claim.overflowId() != null) {
                 QuestDefinition quest = ClientQuestDefinitions.find(claim.overflowId());
                 var view = ClientQuestProgress.view(claim.overflowId());
@@ -7894,6 +7948,8 @@ public final class QuestScreen extends AnimatedQuestScreen {
                 return entry.getKey();
             }
         }
+        String nearbyRow = nearbyListRow(x, y);
+        if (nearbyRow != null) return nearbyRow;
         if (!inDetails(x, y)) return null;
         for (var element : orderedElements(true)) {
             if (!editMode && !runtimeVisible(element)) continue;
@@ -7909,6 +7965,23 @@ public final class QuestScreen extends AnimatedQuestScreen {
             }
         }
         return null;
+    }
+
+    private String nearbyListRow(double x, double y) {
+        if (!inList(x, y) || x >= listRight() - (maxListScroll() > 0 ? 8 : 0)) return null;
+        JournalListModel.Row nearest = null;
+        double nearestDistance = Double.POSITIVE_INFINITY;
+        for (var row : viewportRows) {
+            if (row.section()) continue;
+            int top = listRowY(row);
+            int bottom = top + row.height();
+            double distance = y < top ? top - y : y >= bottom ? y - bottom + 1 : 0;
+            if (distance < nearestDistance) {
+                nearest = row;
+                nearestDistance = distance;
+            }
+        }
+        return nearest != null && nearestDistance <= 2 ? nearest.key() : null;
     }
 
     private boolean insideScrollClips(LayoutEditorState.Element element, double x, double y) {
@@ -9153,7 +9226,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
             onClose();
             return true;
         }
-        if (!overviewMode && menu.isEmpty()
+        if (!overviewMode && menu.isEmpty() && !(getFocused() instanceof EditBox)
                 && (modifiers & (GLFW.GLFW_MOD_CONTROL | GLFW.GLFW_MOD_ALT | GLFW.GLFW_MOD_SHIFT)) == 0) {
             if (key == GLFW.GLFW_KEY_W || key == GLFW.GLFW_KEY_S) {
                 navigateTaskSelection(key == GLFW.GLFW_KEY_W ? -1 : 1);
@@ -9165,7 +9238,7 @@ public final class QuestScreen extends AnimatedQuestScreen {
             }
             if (key == GLFW.GLFW_KEY_F) {
                 StyledButton track = controls.get("system:track");
-                if (track != null && track.active) track.onPress();
+                if (track != null && track.active) toggleTrack();
                 return true;
             }
         }
@@ -9484,8 +9557,10 @@ public final class QuestScreen extends AnimatedQuestScreen {
         final EnumMap<IconSource, List<QuestIcons.IconChoice>> cachedChoices = new EnumMap<>(IconSource.class);
         final SmoothScroll scroll = new SmoothScroll();
         final Map<StyledButton, String> boundValues = new java.util.IdentityHashMap<>();
-        List<QuestIcons.IconChoice> sortedInput, sortedChoices;
-        String sortedKey = "";
+        final EnumMap<IconSource, CompletableFuture<List<QuestIcons.IconChoice>>> loadingBySource =
+                new EnumMap<>(IconSource.class);
+        long filterRequest;
+        CompletableFuture<FilteredIconChoices> filterPending;
         CompletableFuture<Void> refreshPending;
         CompletableFuture<List<QuestIcons.IconChoice>> loadingChoices;
         IconSource loadingSource;
@@ -9509,6 +9584,10 @@ public final class QuestScreen extends AnimatedQuestScreen {
 
     private record FormLabel(Component text, int x, int y, int width) {
     }
+
+    private record FilteredIconChoices(long request, IconSource source, String search, String sort,
+                                      boolean descending, int columns, int viewportHeight,
+                                      List<QuestIcons.IconChoice> choices) {}
 
     private record ColorPreview(int x, int y, int size, java.util.function.Supplier<String> value) {
     }
